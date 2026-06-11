@@ -1,0 +1,205 @@
+# /etc/blazen/llm.yaml
+#
+# Two-engine design: a CPU fallback (llama.cpp) is ALWAYS available; an
+# optional accelerator path (Hailo-10H, future ones) takes precedence
+# when present. See docs/12-ML-ACCELERATOR.md for the rationale.
+
+version: 1
+
+active_engine: auto                      # auto | cpu | hailo
+active_model: qwen2.5-3b-instruct-q4_k_m # voice-mutable
+
+# Sampling.
+temperature: 0.4
+top_p: 0.9
+top_k: 40
+repeat_penalty: 1.1
+seed: 0                                  # set in deterministic test runs
+max_tokens_per_reply: 256
+
+# Context / memory.
+n_ctx: 4096
+summarise_at_tokens: 3072
+keep_last_turns: 8
+
+system_prompt: |
+  You are Jessica (casual: Jess; Polish vocative: Jessico), a voice-first
+  personal assistant. You run on a Raspberry Pi 5 in the user's home.
+  The user hears you through a speaker; they cannot see a screen.
+
+  LANGUAGE: reply in the same language the user used (English or Polish).
+  If you can't tell, default to Polish (the primary user is Polish-only).
+  Keep replies short — one or two sentences unless the user asks for
+  detail. The casual register is the default ("ok", "jasne", "robi się"
+  / "sure", "got it") — switch to formal only on request.
+
+  HONESTY: never invent tool outputs, source citations, or facts. If
+  you don't know, say so plainly. If you used cloud info (Gemini) and
+  the user asks "skąd to wiesz" / "source?", say it came from Gemini
+  and offer to read citations.
+
+  ROUTING: short factual questions you can answer with general
+  knowledge — answer locally. Complex / multi-step questions, anything
+  requiring up-to-date info, or anything the user phrased as "deep
+  research" — escalate to Gemini per the routing rules in
+  docs/product/04-CONVERSATION-MODES.md.
+
+  IDENTITY: you are Jessica everywhere. Code-names like "blazen" or
+  "rachel" are developer terms — never use them with the user.
+
+  PRIVACY: when the user asks about cloud calls, what's stored, or
+  what you know about them — read it back honestly per
+  docs/product/08-PRIVACY-AND-CLOUD.md. Never lie about whether
+  something went to the cloud.
+
+# CPU engine via llama.cpp (always available — the fallback).
+cpu:
+  backend: llama-cpp-python
+  threads: 4                             # Pi 5 cores
+  n_batch: 256
+  n_gpu_layers: 0                        # no GPU on Pi 5 main path
+  use_mmap: true
+  use_mlock: false
+  flash_attn: false
+
+# Optional accelerator engine. See docs/12-ML-ACCELERATOR.md for the
+# install + tuning guide. Off by default; auto-enabled if hardware
+# detected at boot.
+hailo:
+  enabled: false
+  variant: hailo-10h                     # hailo-8 | hailo-8l | hailo-10h
+  device_id: 0
+  runtime: hailort                       # HailoRT >= 4.20
+  precompiled_hef_dir: /var/lib/blazen/hailo/llm/
+  swap_on_fail_to_cpu: true              # if Hailo path errors, fall back
+  power_profile: balanced                # eco | balanced | performance
+
+# Model catalogue. Each entry can be CPU-only, Hailo-only, or both.
+# `make models` downloads the variants that match the chosen engines.
+models:
+  qwen2.5-3b-instruct-q4_k_m:
+    family: qwen2.5
+    parameters_b: 3
+    cpu:
+      file: qwen2.5-3b-instruct-q4_k_m.gguf
+      download_url: https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf
+      sha256: "<TBD>"
+      size_mb: 2000
+      ram_mb: 2700
+      pi5_cpu_ttft_ms: 350
+      pi5_cpu_tok_s: 12
+    hailo:                               # available on hailo-10h
+      file: qwen2.5-3b-instruct.hef
+      download_url: "<TBD-vendor>"
+      sha256: "<TBD>"
+      size_mb: 2200
+      ram_mb: 1800
+      hailo10h_ttft_ms: 120
+      hailo10h_tok_s: 35
+    license: Apache-2.0
+  qwen2.5-1.5b-instruct-q4_k_m:
+    family: qwen2.5
+    parameters_b: 1.5
+    cpu:
+      file: qwen2.5-1.5b-instruct-q4_k_m.gguf
+      download_url: https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
+      sha256: "<TBD>"
+      size_mb: 1000
+      ram_mb: 1500
+      pi5_cpu_ttft_ms: 300
+      pi5_cpu_tok_s: 18
+    license: Apache-2.0
+  qwen2.5-7b-instruct-q4_k_m:
+    family: qwen2.5
+    parameters_b: 7
+    requires_min_ram_gb: 16              # opt-in upgrade on Pi 5 16 GB only
+    cpu:
+      file: qwen2.5-7b-instruct-q4_k_m.gguf
+      download_url: https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf
+      sha256: "<TBD>"
+      size_mb: 4500
+      ram_mb: 6000
+      pi5_cpu_ttft_ms: 650
+      pi5_cpu_tok_s: 6
+    hailo:
+      file: qwen2.5-7b-instruct.hef
+      download_url: "<TBD-vendor>"
+      sha256: "<TBD>"
+      size_mb: 4800
+      ram_mb: 4500
+      hailo10h_ttft_ms: 250
+      hailo10h_tok_s: 18
+    license: Apache-2.0
+  llama-3.2-3b-instruct-q4_k_m:
+    family: llama-3.2
+    parameters_b: 3
+    cpu:
+      file: llama-3.2-3b-instruct-q4_k_m.gguf
+      download_url: https://huggingface.co/lmstudio-community/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf
+      sha256: "<TBD>"
+      size_mb: 2000
+      ram_mb: 2700
+      pi5_cpu_ttft_ms: 400
+      pi5_cpu_tok_s: 10
+    hailo:
+      file: llama-3.2-3b-instruct.hef
+      download_url: "<TBD-vendor>"
+      sha256: "<TBD>"
+      size_mb: 2200
+      ram_mb: 1900
+      hailo10h_ttft_ms: 140
+      hailo10h_tok_s: 32
+    license: llama-3.2-community
+  phi-3.5-mini-instruct-q4_k_m:
+    family: phi-3.5
+    parameters_b: 3.8
+    cpu:
+      file: phi-3.5-mini-instruct-q4_k_m.gguf
+      download_url: https://huggingface.co/microsoft/Phi-3.5-mini-instruct-gguf/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf
+      sha256: "<TBD>"
+      size_mb: 2400
+      ram_mb: 3200
+      pi5_cpu_ttft_ms: 500
+      pi5_cpu_tok_s: 9
+    license: MIT
+  tinyllama-1.1b-q4_k_m:
+    family: tinyllama
+    parameters_b: 1.1
+    cpu:
+      file: tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+      download_url: https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+      sha256: "<TBD>"
+      size_mb: 700
+      ram_mb: 900
+      pi5_cpu_ttft_ms: 200
+      pi5_cpu_tok_s: 22
+    license: Apache-2.0
+
+allowed:
+  - qwen2.5-3b-instruct-q4_k_m
+  - qwen2.5-7b-instruct-q4_k_m
+  - qwen2.5-1.5b-instruct-q4_k_m
+  - llama-3.2-3b-instruct-q4_k_m
+  - phi-3.5-mini-instruct-q4_k_m
+  - tinyllama-1.1b-q4_k_m
+
+# Engine selection rules used by `active_engine: auto`.
+auto_engine_rules:
+  - if: hailo.detected and model.has_hailo_variant
+    use: hailo
+  - if: ram_free_mb < model.cpu.ram_mb + 800
+    use: cpu_fallback                   # downshift to a smaller model
+  - default: cpu
+
+# Auto-downshift rules. Applied at boot if the requested model wouldn't
+# fit. Keep the chain short so behaviour is predictable.
+auto_downshift_chain:
+  - qwen2.5-7b-instruct-q4_k_m
+  - qwen2.5-3b-instruct-q4_k_m
+  - qwen2.5-1.5b-instruct-q4_k_m
+  - tinyllama-1.1b-q4_k_m
+
+# Voice command "use the larger brain" / "użyj większego mózgu" promotes
+# the active model up the chain by one step (only valid on Pi 5 16 GB
+# and when free RAM permits). "use the smaller brain" / "użyj mniejszego
+# mózgu" demotes it.

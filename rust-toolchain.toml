@@ -1,0 +1,6 @@
+[toolchain]
+# Pinned for reproducibility. See docs/14-RUST-PYTHON-SPLIT.md §5.
+channel = "stable"
+components = ["rustfmt", "clippy", "rust-src"]
+targets = ["aarch64-unknown-linux-gnu"]
+profile = "minimal"

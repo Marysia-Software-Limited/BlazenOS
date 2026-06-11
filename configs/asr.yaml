@@ -1,0 +1,90 @@
+# /etc/blazen/asr.yaml
+
+version: 1
+
+# Pi 5 16 GB default: multilingual `medium` (better PL diacritics).
+# Pi 5 8 GB downshifts to `small` (set in image build via
+# BLAZEN_ASR_MODEL=small or by the engine selector on first boot).
+# EN-only `small.en` is kept for the `lang_mode: en_only` build flavour.
+# See docs/13-LANGUAGES.md and docs/05-MODELS.md.
+active: medium                         # voice-mutable; see voice-policy.yaml
+backend: faster-whisper
+compute_type: int8                     # int8 | int8_float32 | float16 (Hailo path overrides)
+beam_size: 1                           # set to 5 for batch / offline transcription
+language: auto                         # auto | en | pl | de | ...
+auto_detect:
+  first_window_ms: 1000
+  switch_threshold: 0.7
+  fall_back_to_wake_hint: true
+
+# Streaming partials.
+streaming:
+  partial_every_ms: 200
+  max_segment_ms: 30000
+
+# Selectable model variants. `make models` reads this for downloads.
+# Pi 5 (8 GB) is the reference; sizes below are CPU-resident peaks.
+models:
+  tiny.en:
+    download_id: Systran/faster-whisper-tiny.en
+    size_mb: 75
+    ram_mb: 400
+    pi5_latency_5s_ms: 300
+    license: MIT
+  base.en:
+    download_id: Systran/faster-whisper-base.en
+    size_mb: 142
+    ram_mb: 600
+    pi5_latency_5s_ms: 500
+    license: MIT
+  small.en:
+    download_id: Systran/faster-whisper-small.en
+    size_mb: 466
+    ram_mb: 1200
+    pi5_latency_5s_ms: 700
+    license: MIT
+  medium.en:
+    download_id: Systran/faster-whisper-medium.en
+    size_mb: 1500
+    ram_mb: 2700
+    pi5_latency_5s_ms: 1500
+    license: MIT
+  small:                               # multilingual (default — incl. Polish)
+    download_id: Systran/faster-whisper-small
+    size_mb: 466
+    ram_mb: 1200
+    pi5_latency_5s_ms: 750
+    languages: [en, pl, de, fr, es, it, pt, ru, ...]
+    license: MIT
+  medium:                              # multilingual, better PL diacritics
+    download_id: Systran/faster-whisper-medium
+    size_mb: 1500
+    ram_mb: 2700
+    pi5_latency_5s_ms: 1600
+    languages: [en, pl, de, fr, es, it, pt, ru, ...]
+    license: MIT
+  large-v3-turbo:
+    download_id: Systran/faster-whisper-large-v3-turbo
+    size_mb: 1600
+    ram_mb: 3000
+    pi5_latency_5s_ms: 1800
+    languages: [en, pl, de, fr, es, it, pt, ru, ...]
+    license: MIT
+
+allowed:
+  - small
+  - medium
+  - large-v3-turbo
+  - small.en
+  - tiny.en
+  - base.en
+  - medium.en
+
+# Optional Hailo path for ASR. See docs/12-ML-ACCELERATOR.md.
+# Whisper on Hailo is experimental as of 2026-01; faster-whisper CPU is the
+# default and the Hailo path is opt-in only.
+hailo:
+  enabled: false
+  variant: hailo-8                      # hailo-8 | hailo-8l | hailo-10h
+  hef_path: /var/lib/blazen/hailo/asr/whisper-base.hef
+  fallback_to_cpu_on_error: true

@@ -1,0 +1,15 @@
+[Unit]
+Description=blazen_os first-boot pairing (Python, one-shot)
+DefaultDependencies=no
+After=local-fs.target
+Before=blazend.target
+ConditionPathExists=/boot/blazen-firstboot
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+User=root
+ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.bootstrap
+
+[Install]
+WantedBy=blazend.target

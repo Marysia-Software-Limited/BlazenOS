@@ -1,0 +1,62 @@
+# Cargo workspace root for blazen_os Rust components.
+# See docs/14-RUST-PYTHON-SPLIT.md.
+
+[workspace]
+resolver = "2"
+members = [
+  "blazend-ipc",
+  "blazend-audio-in",
+  "blazend-audio-out",
+  "blazend-wake",
+  "blazend-tts",
+  "blazend-health",
+  "blazend-fabric",
+  "jessica-mobile-core",
+  "jessica-ffi",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.78"
+license = "Apache-2.0"
+repository = "https://github.com/beret/blazen_os"
+
+[workspace.dependencies]
+# Shared deps — versions pinned at the workspace level for consistency.
+tokio        = { version = "1.40", features = ["rt", "macros", "net", "signal", "sync", "time", "io-util", "fs", "process"] }
+serde        = { version = "1.0",  features = ["derive"] }
+serde_json   = "1.0"
+anyhow       = "1.0"
+thiserror    = "1.0"
+bytes        = "1.7"
+tracing      = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap         = { version = "4.5", features = ["derive"] }
+async-trait  = "0.1"
+crossbeam-channel = "0.5"
+memmap2      = "0.9"
+
+# Audio.
+cpal         = "0.15"
+rodio        = "0.19"
+
+# ML / ONNX (wake + VAD). Added in M2 once the loader stabilises; current
+# `ort 2.0-rc.4` has upstream build issues on some host SDKs. Mock wake
+# in M1 needs no ONNX runtime.
+# ort = { version = "...", default-features = false, features = ["load-dynamic"] }
+
+# Internal crates.
+blazend-ipc     = { path = "blazend-ipc" }
+blazend-fabric  = { path = "blazend-fabric" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+[profile.dev]
+opt-level = 1
+debug = true

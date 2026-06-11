@@ -1,0 +1,25 @@
+[Unit]
+Description=blazen_os LLM (Python, llama-cpp-python / HailoRT)
+PartOf=blazend.target
+After=blazend-asr.service
+
+[Service]
+Type=simple
+User=blazen
+Group=blazen
+WorkingDirectory=/usr/lib/blazen
+Environment=PYTHONPATH=/usr/lib/blazen
+Environment=BLAZEN_RUNTIME_DIR=/run/blazen
+ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.brain
+RuntimeDirectory=blazen
+RuntimeDirectoryMode=0750
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=60                            # model warm-up
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/blazen /var/lib/blazen
+ProtectHome=yes
+
+[Install]
+WantedBy=blazend.target

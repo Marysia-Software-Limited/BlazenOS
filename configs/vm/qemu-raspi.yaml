@@ -1,0 +1,58 @@
+# configs/vm/qemu-raspi.yaml — read by scripts/run-vm.sh
+#
+# QEMU has no Hailo emulation. The VM exercises the CPU LLM path only.
+# Hailo verification happens in Tier 4 (real Pi 5 + AI HAT+/Hailo-10H).
+# See docs/09-VM-TESTING.md and docs/12-ML-ACCELERATOR.md.
+
+version: 1
+
+# We target raspi4b until QEMU upstream ships first-class raspi5b. Latency
+# budgets in the test runner are scaled by `pi5_qemu_scale`.
+#
+# NOTE: QEMU's raspi4b machine models a FIXED 2 GiB board — it rejects any
+# other -m value ("Invalid RAM size, should be 2 GiB"). Do not raise this
+# to the Pi 5's 8/16 GiB; that constraint is the emulator's, not ours.
+machine: raspi4b
+cpus: 4
+ram_mb: 2048
+pi5_qemu_scale: 2.0                     # multiplier applied to Pi-5 budgets
+
+# Extracted at image build time into the boot artefacts directory.
+kernel: build/vm-boot/kernel8.img
+dtb: build/vm-boot/bcm2711-rpi-4-b.dtb
+initrd: ~                                # we boot the squashed image's initramfs
+# Verified boot cmdline (2026-06-11): the PL011 needs an explicit
+# earlycon or the console stays silent, and QEMU puts the `if=sd` drive
+# on mmcblk1 (mmcblk0 is the SDIO/wifi controller) — so root is
+# mmcblk1p2, NOT mmcblk0p2. With these, the kernel boots, root mounts,
+# and systemd starts. See docs/10-ROADMAP.md M1 footguns.
+cmdline: "earlycon=pl011,0xfe201000 console=ttyAMA0,115200 root=/dev/mmcblk1p2 rootfstype=ext4 fsck.repair=yes rootwait"
+
+# The image produced by `make vm-image`.
+sd_image: vm-images/blazen_os-0.0.1-dev.qcow2
+
+# Audio backend. Two options; runner picks per host OS.
+audio_backend:
+  type: pipewire                         # pipewire | portaudio-file
+  pipewire:
+    null_sink_name: blazen-vm-null
+    capture_node: blazen-vm-capture
+  portaudio_file:
+    in_wav: /tmp/blazen-vm-in.wav
+    out_wav: /tmp/blazen-vm-out.wav
+
+# Networking — only SSH port-forward.
+network:
+  type: usernet                          # SLIRP user networking
+  ssh_port_forward:
+    host_port: 2222
+    guest_port: 22
+
+# I/O.
+display: none
+serial: stdio
+
+# Snapshot used by the e2e runner.
+snapshot:
+  base_layer: vm-runs/_base.qcow2
+  ttl_hours: 24

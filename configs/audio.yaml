@@ -1,0 +1,33 @@
+# /etc/blazen/audio.yaml — mostly voice-mutable.
+
+version: 1
+
+input:
+  device: default                     # ALSA name; resolves to ReSpeaker HAT or USB mic
+  sample_rate_hz: 16000
+  channels: 1
+  frame_ms: 20
+  ring_buffer_seconds: 3
+  pre_roll_ms: 500
+
+output:
+  device: default
+  sample_rate_hz: 22050
+  channels: 1
+  ducking_db: -12                     # when wake fires, duck the rest by 12 dB
+
+processing:
+  agc_enabled: true
+  aec_enabled: true                   # WebRTC apm
+  noise_suppression: moderate         # off | low | moderate | high
+
+volume:
+  default: 50                         # 0..100
+  step: 10
+  voice_mutable: true                 # see voice-policy.yaml
+
+earcons:
+  wake_chime: true
+  error_tone: true
+  shutdown_tone: true
+  custom_voice_marker: false

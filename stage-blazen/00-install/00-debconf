@@ -1,0 +1,1 @@
+openssh-server openssh-server/sshd_config_backup_path string /etc/ssh/sshd_config.dpkg-bak

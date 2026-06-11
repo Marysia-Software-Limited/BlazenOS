@@ -1,0 +1,12 @@
+# Cross-rs config for blazen_os.
+#
+# `alsa-sys` (cpal's audio dep) needs libasound headers; the stock
+# cross-rs Docker image doesn't ship them. We add them via a pre-build
+# hook so cross-compilation works out of the box.
+
+[target.aarch64-unknown-linux-gnu]
+pre-build = [
+    "dpkg --add-architecture $CROSS_DEB_ARCH",
+    "apt-get update",
+    "apt-get --assume-yes install libasound2-dev:$CROSS_DEB_ARCH pkg-config",
+]

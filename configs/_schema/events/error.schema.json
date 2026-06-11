@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://blazen.os/events/error",
+  "title": "error",
+  "type": "object",
+  "required": ["v", "ts_ms", "source", "topic", "data"],
+  "properties": {
+    "v": { "type": "integer", "const": 1 },
+    "ts_ms": { "type": "integer", "minimum": 0 },
+    "source": { "type": "string", "minLength": 1 },
+    "topic": { "type": "string", "const": "error" },
+    "data": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "hint": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

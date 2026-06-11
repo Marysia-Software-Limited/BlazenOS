@@ -1,0 +1,21 @@
+[Unit]
+Description=blazen_os watchdog + recovery (Rust)
+PartOf=blazend.target
+
+[Service]
+Type=simple
+User=blazen
+Group=blazen
+Environment=BLAZEN_RUNTIME_DIR=/run/blazen
+ExecStart=/usr/lib/blazen/bin/blazend-health
+RuntimeDirectory=blazen
+RuntimeDirectoryMode=0750
+Restart=always                                # watchdog must come back fast
+RestartSec=1
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/blazen /var/lib/blazen
+ProtectHome=yes
+
+[Install]
+WantedBy=blazend.target

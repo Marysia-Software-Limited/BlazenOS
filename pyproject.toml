@@ -1,0 +1,55 @@
+[project]
+name = "blazen_os"
+version = "0.0.1"
+description = "Voice-first Linux OS for Raspberry Pi 5 16 GB (Python + Rust)."
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.9",
+  "pyyaml>=6.0",
+  "numpy>=1.26",
+  "jsonschema>=4.21",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.6",
+  "mypy>=1.10",
+  "rich>=13.7",
+  "datamodel-code-generator>=0.25",
+]
+runtime = [
+  # On-Pi runtime extras; installed by the image build, not for dev.
+  "sounddevice>=0.5",
+  "soundfile>=0.12",
+  "faster-whisper>=1.0",
+  "llama-cpp-python>=0.3",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit", "tests/component"]
+addopts = "-ra"
+pythonpath = ["src", "tests/tools"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+extend-select = ["I", "B", "UP"]
+
+[tool.mypy]
+strict = true
+files = ["src/blazend"]
+explicit_package_bases = true
+mypy_path = "src"

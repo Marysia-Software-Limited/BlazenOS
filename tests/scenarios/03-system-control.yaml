@@ -1,0 +1,37 @@
+id: 03-system-control
+language: en
+description: Loud-confirmation flow for a reboot intent — system stays up.
+tags: [system, confirm, voice-policy, en]
+preconditions:
+  ssh.enabled: false
+turns:
+  - user: "hey blazen"
+    expect:
+      wake_acknowledged: true
+
+  - user: "reboot the system"
+    expect:
+      assistant_says_any:
+        - "i'm about to reboot. say apply change to confirm"
+        - "please confirm the reboot by saying apply change"
+      confirmation_state: awaiting_loud
+      no_state_change_yet:
+        - system.power.reboot
+
+  - user: "never mind"
+    expect:
+      confirmation_state: cancelled
+      state:
+        system.power.reboot: false
+
+  - user: "enable ssh"
+    expect:
+      confirmation_state: awaiting_loud
+
+  - user: "apply change"
+    expect:
+      state:
+        ssh.enabled: true
+      assistant_says_contains: "ssh is now enabled"
+postconditions:
+  no_unit_restarts: true

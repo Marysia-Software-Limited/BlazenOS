@@ -1,0 +1,41 @@
+id: 05-fail-modes
+language: en              # turns use English; fault injection is language-agnostic
+description: |
+  Fault-injection scenarios. Each sub-case kills or starves one component
+  and asserts that the user-facing recovery behaviour (per
+  docs/04-VOICE-PIPELINE.md §"Failure handling per stage") happens.
+tags: [resilience, watchdog, ssh-recovery]
+preconditions: {}
+turns:
+  - inject: kill_unit
+    target: blazend-brain
+    expect:
+      assistant_says_contains: "i'm stuck"
+      led: yellow
+      blazend-brain.restarts_in_60s_min: 1
+
+  - user: "are you there"
+    expect:
+      wake_acknowledged: true
+      assistant_reply_within_ms: 5000
+
+  - inject: starve_audio_in
+    duration_ms: 12000
+    expect:
+      led: red
+      ssh.enabled: true
+      assistant_says_contains: "recovery mode"
+
+  - inject: restore_audio_in
+    expect:
+      led: green
+      ssh.enabled: false_after_idle_window
+
+  - inject: corrupt_model_file
+    target: llm.qwen2.5-3b-instruct-q4_k_m.gguf
+    expect:
+      assistant_says_contains: "critical error"
+      ssh.enabled: true
+      reboot_into_recovery_image: true
+postconditions:
+  unit_restart_summary_present: true

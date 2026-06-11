@@ -1,0 +1,71 @@
+id: 09-language-switch
+language: mixed
+description: |
+  Cross-language scenario. The user starts in English, switches to Polish
+  with a voice command, pins Polish, then unpins and back to auto-detect.
+  Verifies that:
+    - language detection follows the spoken input,
+    - the pinned state is reflected in /run/blazen/state.json,
+    - the assistant always replies in the matching language,
+    - the TTS voice swaps per utterance without audible artefacts.
+tags: [language, switch, mixed]
+preconditions:
+  languages.enabled: [en, pl]
+  languages.default: pl
+  languages.pinned: null
+turns:
+  - user: "hey blazen"                       # EN wake
+    synth_voice: en_US-amy-medium
+    expect:
+      wake_acknowledged: true
+      detected_language: en
+
+  - user: "what time is it"
+    synth_voice: en_US-amy-medium
+    expect:
+      assistant_language: en
+      assistant_intent_matches:
+        intent: clock.time
+
+  - user: "speak polish"                     # pin PL via EN command
+    synth_voice: en_US-amy-medium
+    expect:
+      state:
+        languages.pinned: pl
+      assistant_language: pl
+      assistant_says_contains: "od teraz mówię po polsku"
+
+  - user: "która godzina"                    # PL utterance under PL pin
+    synth_voice: pl_PL-gosia-medium
+    expect:
+      assistant_language: pl
+      assistant_intent_matches:
+        intent: clock.time
+
+  - user: "what time is it"                  # EN utterance under PL pin — must reply PL
+    synth_voice: en_US-amy-medium
+    expect:
+      assistant_language: pl
+      assistant_intent_matches:
+        intent: clock.time
+
+  - user: "słuchaj uważnie"                  # unpin via PL command
+    synth_voice: pl_PL-gosia-medium
+    expect:
+      state:
+        languages.pinned: null
+      assistant_language: pl
+
+  - user: "what time is it"                  # auto-detect — EN again
+    synth_voice: en_US-amy-medium
+    expect:
+      assistant_language: en
+      assistant_intent_matches:
+        intent: clock.time
+
+postconditions:
+  no_unit_restarts: true
+  state:
+    languages.pinned: null
+  latency_budget:
+    wake_to_first_tts_ms_p95: 1600

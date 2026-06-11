@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://blazen.os/events/fabric.rpc_request",
+  "title": "fabric.rpc_request",
+  "type": "object",
+  "required": ["v", "ts_ms", "source", "topic", "data"],
+  "properties": {
+    "v": { "type": "integer", "const": 1 },
+    "ts_ms": { "type": "integer", "minimum": 0 },
+    "source": { "type": "string", "minLength": 1 },
+    "topic": { "type": "string", "const": "fabric.rpc_request" },
+    "data": {
+      "type": "object",
+      "required": ["request_id", "peer_id", "capability", "args"],
+      "properties": {
+        "request_id": { "type": "string", "minLength": 1 },
+        "peer_id": { "type": "string", "minLength": 1 },
+        "capability": {
+          "type": "string",
+          "examples": [
+            "llm.cpu", "llm.hailo", "llm.apple_intelligence", "llm.gemini_nano",
+            "asr.apple_speech", "asr.google_speech",
+            "tts.piper", "tts.avspeech", "tts.android",
+            "sensors.gps", "sensors.camera",
+            "audio.speaker_room", "audio.headphones",
+            "storage.bulk", "network.cellular_tether", "screen.large"
+          ]
+        },
+        "args": { "type": "object" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

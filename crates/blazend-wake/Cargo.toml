@@ -1,0 +1,22 @@
+[package]
+name = "blazend-wake"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Wake-word detection (openWakeWord via ONNX Runtime) for blazen_os."
+
+[[bin]]
+name = "blazend-wake"
+path = "src/main.rs"
+
+[dependencies]
+blazend-ipc        = { workspace = true }
+tokio              = { workspace = true }
+serde              = { workspace = true }
+serde_json         = { workspace = true }
+anyhow             = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap               = { workspace = true }
+# ort = { workspace = true }  # added in M2 when openWakeWord inference lands

@@ -1,0 +1,48 @@
+id: 08-pl-conversation
+language: pl
+description: |
+  Wolna konwersacja w języku polskim na lokalnym LLM. Sprawdza, że
+  asystent odpowiada zwięźle, po polsku, w budżecie czasowym, oraz że
+  pamięć kontekstu działa w polskiej rozmowie. Engine: cpu (Hailo
+  pokrywa Tier 4).
+tags: [llm, conversation, semantic, pl]
+synth_voice: pl_PL-gosia-medium
+preconditions:
+  llm.active_engine: cpu
+  llm.temperature: 0.0
+  llm.seed: 0
+turns:
+  - user: "hej blazen"
+    expect:
+      wake_acknowledged: true
+      detected_language: pl
+
+  - user: "jaka jest stolica polski"
+    expect:
+      assistant_language: pl
+      assistant_semantic_similarity:
+        reference: "Stolicą Polski jest Warszawa."
+        threshold: 0.78
+      assistant_word_count_max: 25
+      latency_ms_max:
+        wake_to_first_tts: 2200
+
+  - user: "ile osób tam mieszka"
+    expect:
+      assistant_language: pl
+      assistant_semantic_similarity_any:
+        threshold: 0.72
+        references:
+          - "W Warszawie mieszka około 1.8 miliona osób."
+          - "Warszawę zamieszkuje około 1,8 miliona ludzi."
+      conversation_remembers: warszawa
+
+  - user: "dziękuję"
+    expect:
+      assistant_language: pl
+      assistant_intent_matches:
+        intent: politeness.thanks
+postconditions:
+  no_unit_restarts: true
+  latency_budget:
+    wake_to_first_tts_ms_p95: 2400

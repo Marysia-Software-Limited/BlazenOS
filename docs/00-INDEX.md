@@ -1,0 +1,38 @@
+# Documentation index
+
+Read top-to-bottom on first contact. Afterwards, re-read only what changed.
+
+| #   | File                                              | Purpose |
+|-----|---------------------------------------------------|---------|
+| 00  | [`00-INDEX.md`](00-INDEX.md)                      | This file. |
+| 01  | [`01-ARCHITECTURE.md`](01-ARCHITECTURE.md)        | High-level diagram, processes, IPC contract. |
+| 02  | [`02-HARDWARE.md`](02-HARDWARE.md)                | BOM, supported microphones/speakers, GPIO. |
+| 03  | [`03-SOFTWARE-STACK.md`](03-SOFTWARE-STACK.md)    | Base OS, init system, package pins. |
+| 04  | [`04-VOICE-PIPELINE.md`](04-VOICE-PIPELINE.md)    | Wake → VAD → ASR → NLU → LLM → TTS flow with budgets. |
+| 05  | [`05-MODELS.md`](05-MODELS.md)                    | Concrete ML model choices, sizes, licensing. |
+| 06  | [`06-SSH-BOOTSTRAP.md`](06-SSH-BOOTSTRAP.md)      | Headless first-boot, SSH-as-break-glass policy. |
+| 07  | [`07-CONFIGURATION.md`](07-CONFIGURATION.md)      | YAML config schema, voice-vs-SSH split. |
+| 08  | [`08-TESTING.md`](08-TESTING.md)                  | Five-tier test pyramid, scenarios, CI. |
+| 09  | [`09-VM-TESTING.md`](09-VM-TESTING.md)            | QEMU image, virtual audio, golden audio fixtures. |
+| 10  | [`10-ROADMAP.md`](10-ROADMAP.md)                  | Milestones M0..M10 with exit criteria. |
+| 11  | [`11-CLAUDE-PLAYBOOK.md`](11-CLAUDE-PLAYBOOK.md)  | Operational guide for Claude working on this repo. |
+| 12  | [`12-ML-ACCELERATOR.md`](12-ML-ACCELERATOR.md)    | Optional Hailo AI HAT+ / Hailo-10H integration for the LLM path. |
+| 13  | [`13-LANGUAGES.md`](13-LANGUAGES.md)              | **Spoken** languages — EN + PL bilingual contract. |
+| 14  | [`14-RUST-PYTHON-SPLIT.md`](14-RUST-PYTHON-SPLIT.md) | **Implementation** languages — which components are Python, which are Rust, and why. |
+| 15  | [`15-DEV-WORKFLOW.md`](15-DEV-WORKFLOW.md)        | Linux (`paul`) vs macOS hybrid workflow; what runs where. |
+| 16  | [`16-SYNC-PROTOCOL.md`](16-SYNC-PROTOCOL.md)      | **Bidirectional sync** — how paul Claude and macOS Claude exchange changes; what crosses the shared boundary. |
+
+## Cross-implementation product spec
+
+| Path | Purpose |
+|------|---------|
+| [`product/00-INDEX.md`](product/00-INDEX.md) | **Shared Jessica product spec** — read by both `blazen_os` (this project, Pi 5 appliance) and [`rachel`](../../rachel/) (mobile twin, iOS + Android). Source of truth for persona, intents, integrations, briefing, privacy, mobile platform + hardware choice. |
+
+## Document conventions
+
+- **Decisions** are recorded inline with a `> **Decision (YYYY-MM-DD):**` block.
+  Anything else is description, not a binding decision.
+- **Budgets** (latency, RAM, model size) use a table at the top of the relevant
+  doc so future agents can fail builds when violated.
+- **Cross-references** use the `[NN-NAME.md](NN-NAME.md)` form so renames
+  surface as broken links.

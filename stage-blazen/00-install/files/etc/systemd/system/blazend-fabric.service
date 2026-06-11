@@ -1,0 +1,28 @@
+[Unit]
+Description=blazen_os fabric (Jessica multi-device federation, Rust)
+PartOf=blazend.target
+After=blazend-orchestrator.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=blazen
+Group=blazen
+Environment=BLAZEN_RUNTIME_DIR=/run/blazen
+ExecStart=/usr/lib/blazen/bin/blazend-fabric
+RuntimeDirectory=blazen
+RuntimeDirectoryMode=0750
+Restart=on-failure
+RestartSec=3
+
+# Hardening.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/blazen /var/lib/blazen
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+
+[Install]
+WantedBy=blazend.target

@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://blazen.os/events/fabric.rpc_response",
+  "title": "fabric.rpc_response",
+  "type": "object",
+  "required": ["v", "ts_ms", "source", "topic", "data"],
+  "properties": {
+    "v": { "type": "integer", "const": 1 },
+    "ts_ms": { "type": "integer", "minimum": 0 },
+    "source": { "type": "string", "minLength": 1 },
+    "topic": { "type": "string", "const": "fabric.rpc_response" },
+    "data": {
+      "type": "object",
+      "required": ["request_id", "ok"],
+      "properties": {
+        "request_id": { "type": "string", "minLength": 1 },
+        "ok": { "type": "boolean" },
+        "value": {},
+        "final": { "type": "boolean" },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": { "type": "string" },
+            "message": { "type": "string" }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

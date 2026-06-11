@@ -1,0 +1,9 @@
+[Unit]
+Description=blazen_os pipeline
+Documentation=file:///usr/share/doc/blazen/README.md
+After=multi-user.target sound.target network-online.target
+Wants=multi-user.target
+StopWhenUnneeded=no
+
+[Install]
+WantedBy=multi-user.target

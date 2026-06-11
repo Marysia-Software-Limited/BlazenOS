@@ -1,0 +1,86 @@
+# /etc/blazen/wake-word.yaml
+
+version: 1
+
+# Bilingual prototype: two Jessica wake models loop in parallel. See
+# docs/product/02-PERSONA-AND-WAKE.md + docs/13-LANGUAGES.md.
+# The legacy `hey_blazen_*` models stay in the catalogue as developer
+# wakes but are not active in release builds.
+active:                                       # voice-mutable from `allowed` only
+  - jessica_en
+  - jessica_pl
+threshold: 0.6
+cooldown_ms: 200
+score_window_ms: 1000
+
+# Models shipped or downloadable. Add new entries here; `make models` will
+# download missing ones and verify SHA.
+models:
+  jessica_en:
+    backend: openwakeword
+    file: jessica_en.onnx
+    download_url: https://blazen-os-assets/wake/jessica_en-v1.onnx
+    sha256: "<TBD>"
+    size_mb: 4
+    language: en
+    phrases: ["hey jessica", "jessica", "jess"]
+    license: Apache-2.0
+  jessica_pl:
+    backend: openwakeword
+    file: jessica_pl.onnx
+    download_url: https://blazen-os-assets/wake/jessica_pl-v1.onnx
+    sha256: "<TBD>"
+    size_mb: 4
+    language: pl
+    phrases: ["hej jessico", "jessico", "jess"]
+    license: Apache-2.0
+  hey_blazen_en:
+    backend: openwakeword
+    file: hey_blazen_en.onnx
+    download_url: https://blazen-os-assets/wake/hey_blazen_en-v1.onnx
+    sha256: "<TBD>"
+    size_mb: 4
+    language: en
+    phrase: "hey blazen"
+    license: Apache-2.0
+  hey_blazen_pl:
+    backend: openwakeword
+    file: hey_blazen_pl.onnx
+    download_url: https://blazen-os-assets/wake/hey_blazen_pl-v1.onnx
+    sha256: "<TBD>"
+    size_mb: 4
+    language: pl
+    phrase: "hej blazen"
+    license: Apache-2.0
+  hey_jarvis:
+    backend: openwakeword
+    file: hey_jarvis_v0.1.onnx
+    download_url: https://github.com/dscripka/openWakeWord/releases/download/v0.5.0/hey_jarvis_v0.1.onnx
+    sha256: "<TBD>"
+    size_mb: 4
+    language: en
+    phrase: "hey jarvis"
+    license: Apache-2.0
+  alexa:
+    backend: openwakeword
+    file: alexa_v0.1.onnx
+    download_url: https://github.com/dscripka/openWakeWord/releases/download/v0.5.0/alexa_v0.1.onnx
+    sha256: "<TBD>"
+    size_mb: 4
+    language: en
+    phrase: "alexa"
+    license: Apache-2.0
+
+allowed:                                       # set in voice-policy.yaml; whitelist of switchable models
+  - jessica_en
+  - jessica_pl
+  - hey_blazen_en                              # developer wakes — kept for backwards compatibility
+  - hey_blazen_pl
+  - hey_jarvis
+  - alexa
+
+button_fallback:
+  enabled: false
+  gpio_bcm: 26
+  pull: up
+  debounce_ms: 50

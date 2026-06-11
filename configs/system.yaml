@@ -1,0 +1,102 @@
+# /etc/blazen/system.yaml — SSH-only.
+# Site-overridable but not voice-mutable. See docs/07-CONFIGURATION.md.
+
+version: 1
+
+hostname: blazen
+locale: pl_PL.UTF-8
+timezone: Europe/Warsaw
+
+# Bilingual prototype: both languages are co-equal. See docs/13-LANGUAGES.md.
+languages:
+  enabled: [en, pl]
+  default: pl                                # used when detection confidence is low
+  detection:
+    min_confidence: 0.6
+    fall_back_to_wake_hint: true
+  pinned: null                               # set by voice; pl | en | null
+
+# Persona — see docs/product/02-PERSONA-AND-WAKE.md.
+persona:
+  name: Jessica
+  short_name: Jess
+  pl_vocative: Jessico
+  register: casual                           # casual | formal
+  ack_phrases:
+    en: ["yes?", "hm?", "I'm listening."]
+    pl: ["tak?", "słucham?", "no?", "co tam?"]
+
+# Base image — pinned for reproducibility.
+base_image:
+  distro: raspios-lite
+  arch: arm64
+  release: trixie                       # Debian 13; pi-gen tag below
+  pi_gen_tag: "2026-04-13-raspios-trixie-arm64"
+  source_url: "https://downloads.raspberrypi.com/raspios_lite_arm64/images/"
+
+# Package pins (used by stage-blazen/ when image is built).
+packages:
+  pinned:
+    pipewire: "1.0.7"
+    wireplumber: "0.5.5"
+    python3: "3.11.6"
+    "python3-venv": "3.11.6"
+    "build-essential": "12.10"
+    cmake: "3.27.4"
+    "ninja-build": "1.11.1"
+    git: "2.43.0"
+    "openssh-server": "9.6p1"
+    ufw: "0.36.2"
+    "i2c-tools": "4.4"
+    "spi-tools": "0.9.2"
+    dnsmasq: "2.90"
+
+# blazend-* Python deps (installed inside /usr/lib/blazen/.venv).
+python_packages:
+  pinned:
+    sounddevice: "0.5.0"
+    numpy: "1.26.4"
+    pyyaml: "6.0.2"
+    pydantic: "2.9.2"
+    "faster-whisper": "1.0.3"
+    "llama-cpp-python": "0.3.5"
+    "openwakeword": "0.6.0"
+    "onnxruntime": "1.19.0"
+    "silero-vad": "5.1"
+
+power:
+  reboot_grace_seconds: 3
+  shutdown_grace_seconds: 5
+  enable_overlayfs_on_root: true             # release; toggle off for dev builds
+  enable_wear_leveling: true
+
+ssh:
+  enabled: false                              # release default
+  port: 22
+  allow_only_pubkey: true
+  recovery_mode_window_minutes: 30
+
+firewall:
+  default_policy_in: deny
+  default_policy_out: allow
+  allow_from_lan_ports: [22]                  # only when ssh.enabled
+  allow_loopback: true
+
+telemetry:
+  enabled: false                              # never on by default
+  endpoint: ~
+  redact_pii: true
+
+voice_recovery_thresholds:
+  audio_in_silent_consecutive: 3
+  audio_out_silent_consecutive: 3
+  brain_no_token_consecutive: 3
+  brain_first_token_timeout_seconds: 5
+  recovery_cooldown_seconds: 60
+
+logging:
+  level: info
+  destination: journald                       # journald | file | both
+  rotate_mb: 50
+  keep_rotations: 5
+  log_transcripts: false                      # default off for privacy

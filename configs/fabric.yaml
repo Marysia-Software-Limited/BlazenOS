@@ -1,0 +1,54 @@
+# /etc/blazen/fabric.yaml — Jessica fabric configuration.
+# See docs/product/11-FABRIC.md / 12-PAIRING.md / 13-RESOURCE-SHARING.md.
+
+version: 1
+
+# Self-identification.
+self:
+  name: "Pi w domu"                  # human-readable; user-tunable
+  kind: appliance
+
+# mDNS discovery on the LAN.
+discovery:
+  enabled: true
+  service: _jessica._tcp
+  rendezvous_port: 7474
+
+# Pairing window.
+pairing:
+  token_lifetime_seconds: 300
+  challenge_words: 6                  # split-code half is 3 + 3 per docs/12-PAIRING.md
+  dictionary: pl                      # pl | en — initial pair time
+
+# Resource sharing matrix — synced via sync log so all peers agree.
+sharing:
+  network:
+    pi_wired_to_phone:   { allow: true }
+  compute:
+    llm_pi_to_phone:     { allow: true, loud_confirm: false }
+    llm_phone_to_pi:     { allow: true, loud_confirm: false }
+    asr_phone_to_pi:     { allow: true }
+  audio:
+    pi_speaker_to_phone: { allow: true }
+    phone_buds_to_pi:    { allow: true }
+  sensors:
+    phone_gps_to_pi:     { allow: true }
+    phone_camera_to_pi:  { allow: true, loud_confirm: true }
+  storage:
+    pi_storage_to_phone: { allow: true, per_intent_size_mb: 50 }
+
+# Selection preferences when multiple peers offer the same capability.
+compute_preference:
+  llm: appliance                       # appliance | local | auto
+
+# Peer-trust thresholds.
+trust:
+  reject_clock_skew_seconds: 60
+  rpc_max_concurrency_per_peer: 4
+  rpc_rate_per_minute_per_peer: 60
+
+# Storage for the sync log + peer pubkey directory.
+storage:
+  sync_db_path: /var/lib/blazen/fabric/sync.sqlite
+  identity_key_path: /var/lib/blazen/fabric/identity.key
+  fabric_symmetric_key_path: /var/lib/blazen/fabric/fabric.key

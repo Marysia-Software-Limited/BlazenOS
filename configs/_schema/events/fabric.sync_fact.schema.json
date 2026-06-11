@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://blazen.os/events/fabric.sync_fact",
+  "title": "fabric.sync_fact",
+  "type": "object",
+  "required": ["v", "ts_ms", "source", "topic", "data"],
+  "properties": {
+    "v": { "type": "integer", "const": 1 },
+    "ts_ms": { "type": "integer", "minimum": 0 },
+    "source": { "type": "string", "minLength": 1 },
+    "topic": { "type": "string", "const": "fabric.sync_fact" },
+    "data": {
+      "type": "object",
+      "required": ["fact_id", "fact_type", "origin", "payload"],
+      "properties": {
+        "fact_id": { "type": "string", "minLength": 1 },
+        "fact_type": { "type": "string", "minLength": 1 },
+        "origin": { "type": "string", "minLength": 1 },
+        "lamport": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "payload": { "type": "object" },
+        "signature": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

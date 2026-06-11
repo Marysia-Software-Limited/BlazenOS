@@ -1,0 +1,17 @@
+id: 01-wake-word
+language: en
+description: Wake word fires and the assistant acknowledges within budget.
+tags: [smoke, wake, en]
+preconditions:
+  audio.volume: 50
+  wake_word.active: [hey_blazen_en, hey_blazen_pl]
+turns:
+  - user: "hey blazen"
+    expect:
+      wake_acknowledged: true
+      led: blue
+      latency_ms_max: 200
+postconditions:
+  no_unit_restarts: true
+  latency_budget:
+    wake_to_ack_ms_p95: 250

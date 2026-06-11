@@ -1,0 +1,20 @@
+Metadata-Version: 2.4
+Name: blazen_os
+Version: 0.0.1
+Summary: Voice-first Linux OS for Raspberry Pi 5 16 GB (Python + Rust).
+Requires-Python: >=3.11
+Requires-Dist: pydantic>=2.9
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: numpy>=1.26
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.23; extra == "dev"
+Requires-Dist: ruff>=0.6; extra == "dev"
+Requires-Dist: mypy>=1.10; extra == "dev"
+Requires-Dist: rich>=13.7; extra == "dev"
+Requires-Dist: datamodel-code-generator>=0.25; extra == "dev"
+Provides-Extra: runtime
+Requires-Dist: sounddevice>=0.5; extra == "runtime"
+Requires-Dist: soundfile>=0.12; extra == "runtime"
+Requires-Dist: faster-whisper>=1.0; extra == "runtime"
+Requires-Dist: llama-cpp-python>=0.3; extra == "runtime"

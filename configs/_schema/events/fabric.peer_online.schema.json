@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://blazen.os/events/fabric.peer_online",
+  "title": "fabric.peer_online",
+  "type": "object",
+  "required": ["v", "ts_ms", "source", "topic", "data"],
+  "properties": {
+    "v": { "type": "integer", "const": 1 },
+    "ts_ms": { "type": "integer", "minimum": 0 },
+    "source": { "type": "string", "minLength": 1 },
+    "topic": { "type": "string", "const": "fabric.peer_online" },
+    "data": {
+      "type": "object",
+      "required": ["peer_id", "peer_name", "kind", "capabilities"],
+      "properties": {
+        "peer_id": { "type": "string", "minLength": 1 },
+        "peer_name": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["appliance", "mobile.ios", "mobile.android", "tablet.ios", "tablet.android", "wearable.watchos", "wearable.wearos"]
+        },
+        "capabilities": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

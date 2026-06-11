@@ -1,0 +1,45 @@
+id: 07-pl-basic-commands
+language: pl
+description: Polski fast-path intents (no LLM).
+tags: [intents, fast-path, pl]
+synth_voice: pl_PL-gosia-medium
+preconditions:
+  audio.volume: 50
+turns:
+  - user: "hej blazen"
+    expect:
+      wake_acknowledged: true
+      detected_language: pl
+
+  - user: "która godzina"
+    expect:
+      assistant_intent_matches:
+        intent: clock.time
+      assistant_language: pl
+      assistant_speech_duration_ms_min: 600
+      assistant_speech_duration_ms_max: 4000
+
+  - user: "ustaw głośność na siedemdziesiąt procent"
+    expect:
+      assistant_intent_matches:
+        intent: volume_set
+        params:
+          value: 70
+      state:
+        audio.volume: 70
+      assistant_language: pl
+
+  - user: "głośniej"
+    expect:
+      assistant_intent_matches:
+        intent: volume_up
+      state:
+        audio.volume: 80
+
+  - user: "stop"
+    expect:
+      tts_interrupted: true
+postconditions:
+  no_unit_restarts: true
+  latency_budget:
+    wake_to_first_tts_ms_p95: 1100

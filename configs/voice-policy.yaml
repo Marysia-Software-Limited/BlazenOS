@@ -1,0 +1,91 @@
+# /etc/blazen/voice-policy.yaml
+#
+# Single source of truth for what the user can change by voice. See
+# docs/07-CONFIGURATION.md for the confirmation grammar.
+
+version: 1
+
+allow_voice_mutation:
+  audio.volume:
+    confirm: never
+  audio.processing.aec_enabled:
+    confirm: never
+  audio.processing.noise_suppression:
+    confirm: never
+  asr.active:
+    confirm: single
+    allowed_values: [tiny.en, base.en, small.en, medium.en, small, large-v3-turbo]
+  asr.language:
+    confirm: never
+  llm.active_model:
+    confirm: single
+  llm.active_engine:
+    confirm: single
+    allowed_values: [auto, cpu, hailo]
+  llm.temperature:
+    confirm: never
+  tts.active_voice:
+    confirm: never
+  wake_word.active:
+    confirm: single
+  system.wifi.ssid:
+    confirm: single
+  system.timezone:
+    confirm: single
+  system.locale:
+    confirm: single
+  system.power.reboot:
+    confirm: loud
+  system.power.shutdown:
+    confirm: loud
+  system.factory_reset:
+    confirm: double_loud
+  ssh.enabled:
+    confirm: loud
+  telemetry.enabled:
+    confirm: loud
+  hailo.enabled:
+    confirm: single
+  hailo.power_profile:
+    confirm: never
+  languages.pinned:
+    confirm: never                              # voice-set per "speak Polish / English"
+    allowed_values: [en, pl, null]
+  languages.default:
+    confirm: single
+    allowed_values: [en, pl]
+
+  # ----- Jessica persona + cloud + integrations ---------------------------
+
+  system.persona.register:
+    confirm: never
+    allowed_values: [casual, formal]
+  cloud_policy.cloud_enabled:
+    confirm: loud                               # kill-switch is a big deal both ways
+  cloud_policy.per_intent.gemini.ask:
+    confirm: single
+  cloud_policy.per_intent.email.send:
+    confirm: loud                               # destructive — always loud
+  cloud_policy.per_intent.facebook.post:
+    confirm: loud
+  cloud_policy.quiet_hours.start:
+    confirm: single
+  cloud_policy.quiet_hours.end:
+    confirm: single
+  briefing.sections:
+    confirm: single
+  briefing.sections_max_seconds.*:
+    confirm: never
+  user_state.curated_friends:
+    confirm: single
+  user_state.mute_list:
+    confirm: never
+
+deny_voice_mutation:
+  - system.firewall.**
+  - system.users.**
+  - system.image.**
+  - "**.secret.**"
+  - "**.secret_path.**"
+  - packages.**
+  - base_image.**

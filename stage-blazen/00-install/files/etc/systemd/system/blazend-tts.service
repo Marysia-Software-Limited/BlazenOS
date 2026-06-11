@@ -1,0 +1,22 @@
+[Unit]
+Description=blazen_os TTS (Rust, Piper)
+PartOf=blazend.target
+After=blazend-brain.service
+
+[Service]
+Type=simple
+User=blazen
+Group=blazen
+Environment=BLAZEN_RUNTIME_DIR=/run/blazen
+ExecStart=/usr/lib/blazen/bin/blazend-tts
+RuntimeDirectory=blazen
+RuntimeDirectoryMode=0750
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/blazen
+ProtectHome=yes
+
+[Install]
+WantedBy=blazend.target

@@ -1,0 +1,43 @@
+id: 04-conversation
+language: en
+description: |
+  Free-form LLM conversation with semantic-similarity assertions. Validates
+  that the brain produces relevant, short answers and that streaming TTS
+  starts within budget. Runs on CPU engine; Hailo path is asserted in
+  Tier 4 hardware tests.
+tags: [llm, conversation, semantic, en]
+preconditions:
+  llm.active_engine: cpu
+  llm.temperature: 0.0
+  llm.seed: 0
+turns:
+  - user: "hey blazen"
+    expect:
+      wake_acknowledged: true
+
+  - user: "what is the capital of poland"
+    expect:
+      assistant_semantic_similarity:
+        reference: "The capital of Poland is Warsaw."
+        threshold: 0.78
+      assistant_word_count_max: 25
+      latency_ms_max:
+        wake_to_first_tts: 2000   # QEMU multiplier already applied
+
+  - user: "how many people live there"
+    expect:
+      assistant_semantic_similarity_any:
+        threshold: 0.72
+        references:
+          - "Warsaw has about 1.8 million residents."
+          - "Roughly 1.8 million people live in Warsaw."
+      conversation_remembers: warsaw
+
+  - user: "thank you"
+    expect:
+      assistant_intent_matches:
+        intent: politeness.thanks
+postconditions:
+  no_unit_restarts: true
+  latency_budget:
+    wake_to_first_tts_ms_p95: 2200

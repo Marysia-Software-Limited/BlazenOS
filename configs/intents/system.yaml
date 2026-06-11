@@ -1,0 +1,565 @@
+# /etc/blazen/intents/system.yaml
+#
+# Fast-path intents (regex / keyword) handled before the LLM. Every
+# intent carries per-language trigger lists; the matcher tries the
+# detected language first, then the other. See docs/13-LANGUAGES.md.
+
+version: 1
+
+intents:
+  - name: wake_ack
+    triggers:
+      en:
+        - "^(yes|here|listening)$"
+      pl:
+        - "^(tak|s(ł|l)ucham|jestem|tu)$"
+    action: noop
+
+  - name: stop_talking
+    triggers:
+      en:
+        - "^(stop|quiet|shut up|enough|cancel)$"
+        - "stop talking"
+      pl:
+        - "^(stop|cicho|zamknij si(ę|e)|wystarczy|anuluj|przesta(ń|n))$"
+        - "przesta(ń|n) m(ó|o)wi(ć|c)"
+    action: tts_interrupt
+
+  - name: repeat_last
+    triggers:
+      en:
+        - "^(repeat|say again|what)$"
+        - "say (that|it) again"
+      pl:
+        - "^(powt(ó|o)rz|jeszcze raz|co)$"
+        - "powt(ó|o)rz to"
+    action: replay_last_reply
+
+  - name: volume_up
+    triggers:
+      en:
+        - "(volume|louder) (up|higher)?"
+        - "louder"
+      pl:
+        - "g(ł|l)o(ś|s)niej"
+        - "podg(ł|l)o(ś|s)nij"
+        - "zr(ó|o)b g(ł|l)o(ś|s)niej"
+    action: mutate
+    mutate:
+      key: audio.volume
+      delta: +10
+
+  - name: volume_down
+    triggers:
+      en:
+        - "(volume|quieter) (down|lower)?"
+        - "(quieter|softer)"
+      pl:
+        - "ciszej"
+        - "(przy|ś)cisz(yj)?"
+        - "zr(ó|o)b ciszej"
+    action: mutate
+    mutate:
+      key: audio.volume
+      delta: -10
+
+  - name: volume_set
+    triggers:
+      en:
+        - "set (the )?volume (to )?(?P<value>\\d{1,3})( percent)?"
+      pl:
+        - "ustaw (g(ł|l)o(ś|s)no(ś|s)(ć|c) na )?(?P<value>\\d{1,3})( procent)?"
+        - "g(ł|l)o(ś|s)no(ś|s)(ć|c) (na )?(?P<value>\\d{1,3})"
+    action: mutate
+    mutate:
+      key: audio.volume
+      value_from_group: value
+
+  - name: what_time
+    triggers:
+      en:
+        - "what(?:'s| is) the time"
+        - "what time is it"
+      pl:
+        - "kt(ó|o)ra (jest )?godzina"
+        - "jaka jest godzina"
+    action: tool_call
+    tool: clock.time
+
+  - name: what_date
+    triggers:
+      en:
+        - "what(?:'s| is) (the )?date"
+        - "what day is (it|today)"
+      pl:
+        - "jaka jest (dzisiaj )?data"
+        - "kt(ó|o)ry mamy dzie(ń|n)"
+    action: tool_call
+    tool: clock.date
+
+  - name: go_to_sleep
+    triggers:
+      en:
+        - "go to sleep"
+        - "(stop|stop) listening"
+      pl:
+        - "(id(ź|z) )?spa(ć|c)"
+        - "przesta(ń|n) s(ł|l)ucha(ć|c)"
+    action: orchestrator_sleep
+
+  - name: wake_up
+    triggers:
+      en:
+        - "wake up"
+        - "start listening"
+      pl:
+        - "obud(ź|z) si(ę|e)"
+        - "zacznij s(ł|l)ucha(ć|c)"
+    action: orchestrator_resume
+
+  - name: reboot
+    triggers:
+      en:
+        - "reboot( the system)?"
+        - "restart yourself"
+      pl:
+        - "(z)?restartuj( si(ę|e))?"
+        - "uruchom (si(ę|e) )?ponownie"
+    action: mutate
+    mutate:
+      key: system.power.reboot
+      value: true
+
+  - name: shutdown
+    triggers:
+      en:
+        - "shut down( the system)?"
+        - "power off"
+      pl:
+        - "wy(ł|l)(ą|a)cz si(ę|e)"
+        - "wy(ł|l)(ą|a)cz system"
+    action: mutate
+    mutate:
+      key: system.power.shutdown
+      value: true
+
+  - name: enable_ssh
+    triggers:
+      en:
+        - "enable ssh"
+      pl:
+        - "w(ł|l)(ą|a)cz ssh"
+    action: mutate
+    mutate:
+      key: ssh.enabled
+      value: true
+
+  - name: disable_ssh
+    triggers:
+      en:
+        - "disable ssh"
+      pl:
+        - "wy(ł|l)(ą|a)cz ssh"
+    action: mutate
+    mutate:
+      key: ssh.enabled
+      value: false
+
+  - name: switch_voice
+    triggers:
+      en:
+        - "use (the )?(?P<voice>\\S+) voice"
+        - "change (the )?voice to (?P<voice>\\S+)"
+      pl:
+        - "u(ż|z)yj g(ł|l)osu (?P<voice>\\S+)"
+        - "zmie(ń|n) g(ł|l)os na (?P<voice>\\S+)"
+    action: mutate
+    mutate:
+      key: tts.active_voice
+      value_from_group: voice
+
+  - name: switch_language
+    triggers:
+      en:
+        - "speak (?P<lang>polish|english|german|french|spanish)"
+        - "switch to (?P<lang>polish|english|german|french|spanish)"
+      pl:
+        - "m(ó|o)w po (?P<lang>polsku|angielsku|niemiecku|francusku|hiszpa(ń|n)sku)"
+        - "prze(ł|l)(ą|a)cz na (?P<lang>polski|angielski|niemiecki|francuski|hiszpa(ń|n)ski)"
+    action: switch_language
+
+  - name: detect_language
+    triggers:
+      en:
+        - "detect (my )?language"
+        - "auto language"
+      pl:
+        - "s(ł|l)uchaj uwa(ż|z)nie"
+        - "auto(matycznie)? (wykryj )?j(ę|e)zyk"
+    action: unpin_language
+
+  - name: list_languages
+    triggers:
+      en:
+        - "what language(s)? can you speak"
+        - "what languages do you support"
+      pl:
+        - "jakie znasz j(ę|e)zyki"
+        - "w jakich j(ę|e)zykach m(ó|o)wisz"
+    action: tool_call
+    tool: languages.list
+
+  - name: apply_change
+    triggers:
+      en:
+        - "^apply change(s)?$"
+        - "^confirm$"
+      pl:
+        - "^potwierdzam$"
+        - "^zatwierd(ź|z)( zmian(ę|e))?$"
+        - "^wykonaj$"
+    action: confirm_loud
+
+  - name: cancel_change
+    triggers:
+      en:
+        - "^never mind$"
+        - "^cancel( that)?$"
+      pl:
+        - "^anuluj$"
+        - "^nie( wa(ż|z)ne)?$"
+        - "^zostaw$"
+    action: cancel_pending
+
+  # ----- Jessica integration intents (per docs/product/) -------------------
+
+  - name: gemini_ask
+    triggers:
+      en:
+        - "(jess|jessica),? (what|who|when|where|why|how|do you know|can you tell me)"
+        - "(jess|jessica),? (ask|find out|google)"
+      pl:
+        - "(jess|jessico),? (co|kto|kiedy|gdzie|dlaczego|jak|wiesz)"
+        - "(jess|jessico),? (zapytaj|znajd(ź|z)|wyszukaj)"
+    action: tool_call
+    tool: gemini.ask
+
+  - name: gemini_deep_research
+    triggers:
+      en:
+        - "(jess|jessica),? (deep research|go deep on)"
+        - "(jess|jessica),? do a thorough analysis"
+      pl:
+        - "(jess|jessico),? (deep research|zr(ó|o)b deep research)"
+        - "(jess|jessico),? (zr(ó|o)b analiz(ę|e)|sprawd(ź|z) to dok(ł|l)adnie)"
+    action: tool_call
+    tool: gemini.deep_research
+
+  - name: web_read_page
+    triggers:
+      en:
+        - "(jess|jessica),? (read|summarise) (this|the) page"
+        - "(jess|jessica),? read me (this|the) (url|link|article)"
+      pl:
+        - "(jess|jessico),? (przeczytaj|podsumuj) (mi )?t(ę|e) stron(ę|e)"
+        - "(jess|jessico),? przeczytaj (mi )?(ten|tego) (artyku(ł|l)|link)"
+    action: tool_call
+    tool: web.read_page
+
+  - name: email_list_unread
+    triggers:
+      en:
+        - "(jess|jessica),? (any|are there) new mail"
+        - "(jess|jessica),? read (me )?my (new )?(emails?|mail)"
+      pl:
+        - "(jess|jessico),? masz nowy mail"
+        - "(jess|jessico),? (przeczytaj|sprawd(ź|z)) (mi )?(now(e|y)? )?mail(e)?"
+    action: tool_call
+    tool: email.list_unread
+
+  - name: email_reply
+    triggers:
+      en:
+        - "(jess|jessica),? (reply|odpowiedz) ?:?"
+      pl:
+        - "(jess|jessico),? odpowiedz ?:?"
+    action: enter_dictation
+    target: email.reply
+
+  - name: facebook_messenger
+    triggers:
+      en:
+        - "(jess|jessica),? (any |read )?messenger (messages|threads)"
+        - "(jess|jessica),? who (messaged|wrote) me"
+      pl:
+        - "(jess|jessico),? (jakie|przeczytaj) wiadomo(ś|s)ci (z )?messenger"
+        - "(jess|jessico),? kto do mnie pisa(ł|l)"
+    action: tool_call
+    tool: facebook.messenger_threads
+
+  - name: facebook_feed
+    triggers:
+      en:
+        - "(jess|jessica),? read (me )?facebook"
+        - "(jess|jessica),? what's on facebook"
+      pl:
+        - "(jess|jessico),? przeczytaj (mi )?facebook(a)?"
+        - "(jess|jessico),? co (jest |masz )?na facebook(u)?"
+    action: tool_call
+    tool: facebook.feed_curated
+
+  - name: facebook_add_friend
+    triggers:
+      en:
+        - "(jess|jessica),? add (?P<name>\\S+) to my (curated|facebook) friends"
+      pl:
+        - "(jess|jessico),? dodaj (?P<name>\\S+) do (moich )?ulubionych znajomych( z facebooka)?"
+    action: tool_call
+    tool: facebook.add_curated_friend
+
+  - name: note_create
+    triggers:
+      en:
+        - "(jess|jessica),? (make a |add a |new )?note:? (?P<body>.+)"
+        - "(jess|jessica),? (save|remember):? (?P<body>.+)"
+      pl:
+        - "(jess|jessico),? (zapisz|notatka|zanotuj):? (?P<body>.+)"
+        - "(jess|jessico),? zapami(ę|e)taj:? (?P<body>.+)"
+    action: tool_call
+    tool: notes.create
+
+  - name: note_recall
+    triggers:
+      en:
+        - "(jess|jessica),? what was on my list (for )?(?P<when>today|tomorrow|this week)"
+      pl:
+        - "(jess|jessico),? co mia(ł|l)am zrobi(ć|c) (?P<when>dzisiaj|jutro|w (ten|tym) tygodniu)"
+    action: tool_call
+    tool: notes.recall
+
+  - name: reminder_create
+    triggers:
+      en:
+        - "(jess|jessica),? remind me (at|on|in) (?P<when>.+?) (about|to|that) (?P<body>.+)"
+      pl:
+        - "(jess|jessico),? przypomnij mi (w|o|za) (?P<when>.+?) (o|że|że) (?P<body>.+)"
+    action: tool_call
+    tool: reminders.create
+
+  - name: daily_briefing
+    triggers:
+      en:
+        - "(jess|jessica),? (good morning|briefing|daily summary)"
+      pl:
+        - "(jess|jessico),? (dzie(ń|n) dobry|briefing|streszczenie dnia|podsumowanie dnia)"
+    action: tool_call
+    tool: briefing.morning
+
+  - name: media_play
+    triggers:
+      en:
+        - "(jess|jessica),? play (?P<title>.+)"
+        - "(jess|jessica),? put on (?P<title>.+)"
+      pl:
+        - "(jess|jessico),? w(ł|l)(ą|a)cz (?P<title>.+)"
+        - "(jess|jessico),? pu(ś|s)(ć|c) (?P<title>.+)"
+    action: tool_call
+    tool: media.play
+
+  - name: media_pause
+    triggers:
+      en:
+        - "^(pause|stop playing)$"
+      pl:
+        - "^(pauza|wstrzymaj|zatrzymaj)$"
+    action: media_transport
+    transport: pause
+
+  - name: media_resume
+    triggers:
+      en:
+        - "^(resume|continue|play)$"
+      pl:
+        - "^(wzn(ó|o)w|kontynuuj|graj dalej)$"
+    action: media_transport
+    transport: resume
+
+  - name: cloud_kill_switch
+    triggers:
+      en:
+        - "(jess|jessica),? (don'?t|stop) (calling|contacting) (google|cloud)( for (an?|the) (?P<duration>\\w+))?"
+      pl:
+        - "(jess|jessico),? nie dzwo(ń|n) do (google|chmury)( przez (?P<duration>\\w+))?"
+    action: mutate
+    mutate:
+      key: cloud_policy.cloud_enabled
+      value: false
+    confirm: loud
+
+  - name: cloud_re_enable
+    triggers:
+      en:
+        - "(jess|jessica),? (turn|switch) (the )?(internet|cloud) (back )?on"
+      pl:
+        - "(jess|jessico),? w(ł|l)(ą|a)cz (z powrotem )?(internet|chmur(ę|e)|tryb internetu)"
+    action: mutate
+    mutate:
+      key: cloud_policy.cloud_enabled
+      value: true
+
+  - name: privacy_what_do_you_know
+    triggers:
+      en:
+        - "(jess|jessica),? what do you know about me"
+      pl:
+        - "(jess|jessico),? co (o mnie )?wiesz( o mnie)?"
+    action: tool_call
+    tool: privacy.summarise_profile
+
+  - name: voice_learn
+    triggers:
+      en:
+        - "(jess|jessica),? learn my voice"
+      pl:
+        - "(jess|jessico),? naucz si(ę|e) (mojego g(ł|l)osu)"
+    action: tool_call
+    tool: voice_id.start_training
+
+  - name: register_formal
+    triggers:
+      en:
+        - "(jess|jessica),? be more formal"
+      pl:
+        - "(jess|jessico),? m(ó|o)w (do mnie )?oficjalnie"
+    action: mutate
+    mutate:
+      key: system.persona.register
+      value: formal
+
+  - name: register_casual
+    triggers:
+      en:
+        - "(jess|jessica),? be casual"
+      pl:
+        - "(jess|jessico),? m(ó|o)w (do mnie )?po imieniu"
+    action: mutate
+    mutate:
+      key: system.persona.register
+      value: casual
+
+  # ----- Jessica fabric (multi-device) intents (docs/product/11-FABRIC.md) ---
+
+  - name: fabric_pair_new_device
+    triggers:
+      en:
+        - "(jess|jessica),? pair (a )?new device"
+        - "(jess|jessica),? add (a )?new device"
+      pl:
+        - "(jess|jessico),? sparuj nowe urz(ą|a)dzenie"
+        - "(jess|jessico),? dodaj nowe urz(ą|a)dzenie"
+    action: tool_call
+    tool: fabric.start_pairing
+
+  - name: fabric_join_existing
+    triggers:
+      en:
+        - "(jess|jessica),? join (the )?fabric ?-? code (?P<code>.+)"
+      pl:
+        - "(jess|jessico),? do(ł|l)(ą|a)cz do fabric ?-? kod (?P<code>.+)"
+    action: tool_call
+    tool: fabric.join_with_code
+
+  - name: fabric_leave
+    triggers:
+      en:
+        - "(jess|jessica),? leave (the )?fabric"
+      pl:
+        - "(jess|jessico),? opu(ś|s)(ć|c) fabric"
+    action: tool_call
+    tool: fabric.leave
+    confirm: loud
+
+  - name: fabric_kick_peer
+    triggers:
+      en:
+        - "(jess|jessica),? kick (?P<peer>\\S+) (out )?(of|from) (the )?fabric"
+      pl:
+        - "(jess|jessico),? wyrzu(ć|c) (?P<peer>\\S+) z fabric"
+    action: tool_call
+    tool: fabric.kick_peer
+    confirm: loud
+
+  - name: fabric_share_internet
+    triggers:
+      en:
+        - "(jess|jessica),? share internet with (the )?pi"
+        - "(jess|jessica),? turn on hotspot for (the )?pi"
+      pl:
+        - "(jess|jessico),? w(ł|l)(ą|a)cz hotspot dla pi"
+        - "(jess|jessico),? udost(ę|e)pnij internet (do |dla )?pi"
+    action: tool_call
+    tool: fabric.share_internet
+
+  - name: fabric_stop_share_internet
+    triggers:
+      en:
+        - "(jess|jessica),? stop sharing internet"
+        - "(jess|jessica),? turn off (the )?hotspot"
+      pl:
+        - "(jess|jessico),? wy(ł|l)(ą|a)cz hotspot"
+        - "(jess|jessico),? przesta(ń|n) udost(ę|e)pnia(ć|c) internet"
+    action: tool_call
+    tool: fabric.stop_share_internet
+
+  - name: fabric_use_pi_brain
+    triggers:
+      en:
+        - "(jess|jessica),? use (the )?pi('s)? brain"
+        - "(jess|jessica),? route (llm|brain) to (the )?pi"
+      pl:
+        - "(jess|jessico),? u(ż|z)ywaj m(ó|o)zgu (na |z )?pi"
+        - "(jess|jessico),? prze(ł|l)(ą|a)cz m(ó|o)zg na pi"
+    action: mutate
+    mutate:
+      key: fabric.compute_preference.llm
+      value: appliance
+
+  - name: fabric_use_local_brain
+    triggers:
+      en:
+        - "(jess|jessica),? use (the )?local brain"
+        - "(jess|jessica),? route (llm|brain) to (this|me|the phone)"
+      pl:
+        - "(jess|jessico),? u(ż|z)ywaj lokalnego m(ó|o)zgu"
+        - "(jess|jessico),? m(ó|o)zg na (telefon|to urz(ą|a)dzenie)"
+    action: mutate
+    mutate:
+      key: fabric.compute_preference.llm
+      value: local
+
+  - name: fabric_route_speaker
+    triggers:
+      en:
+        - "(jess|jessica),? on (the )?(kitchen )?speaker"
+      pl:
+        - "(jess|jessico),? na (g(ł|l)o(ś|s)niku|kuchennym g(ł|l)o(ś|s)niku)"
+    action: tool_call
+    tool: fabric.route_audio
+
+  - name: fabric_route_buds
+    triggers:
+      en:
+        - "(jess|jessica),? in (my )?(ear|headphones|buds|airpods)"
+      pl:
+        - "(jess|jessico),? na (s(ł|l)uchawki|airpods|do ucha)"
+    action: tool_call
+    tool: fabric.route_audio
+
+  - name: fabric_show_on_tablet
+    triggers:
+      en:
+        - "(jess|jessica),? show (it |that |this )?on (the )?(tablet|ipad|screen)"
+      pl:
+        - "(jess|jessico),? poka(ż|z) (to |mi )?na (tablecie|ipadzie|ekranie)"
+    action: tool_call
+    tool: fabric.route_display

@@ -1,0 +1,57 @@
+# Build / run artifacts
+vm-images/
+build/
+dist/
+*.qcow2
+*.img
+*.iso
+
+# Models (large; reproducible via `make models`)
+models/
+
+# Generated audio fixtures (regen via `make audio-fixtures`)
+tests/fixtures/audio/
+!tests/fixtures/audio/.gitkeep
+
+# Scratch / test projects
+_test_projects/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock.bak
+.cargo/.package-cache
+
+# Generated code from IPC schemas (regenerate via `make gen-events`)
+crates/blazend-ipc/src/events/_generated.rs
+src/blazend/events/_generated.py
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Secrets / local-only configs
+.env
+.env.local
+configs/**/secrets.yaml
+ssh-keys/
+
+# Logs
+*.log
+logs/
+
+# Soak run output
+soak-runs/
