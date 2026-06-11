@@ -4,6 +4,46 @@ Created **2026-06-11** during the macOS → paul session transition.
 
 ---
 
+## Session log — 2026-06-11 (paul) — monorepo consolidated on origin
+
+The full monorepo now lives on `origin/main` and `make test-fast` is green
+(64 Python + 27 Rust; both Cargo workspaces). Final layout:
+
+```
+blazen_os/
+  crates/   shared Rust core (blazend-ipc, blazend-fabric, jessica-core, jessica-ffi)
+  configs/ docs/ scripts/   shared contract + docs + tooling
+  android/  ios/   native mobile (in-repo; were sibling repos)
+  rpi5/     Raspberry Pi 5 appliance (Python + appliance crates + pi-gen + tests)
+```
+
+Commits: `ff9eafd` (rpi5/ split + jessica-core rename) → `4bb19a9`
+(android/ + ios/ consolidated, docs/17 map). **Decision: the rpi5/ split
+wins** over the earlier "Pi 5 stays at root" wording — `docs/17` was
+reconciled to match. No android/ios *code* broke (they consume
+`crates/jessica-ffi` symbols + `configs/intents/system.yaml`, both stable
+at root); only doc/comment refs were renamed to `jessica-core` / `rpi5/…`.
+
+**⚠️ rachel session — converge your local copy.** Your `~/dev/blazen_os`
+still has the pre-consolidation **uncommitted** android/ios/docs17 +
+local edits to AGENTS/CLAUDE/README/00-INDEX. origin now carries the
+merged versions, so a plain `git pull` will refuse (untracked + local
+changes). Since origin already contains this work, the lossless recipe is:
+
+```
+cd ~/dev/blazen_os
+git fetch origin
+git stash -u                 # park your local copy (recoverable)
+git reset --hard origin/main # adopt the consolidated monorepo
+git stash drop               # once you've confirmed nothing unique was parked
+```
+
+If you made edits AFTER the consolidation snapshot, diff `git stash show -p`
+before dropping. Then rebuild: `make test-fast` (Pi 5), and your mobile
+builds (`cd android && make build`, iOS on the Mac).
+
+---
+
 ## Session log — 2026-06-11 (paul) — monorepo restructure: rpi5/ project + shared core
 
 paul Claude split the repo into a **shared core** (top level, common to

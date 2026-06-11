@@ -127,7 +127,7 @@ blazen_os/
     └── tests/               #   scenarios, harness, audio fixtures (Tier 0-3)
 ```
 
-The `ios`/`android` sibling repos consume `crates/` (Rust core via
+The in-repo `ios/` and `android/` trees consume `crates/` (Rust core via
 `jessica-ffi`) and `configs/` (shared contract); they never touch `rpi5/`.
 
 ---

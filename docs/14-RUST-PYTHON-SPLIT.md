@@ -89,7 +89,7 @@ silently mishandles. The schema rejects it.
 
 The monorepo is split into a **shared core** (top level, common to iOS,
 Android and the Rpi5 appliance) and the **Rpi5 appliance project**
-(`rpi5/`, the device-only code). The ios/android sibling repos consume the
+(`rpi5/`, the device-only code). The in-repo ios/ and android/ trees consume the
 shared core; nothing under `rpi5/` is built into the mobile apps.
 
 ```
@@ -121,8 +121,8 @@ blazen_os/
 Two Cargo workspaces — `crates/` (core) and `rpi5/crates/` (appliance) —
 plus the Python tree under `rpi5/src/`. The appliance depends on the core
 **one-directionally** (`blazend-ipc` etc. by path); the core never depends
-back. The shared `configs/` and `crates/` stay at the repo root so the
-ios/android sibling repos reference them at a stable path. The root
+back. The shared `configs/` and `crates/` stay at the repo root so the in-repo
+`ios/` and `android/` trees reference them at a stable path. The root
 `Makefile` orchestrates both workspaces and the venv; `rpi5/Makefile`
 forwards the appliance targets up.
 
