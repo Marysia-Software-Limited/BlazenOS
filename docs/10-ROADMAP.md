@@ -133,35 +133,48 @@ SSH-able).
   hangs at "Waiting for root device" forever — it must be
   `root=/dev/mmcblk1p2`. With both fixed (now the config default), the
   kernel boots, `EXT4-fs (mmcblk1p2)` mounts, and `systemd[1]` starts.
-- **OPEN (M1 blocker): PID 1 dies ~11 s in; no QEMU machine boots this
-  userland yet.** Diagnosed 2026-06-11 with `-no-reboot` + `-initrd` +
-  `systemd.log_target=kmsg`:
-  - **`-M raspi4b` (native SD):** kernel boots, `EXT4-fs (mmcblk1p2)`
-    mounts, the real `/sbin/init` (systemd 257.13) starts and logs up to
-    "bpf-restrict-fs", then PID 1 dies ~11 s in. Booting *with* the
-    image's `initramfs8` makes the failure explicit: `Kernel panic - not
-    syncing: Attempted to kill init! exitcode=0x00000100` (init exited 1
-    before `switch_root`). `nowatchdog` does not help (not the
-    `bcm2835-wdt`). raspi4b emulation is heavily stubbed here (pcie,
-    rng200, thermal, **genet ethernet**, vc-mem=0, exp-gpio all
-    disabled/failing), which is the likely root cause.
-  - **`-M virt` (clean machine, where systemd wouldn't poke Pi
-    peripherals):** the `initramfs8` runs cleanly (no panic) but drops to
-    the initramfs shell — `/dev/vda2`/`/dev/sda2 does not exist`: the
-    Pi-tailored initramfs has no virtio/usb-storage modules loaded, and
-    booting `virt` *without* initramfs hangs at "Waiting for root device"
-    because `virtio_blk` is **not built into** the rpt kernel (it is a
-    module). So `virt` can't reach the rootfs as-is either.
-  - **Recommended next step (own task, not a cmdline tweak):** give the
-    CI boot a root device the stock setup can see — e.g. build a small
-    initramfs that includes `virtio_pci`+`virtio_blk` (then `-M virt
-    -device virtio-blk-pci root=/dev/vda2`), or a kernel with
-    `CONFIG_VIRTIO_BLK=y`; alternatively validate boot on **real Pi 5
-    hardware** (M8) and keep QEMU for the mocked component tiers only.
-  - Independent of the machine choice, a `--dev` image rebuild
-    (`make vm-image`, now `--dev`) is required before SSH can
-    authenticate. The dev/release access fix itself is verified at the
-    rootfs level; only the live in-QEMU boot is blocked.
+- **FIXED 2026-06-12 — the silent-console bug.** The earlier "PID 1 dies
+  ~11 s with no output" symptom was largely a **console mismatch**: the
+  PL011 UART at `0xfe201000` (the one `earlycon` and QEMU's serial use)
+  enumerates as **`ttyAMA1`**, not `ttyAMA0`, under this kernel/DTB. With
+  `console=ttyAMA0` the kernel logs `"Warning: unable to open an initial
+  console"` and systemd PID 1 gets **no `/dev/console`** — so it runs
+  blind (no logs) and we couldn't see what it was doing. Fix:
+  `console=ttyAMA1,115200` in `configs/vm/qemu-raspi.yaml`. With it,
+  systemd 257.13 now boots **with visible logs** through cgroup2 + bpf +
+  devpts setup.
+- **Corrected hardware finding — `-M virt` is impossible with the stock
+  kernel (was a wrong recommendation).** Inspecting the image's
+  `/lib/modules/6.18.33+rpt-rpi-v8` directly: the kernel has **no virtio
+  at all** (`virtio_blk`/`virtio_pci` are neither built-in nor modules),
+  and its **only** PCIe controller is `pcie-brcmstb` (Broadcom-specific —
+  **no** generic ECAM `pci-host-generic`). So on `-M virt` the PCIe bus
+  never comes up and **no** PCIe storage works (virtio-blk, NVMe, AHCI,
+  qemu-xhci all dead). The previous "build a virtio initramfs" plan
+  cannot work. (`ext4`, `nvme`, `sd_mod`, `xhci`, `usb-storage` *are*
+  built-in, so the `raspi4b` SD path needs no initramfs.)
+- **OPEN (M1 blocker, narrowed): on `-M raspi4b`, systemd PID 1 dies at
+  the first service spawn.** With the console fixed, systemd boots cleanly
+  (mounts cgroup2, probes all controllers + bpf, sets hostname + machine
+  id) and dies **exactly** at its last log line `Using systemd-executor
+  binary from '/usr/lib/systemd/systemd-executor'` — i.e. when PID 1 first
+  forks a child via the systemd 257 `sd-executor` (`clone3`) path. No
+  caught-signal and no `systemd.crash_shell` prompt, so it's the QEMU
+  `raspi4b`/TCG emulation choking on the process-spawn path, **not** an
+  image defect. Userland is proven healthy (systemd ran ~11 s as a large
+  dynamically-linked binary; `/bin/sh` exec'd fine). `-smp 1` can't be
+  tried — `raspi4b` requires exactly 4 CPUs.
+- **Recommended next step:** validate the full boot on **real Pi 5
+  hardware** (M8) — the stock kernel + this QEMU `raspi4b` cannot complete
+  a systemd boot. Keep QEMU for the mocked component tiers (Tier 0-1) and
+  the rootfs-level loopback verification (which already passes). A newer
+  QEMU with more complete `raspi4b`/`clone3` emulation, or a custom kernel
+  with `CONFIG_PCI_HOST_GENERIC=y`+`CONFIG_VIRTIO_BLK=y` for `-M virt`,
+  are the only QEMU paths left and are out of scope for M1.
+- Independent of the machine choice, a `--dev` image rebuild
+  (`make vm-image`, now `--dev`) is required before SSH can
+  authenticate. The dev/release access fix itself is verified at the
+  rootfs level; only the live in-QEMU boot is blocked.
 
   Verified-good QEMU cmdline bits (now the config defaults): RAM **2048**,
   `earlycon=pl011,0xfe201000`, console on the PL011, root on **mmcblk1p2**

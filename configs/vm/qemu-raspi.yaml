@@ -21,12 +21,15 @@ pi5_qemu_scale: 2.0                     # multiplier applied to Pi-5 budgets
 kernel: build/vm-boot/kernel8.img
 dtb: build/vm-boot/bcm2711-rpi-4-b.dtb
 initrd: ~                                # we boot the squashed image's initramfs
-# Verified boot cmdline (2026-06-11): the PL011 needs an explicit
+# Verified boot cmdline (2026-06-12): the PL011 needs an explicit
 # earlycon or the console stays silent, and QEMU puts the `if=sd` drive
 # on mmcblk1 (mmcblk0 is the SDIO/wifi controller) — so root is
-# mmcblk1p2, NOT mmcblk0p2. With these, the kernel boots, root mounts,
-# and systemd starts. See docs/10-ROADMAP.md M1 footguns.
-cmdline: "earlycon=pl011,0xfe201000 console=ttyAMA0,115200 root=/dev/mmcblk1p2 rootfstype=ext4 fsck.repair=yes rootwait"
+# mmcblk1p2, NOT mmcblk0p2. CRITICAL: the PL011 at 0xfe201000 enumerates
+# as ttyAMA1 (not ttyAMA0) under this kernel/DTB, so `console=` MUST be
+# ttyAMA1 — with ttyAMA0 systemd gets no /dev/console ("unable to open an
+# initial console") and PID1 has nowhere to log. With these, the kernel
+# boots, root mounts, and systemd starts + logs. See docs/10-ROADMAP.md M1.
+cmdline: "earlycon=pl011,0xfe201000 console=ttyAMA1,115200 root=/dev/mmcblk1p2 rootfstype=ext4 fsck.repair=yes rootwait"
 
 # The image produced by `make vm-image`.
 sd_image: vm-images/blazen_os-0.0.1-dev.qcow2
