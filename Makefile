@@ -107,21 +107,40 @@ models: venv ## Download + verify all on-device ML models
 dev: build ## Run the full blazend stack on the dev host (no VM; fastest iteration)
 	./scripts/dev-run.sh
 
+# -------- cross-host sync (git via GitHub origin; see docs/16-SYNC-PROTOCOL.md) --------
+# Canonical hub: git@github.com:Marysia-Software-Limited/BlazenOS.git (branch main).
+# paul and rachel are both clones. Pull before shared-boundary work; commit;
+# then `make sync-push` (test-fast gates the push). The other host pulls.
+
+.PHONY: sync-pull
+sync-pull: ## Pull latest from GitHub origin (fast-forward only)
+	git pull --ff-only origin main
+
+.PHONY: sync-push
+sync-push: test-fast ## test-fast, then push committed work to origin (refuses if tests red or tree dirty)
+	@git diff --quiet && git diff --cached --quiet || { echo "ERROR: uncommitted changes — commit first, then 'make sync-push'."; exit 1; }
+	git push origin main
+
+.PHONY: rachel-pull
+rachel-pull: ## Converge the rachel host: ssh in and fast-forward pull from origin
+	ssh $${BLAZEN_SYNC_HOST:-rachel} "cd ~/dev/blazen_os && git pull --ff-only origin main"
+
+.PHONY: paul-test-fast
+paul-test-fast: sync-push ## Push to origin, then pull + run test-fast on paul
+	ssh $${BLAZEN_SYNC_HOST:-paul} "cd ~/dev/blazen_os && git pull --ff-only origin main && make test-fast"
+
+.PHONY: paul-vm-image
+paul-vm-image: sync-push ## Push to origin, then pull + build the qcow2 image on paul (long-running)
+	ssh $${BLAZEN_SYNC_HOST:-paul} "cd ~/dev/blazen_os && git pull --ff-only origin main && make vm-image"
+
+# -------- DEPRECATED rsync sync (kept only for bulk build-artifact transfer) --------
 .PHONY: sync-paul push-paul
-sync-paul push-paul: ## Rsync source tree to paul (refuses if tests are red; --force to override)
+sync-paul push-paul: ## [deprecated → use git 'make sync-push'] Rsync source tree to the sync host
 	./scripts/sync-to-paul.sh
 
 .PHONY: pull-paul
-pull-paul: ## Rsync paul's blazen_os changes back to this host
+pull-paul: ## [deprecated → use git 'make sync-pull'] Rsync sync host's changes back
 	./scripts/sync-from-paul.sh
-
-.PHONY: paul-test-fast
-paul-test-fast: push-paul ## Sync + run test-fast on paul
-	ssh $${BLAZEN_SYNC_HOST:-paul} "cd ~/dev/blazen_os && make test-fast"
-
-.PHONY: paul-vm-image
-paul-vm-image: push-paul ## Sync + build the qcow2 image on paul (long-running)
-	ssh $${BLAZEN_SYNC_HOST:-paul} "cd ~/dev/blazen_os && make vm-image"
 
 # -------- QEMU + image build --------
 

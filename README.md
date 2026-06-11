@@ -16,8 +16,8 @@ The LLM runs on the Pi 5 CPU by default; an optional Raspberry Pi AI HAT+ (Hailo
 > [`docs/15-DEV-WORKFLOW.md`](docs/15-DEV-WORKFLOW.md) and
 > [`docs/10-ROADMAP.md`](docs/10-ROADMAP.md).
 
-> **Target hardware:** Raspberry Pi 5 8 GB. Optional accelerators:
-> AI HAT+ 13T / 26T / 10H. See
+> **Target hardware:** Raspberry Pi 5 — **16 GB reference**, 8 GB supported
+> secondary. Optional accelerators: AI HAT+ 13T / 26T / 10H. See
 > [`docs/02-HARDWARE.md`](docs/02-HARDWARE.md) and
 > [`docs/12-ML-ACCELERATOR.md`](docs/12-ML-ACCELERATOR.md).
 

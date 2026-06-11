@@ -58,29 +58,42 @@ Shared boundary surfaces:
 | `configs/_schema/events/*`   | blazen_os    | ✓                     | ✓                    |
 | `HANDOFF.md`                 | blazen_os    | ✓                     | ✓                    |
 
-Anything in this list: **after editing, push.**
+Anything in this list: **after editing, commit and push.**
 
-- **macOS Claude push** → `make push-paul` (rsync to paul).
-- **paul Claude push** → `make push-mac` (rsync the other way).
-- Each `make` target also runs `flutter test` / `pytest` locally
-  first, refusing to push if tests are red.
+> **Sync transport (revised 2026-06-11): git via GitHub, not rsync.**
+> The canonical hub is
+> `git@github.com:Marysia-Software-Limited/BlazenOS.git` (branch `main`).
+> Both **paul** (`~/dev/blazen_os`) and **rachel** (`~/dev/blazen_os`)
+> are clones of it. Synchronisation is now `commit` → `push` → the other
+> side `pull`s — on **both sides**. The old rsync targets
+> (`push-paul`/`pull-paul`) are deprecated and kept only for bulk
+> build-artifact transfer (qcow2/img), never for source or docs.
 
-Anything outside this list is host-local — sync at your leisure (or
-not at all if it's purely scratch work).
+- **Either Claude pushes** → `git add -A && git commit && make sync-push`.
+  `make sync-push` runs `make test-fast` first and **refuses to push if
+  tests are red or the tree is dirty** (commit before pushing).
+- **The other side pulls** → `make sync-pull` (`git pull --ff-only
+  origin main`). From paul you can also converge rachel directly with
+  `make rachel-pull`.
+
+Anything outside the shared-boundary list is still host-local, but
+because both hosts now share one git history, committing it is cheap and
+keeps the tree coherent — push it too unless it's pure scratch work.
 
 ## 4. Pull cadence
 
-Pull from the other host before you start a session whose work
-touches the shared boundary:
+Pull from origin before you start a session whose work touches the
+shared boundary:
 
 ```
-macOS Claude: make pull-paul  (before editing docs/product/, schemas, intents)
-paul Claude:  make pull-mac   (same)
+either side: make sync-pull   (git pull --ff-only origin main)
+                              before editing docs/product/, schemas, intents
 ```
 
 You don't need to pull for purely host-local work (e.g., when paul
-Claude is debugging a Rust component or macOS Claude is wiring up a
-Flutter screen).
+Claude is debugging a Rust component or rachel Claude is wiring up a
+native screen) — but pulling is cheap and avoids a later merge, so
+prefer pulling at the start of every session.
 
 ## 5. Commit-message hygiene
 
@@ -119,15 +132,18 @@ become obvious from `docs/`.
 
 ## 7. Conflict resolution
 
-If both Claude sessions edited the same file before syncing:
+If both Claude sessions edited the same file before syncing, git — not
+mtime — arbitrates:
 
-1. Whoever pulls second sees both versions (rsync would silently
-   overwrite — we use `--update` flag in `push-*` Make targets so
-   newer wins by mtime).
-2. The losing edit is recovered from the host's local git stash.
-   Both hosts keep working git repos; conflicts are merged by hand.
-3. For docs/product/ (the symlinked shared spec): the merge happens
-   in blazen_os only; macOS sees it on next pull.
+1. Whoever pushes first wins the fast-forward. The second pusher's
+   `git push` is rejected ("non-fast-forward"); they `git pull` (which
+   merges or rebases), resolve any conflict markers by hand, re-run
+   `make test-fast`, then push.
+2. Nothing is silently overwritten — both versions live in git history,
+   recoverable via `git reflog` / `git stash`.
+3. For `docs/product/` (the shared spec, symlinked into rachel): the
+   merge happens in blazen_os; rachel picks it up on its next
+   `make sync-pull`.
 
 When in doubt, the convention is:
 
@@ -140,26 +156,33 @@ When in doubt, the convention is:
 ## 8. Daily flow (illustrative)
 
 ```
-morning (macOS)            morning (paul)
+morning (rachel / macOS)   morning (paul)
 ─────────────────          ─────────────────
-make pull-paul             make pull-mac
-flutter test               make test-fast
+make sync-pull             make sync-pull
+(native/Dart tests)        make test-fast
 (work happens)             (work happens)
-flutter test               make test-fast
-make push-paul             make push-mac
-                            
-                            (paul makes a paul-only image build that
-                             takes 25 min — no sync needed; macOS
-                             keeps working unaffected.)
+(native/Dart tests)        make test-fast
+git commit -am '…'         git commit -am '…'
+make sync-push             make sync-push
+                           git pull picks up rachel's commits, or vice
+                           versa; first push wins the fast-forward.
+
+                           (paul makes a paul-only image build that
+                            takes 25 min — no sync needed; the build
+                            artefact is gitignored and stays host-local.)
 ```
 
 ## 9. PL TL;DR
 
 Każda zmiana w kodzie/configu **MUSI** mieć też update w dokumentacji.
-Jeśli zmiana dotyka wspólnej powierzchni (lista w §3), trzeba ją
-zsynchronizować na drugą maszynę przez `make push-paul` (macOS) lub
-`make push-mac` (paul). Druga sesja Claude pobiera zmiany przez
-`make pull-*`. `HANDOFF.md` to skrzynka odbiorcza — pisz tam co
-zostawiasz dla drugiej sesji. Konflikty rozwiązuje się przez git stash
-i ręczny merge; nie wyścigaj się o ten sam plik bez wcześniejszej
-notatki w `HANDOFF.md`.
+Synchronizacja idzie teraz przez **git** (a nie rsync): wspólny zdalny
+to `git@github.com:Marysia-Software-Limited/BlazenOS.git` (gałąź `main`),
+a paul i rachel to dwa klony. Po zmianie: `git commit`, potem
+`make sync-push` (najpierw odpala `make test-fast` i odmawia push przy
+czerwonych testach lub brudnym drzewie). Druga maszyna pobiera zmiany
+przez `make sync-pull` (`git pull --ff-only`). Z paula można od razu
+zsynchronizować rachel poleceniem `make rachel-pull`. `HANDOFF.md` to
+skrzynka odbiorcza — pisz tam co zostawiasz dla drugiej sesji.
+Konflikty rozwiązuje git (pierwszy push wygrywa fast-forward; drugi
+robi `git pull`, scala ręcznie, ponawia testy, pushuje). Nie wyścigaj
+się o ten sam plik bez wcześniejszej notatki w `HANDOFF.md`.

@@ -82,12 +82,22 @@ make pi-image           # raw .img for `dd` onto an SD card
 
 ### Syncing the tree
 
-Two options, pick by taste:
+**git via GitHub is the canonical transport** (revised 2026-06-11). The
+hub is `git@github.com:Marysia-Software-Limited/BlazenOS.git` (branch
+`main`); paul and rachel are both clones. Full protocol in
+[`16-SYNC-PROTOCOL.md`](16-SYNC-PROTOCOL.md).
 
-1. **git** (recommended for shared work). `git push origin <branch>`
-   on macOS, `git pull` on paul. History travels with the code.
-2. **rsync** (fast local iteration). When you don't want to commit
-   every two minutes:
+```bash
+make sync-pull      # git pull --ff-only origin main   (start of session)
+git commit -am '…'  # commit your work
+make sync-push      # runs test-fast, then git push origin main
+make rachel-pull    # (from paul) ssh rachel and fast-forward it
+```
+
+History travels with the code; conflicts are resolved by git, not by
+mtime. **rsync is deprecated** and retained only for bulk build-artifact
+transfer (qcow2/img are gitignored). The legacy one-liner, if you ever
+need it:
 
 ```bash
 rsync -avz --delete \

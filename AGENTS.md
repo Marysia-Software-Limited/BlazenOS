@@ -28,8 +28,9 @@ tool-specific operational notes; when they disagree with this file, the
    [`docs/04-VOICE-PIPELINE.md`](docs/04-VOICE-PIPELINE.md). Any change that
    pushes the median over budget is a bug, not an accepted trade-off, until
    explicitly negotiated.
-6. **Pi 5 is the only target.** Raspberry Pi 5 8 GB. Older Pis are out
-   of scope.
+6. **Pi 5 is the only target.** Raspberry Pi 5 **16 GB is the reference**
+   platform; 8 GB is a supported secondary target (smaller ASR/LLM
+   variants). Older Pis are out of scope. See `docs/02-HARDWARE.md`.
 7. **CPU is the LLM contract.** The Hailo accelerator path
    ([`docs/12-ML-ACCELERATOR.md`](docs/12-ML-ACCELERATOR.md)) is an
    optional strict-improvement layer; every feature must work without it.

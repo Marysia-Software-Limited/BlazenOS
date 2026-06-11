@@ -21,9 +21,10 @@ Whenever the user says "rules changed" or you modify a doc, refresh these.
 
 ## 2. Project Snapshot
 
-- **One-line:** voice-first Linux OS for Raspberry Pi 5 8 GB (with optional
+- **One-line:** voice-first Linux OS for Raspberry Pi 5 — **16 GB is the
+  reference platform**, 8 GB a supported secondary target (with optional
   Hailo accelerator for the LLM), fully on-device ML, SSH only as a
-  service-recovery back door.
+  service-recovery back door. See [`docs/02-HARDWARE.md`](docs/02-HARDWARE.md).
 - **Phase:** **M0 scaffolding** — the repo currently contains design docs,
   configs, scripts, test harness skeletons. No bootable image yet.
 - **Five things that must always be true:**

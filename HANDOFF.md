@@ -4,6 +4,49 @@ Created **2026-06-11** during the macOS → paul session transition.
 
 ---
 
+## Session log — 2026-06-11 (paul) — git sync + hardware-version doc parity
+
+paul Claude moved the cross-host sync from **rsync → git/GitHub** and
+cleaned up post-rebrand drift on the Pi 5 appliance surface.
+
+**⚠️ Sync transport changed — rachel/macOS Claude, read this:**
+
+- **paul's `~/dev/blazen_os` is now a real git repo** wired to origin
+  `git@github.com:Marysia-Software-Limited/BlazenOS.git` (branch `main`,
+  181 files == rachel, `make test-fast` green). Previously paul only had
+  an rsync mirror with no `.git`.
+- **rachel's local `4730d4d` ("Rebrand … Jessica") was unpushed; I
+  published it to origin** (clean fast-forward c5dbcc7→4730d4d). origin
+  is now current. Nothing of rachel's was changed — just pushed.
+- **New workflow (both sides):** `make sync-pull` → commit →
+  `make sync-push` (gates on `test-fast`, refuses dirty/red). From paul,
+  `make rachel-pull` fast-forwards rachel. Old `make push-paul/pull-paul`
+  rsync targets are **deprecated** (bulk artefacts only). Full rules
+  rewritten in `docs/16-SYNC-PROTOCOL.md` + `docs/15-DEV-WORKFLOW.md` §3.
+- **Action for rachel Claude:** `git pull --ff-only origin main` to pick
+  up this session's commit before your next edit.
+
+**Hardware-version (Pi 5 appliance) doc parity fixes:**
+
+- `docs/05-MODELS.md` system-prompt block still showed the pre-rebrand
+  *"You are blazen…"* — replaced with the canonical Jessica prompt from
+  `configs/llm.yaml` (now points to that file as source of truth).
+- Reference-platform RAM contradiction resolved: the dated decision in
+  `docs/02-HARDWARE.md` is **Pi 5 16 GB reference / 8 GB supported
+  secondary**, but `CLAUDE.md`, `AGENTS.md`, `README.md` still said
+  "8 GB" only. Aligned all three to 16 GB-reference.
+- Verified the rest of the appliance voice surface (wake-word.yaml,
+  scenarios 01–09, persona doc) is already consistently Jessica with full
+  EN+PL parity — no drift there.
+
+**Still open (unchanged):** the M1 QEMU boot blocker
+(`Attempted to kill init! exitcode=0x00000100` ~11 s on `-M raspi4b`).
+Recommended next HW task remains: tiny initramfs with `virtio_pci`+
+`virtio_blk` for `-M virt`, or validate boot on a real Pi 5. See the
+earlier paul session log below.
+
+---
+
 ## Session log — 2026-06-11 (macOS) — Native mobile scaffolds landed
 
 macOS Claude rebooted the mobile stack per user's explicit ask
