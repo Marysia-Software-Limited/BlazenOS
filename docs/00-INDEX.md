@@ -21,11 +21,20 @@ Read top-to-bottom on first contact. Afterwards, re-read only what changed.
 | 14  | [`14-RUST-PYTHON-SPLIT.md`](14-RUST-PYTHON-SPLIT.md) | **Implementation** languages — which components are Python, which are Rust, and why. |
 | 15  | [`15-DEV-WORKFLOW.md`](15-DEV-WORKFLOW.md)        | Linux (`paul`) vs macOS hybrid workflow; what runs where. |
 | 16  | [`16-SYNC-PROTOCOL.md`](16-SYNC-PROTOCOL.md)      | **Bidirectional sync** — how paul Claude and macOS Claude exchange changes; what crosses the shared boundary. |
+| 17  | [`17-MOBILE-MONOREPO.md`](17-MOBILE-MONOREPO.md)  | **Monorepo layout** — Pi 5 + Android + iOS + shared Rust core in one tree. The map. |
 
-## Android & iOS (Mobile twin)
+## Android & iOS (mobile twins in this monorepo)
 
 | Path | Purpose |
 |------|---------|
+| [`/android/README.md`](../android/README.md) | Android project entry point — quickstart, layout, status |
+| [`/android/docs/architecture.md`](../android/docs/architecture.md) | `:app`/`:core` module split, Rust core seam, M0 vs M1 |
+| [`/android/docs/build.md`](../android/docs/build.md) | Toolchain, Gradle, cargo-ndk wiring (M1), signing |
+| [`/android/docs/ml-stack.md`](../android/docs/ml-stack.md) | openWakeWord, on-device Speech, Gemini Nano (AICore), TTS |
+| [`/ios/README.md`](../ios/README.md) | iOS project entry point — quickstart, layout, status |
+| [`/ios/docs/architecture.md`](../ios/docs/architecture.md) | Jessica + JessicaCore split, FFI seam, M0 vs M1 |
+| [`/ios/docs/build.md`](../ios/docs/build.md) | XcodeGen, swift test, M1 xcframework pipeline |
+| [`/ios/docs/ml-stack.md`](../ios/docs/ml-stack.md) | openWakeWord, Speech framework, Foundation Models, TTS |
 | [`product/09-MOBILE-PLATFORM-DECISION.md`](product/09-MOBILE-PLATFORM-DECISION.md) | **Mobile platform decision** — Native Swift/Kotlin + Rust core. |
 | [`product/10-MOBILE-HARDWARE.md`](product/10-MOBILE-HARDWARE.md) | **Mobile hardware** — Reference iPhones, Pixels, and accessories. |
 | [`product/15-NATIVE-MIGRATION.md`](product/15-NATIVE-MIGRATION.md) | **Native migration** — Plan for moving from Flutter to native mobile apps. |

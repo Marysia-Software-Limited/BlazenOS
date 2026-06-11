@@ -3,12 +3,13 @@
 //! Two surfaces, one body:
 //!
 //! - **C ABI** (`extern "C"`, exported via `staticlib` + `cdylib`).
-//!   Bindings on iOS go through cbindgen → `jessica_ffi.h` →
-//!   Swift Package `JessicaFFI` (consumed by
-//!   `/Users/beret/dev/ios/JessicaCore`).
+//!   Bindings on iOS go through cbindgen → `jessica_ffi.h` → the
+//!   `JessicaCore` Swift Package at `ios/JessicaCore/` (monorepo-relative),
+//!   which ships `JessicaFFI.xcframework` as a `binaryTarget` from M1.
 //! - **JNI** (`#[cfg(target_os = "android")]`). Bindings on Android
 //!   are hand-written `Java_os_blazen_jessica_core_*` functions that
-//!   delegate to the same internal API.
+//!   delegate to the same internal API, consumed by
+//!   `android/core/.../JessicaCoreNative.kt`.
 //!
 //! Invariants:
 //! - All input strings are `(*const u8, usize)` byte buffers — they

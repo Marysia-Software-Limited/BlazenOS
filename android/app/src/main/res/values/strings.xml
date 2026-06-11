@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Jessica</string>
+    <string name="home_greeting">Hi, I\'m Jessica.</string>
+    <string name="home_status_intents">%1$d intents loaded.</string>
+    <string name="home_listen_hint">Say \"hey Jessica\" to wake me.</string>
+</resources>

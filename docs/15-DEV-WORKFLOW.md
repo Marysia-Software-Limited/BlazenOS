@@ -1,83 +1,109 @@
-# 15 — Dev workflow (Linux vs macOS)
+# 15 — Dev workflow (paul-primary monorepo)
 
-`blazen_os` targets Raspberry Pi 5 (aarch64 Linux). The full image build
-needs Linux + Docker, but many tasks — quick iterations on the Python
-orchestrator, IPC contract changes, voice scenarios — run fine on macOS.
-This doc fixes the **canonical hybrid workflow**.
+`blazen_os` is a **monorepo** with three surfaces:
 
-> **Decision (2026-06-11, revised):** **Linux** (`paul` Arch box) is the
-> **primary** development environment for **`blazen_os` only**. **macOS**
-> is the **primary** environment for **`rachel`** (the mobile twin). Each
-> repo gets its own Claude Code session: paul ↔ blazen_os, macOS ↔ rachel.
-> The shared product spec under `docs/product/` is co-edited by both
-> sides. The "secondary" use of each rig (paul for rachel, macOS for
-> blazen_os) is fine for reading the other's repo but not for committing
-> changes.
+- The Raspberry Pi 5 appliance (aarch64 Linux).
+- The native Android app ([`android/`](../android/)) — Kotlin + Compose.
+- The native iOS app ([`ios/`](../ios/)) — Swift + SwiftUI.
 
-## 1. Why Linux is primary
+Plus the shared Rust mobile core ([`crates/jessica-core`](../crates/jessica-core/),
+[`crates/jessica-ffi`](../crates/jessica-ffi/)).
+
+This doc fixes the **canonical workflow** across all three surfaces.
+
+> **Decision (2026-06-11, revised 2026-06-11):** **Linux** (`paul` Arch
+> box) is the **primary** rig for the whole monorepo — Pi 5 builds and
+> tests, Android gradle + adb, Rust core, all docs and shared specs. The
+> maintainer's Mac is required only for the final iOS xcodebuild and
+> TestFlight cut. The Flutter prototype at `../rachel/` is a reference,
+> not a shipping target; it stays editable from either rig but is no
+> longer the canonical mobile dev surface.
+
+## 1. Why Linux (paul) is primary
 
 - **pi-gen needs Linux + Docker.** The whole SD-image pipeline is
-  Linux-only. Doing it on macOS via colima/Docker Desktop works in
-  theory but doubles the debug surface.
+  Linux-only.
 - **Cross-compile for aarch64 is friction-free.** `cargo install cross`
-  + Docker = working `aarch64-unknown-linux-gnu` build in seconds. On
-  macOS the same workflow needs colima first.
+  + Docker = working `aarch64-unknown-linux-gnu` build in seconds.
 - **`cpal` / `alsa-sys` link to native ALSA**, which exists upstream
-  only on Linux. Cross via `cross` solves it, but staying on Linux
-  removes the indirection.
+  only on Linux.
 - **Target parity.** The closer your dev environment to the deployment
   target, the fewer "works for me" bugs.
-- **CI lives here.** GitHub Actions / self-hosted runners are Linux —
-  if `make test-fast` doesn't pass on Linux, the contributor
-  experience breaks regardless of what passes locally.
+- **CI lives here.** GitHub Actions / self-hosted runners are Linux.
+- **Android builds run anywhere with a JDK** — paul covers that
+  natively (`./gradlew assembleDebug` + `adb install`).
+- **Rust mobile core** (`jessica-core`, `jessica-ffi`) is the
+  same workspace as the Pi 5 crates — paul builds + tests it the same
+  way it builds the Pi 5 binaries.
 
-## 2. What macOS is still good for
+## 2. When the Mac is required
 
-- **Inner-loop iteration on the orchestrator + Python code.** `make dev`
-  brings the whole stack up on macOS without a VM. Perfect for tweaking
-  intent routing, IPC handlers, state-machine logic, scenarios.
-- **Quick visual checks.** Browsing logs, editing YAML configs,
-  hand-running `pytest`, `cargo test`, `python -m blazend.<unit>`.
-- **`make qemu-smoke`** confirms `qemu-system-aarch64` + HVF acceleration
-  + `virt` machine work — useful as a sanity gate before kicking a
-  long build on the Linux box.
+- **Final iOS build / signing / TestFlight.** `xcodebuild` and the
+  iOS simulator only exist on macOS.
+- **Personal Voice / Apple Intelligence end-to-end smoke.** On-device
+  feature smoke tests need an actual iPhone running iOS 17+ (18.4+
+  for Foundation Models).
+- **Anything else iOS-related can happen on paul:** editing Swift
+  sources, `project.yml`, `JessicaCore` tests (via `swift build` if
+  swift is installed on Linux, or by porting the matching tests to
+  the Kotlin twin and validating cross-language).
 
-## 3. The canonical hybrid loop
+## 3. The canonical loop
 
 ```
-┌────────────────────────────┐                   ┌──────────────────────────┐
-│  macOS workstation         │  rsync / git push │  paul (Arch Linux)       │
-│                            ├──────────────────▶│                          │
-│  - edit code / docs        │                   │  - make build            │
-│  - make test-fast          │                   │  - make test-fast        │
-│  - make dev (quick smoke)  │                   │  - make rust-aarch64     │
-│  - make qemu-smoke         │                   │  - make vm-image         │
-│  - git commit              │                   │  - make run-vm           │
-│                            │  artefacts ◀──────│  - real Pi 5 SD flash    │
-└────────────────────────────┘                   └──────────────────────────┘
-        primary editor                              primary build + test rig
+┌──────────────────────────┐                  ┌─────────────────────────┐
+│  paul (Arch Linux)       │                  │  maintainer's Mac       │
+│  primary monorepo rig    │   git push/pull  │  iOS cut + TestFlight   │
+│                          ├─────────────────▶│                         │
+│  Pi 5:                   │                  │  - xcodebuild           │
+│   - make build           │                  │  - sign + archive       │
+│   - make test-fast       │                  │  - upload to TestFlight │
+│   - make rust-aarch64    │                  │  - on-device smoke      │
+│   - make vm-image        │                  │                         │
+│   - make run-vm          │                  │                         │
+│   - make pi-image        │                  │                         │
+│  Android:                │                  │                         │
+│   - cd android && make build / test / install                        │
+│  iOS (sources only):     │                  │                         │
+│   - edit Swift + yml + docs                                          │
+│   - cargo test for jessica-core + jessica-ffi                 │
+└──────────────────────────┘                  └─────────────────────────┘
 ```
 
 ### Practical commands
 
-**On macOS — quick iteration:**
+**On paul — everything except the iOS cut:**
 
 ```bash
+# Pi 5
 make build              # cargo build (host) + python venv
 make test-fast          # 57 Python + 6 Rust tests; <2s
-make dev                # full mock stack with state.json live in /tmp/blazen-501/
-make qemu-smoke         # gate: HVF + virt machine + cpu host
-```
-
-**On Linux (paul) — build the bits that actually ship:**
-
-```bash
-make build              # same
-make test-fast          # same
-make rust-aarch64       # produces 5 aarch64 ELF binaries via cross + Docker
+make rust-aarch64       # produces aarch64 ELF binaries via cross + Docker
 make vm-image           # full pi-gen pipeline → vm-images/*.qcow2  (15-30 min)
 make run-vm             # boots that image in QEMU
 make pi-image           # raw .img for `dd` onto an SD card
+
+# Android
+cd android/
+make build              # ./gradlew assembleDebug
+make test               # :core JVM tests
+make install            # adb install -r app-debug.apk
+
+# iOS (sources, docs, Rust core — no Xcode)
+cd ios/
+# edit Swift sources / project.yml / docs
+cargo test -p jessica-core -p jessica-ffi   # from monorepo root
+```
+
+**On the Mac — the iOS cut only:**
+
+```bash
+cd ios/
+make project            # regen Jessica.xcodeproj from project.yml
+make test               # JessicaCoreTests via swift test
+make build              # xcodebuild for the iPhone 16 simulator
+make debug              # open Jessica.xcodeproj
+# then: signing → TestFlight (manual for M1)
 ```
 
 ### Syncing the tree

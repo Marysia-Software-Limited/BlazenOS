@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+build/
+**/build/
+gradle/wrapper/gradle-wrapper.jar.bak
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+.kotlin/
+captures/
+
+# Locally-resolved SDK / NDK paths
+local.properties
+
+# Signing material
+*.keystore
+*.jks
+
+# Build outputs
+*.apk
+*.aab
+*.ap_
+
+# OS junk
+.DS_Store

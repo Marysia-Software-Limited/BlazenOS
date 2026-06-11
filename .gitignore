@@ -32,6 +32,32 @@ target/
 Cargo.lock.bak
 .cargo/.package-cache
 
+# Android (mobile twin)
+android/.gradle/
+android/build/
+android/app/build/
+android/core/build/
+android/local.properties
+android/**/*.iml
+android/captures/
+android/.kotlin/
+android/app/release/*.apk
+android/app/release/*.aab
+
+# iOS (mobile twin)
+ios/Jessica.xcodeproj/
+ios/build/
+ios/DerivedData/
+ios/.build/
+ios/.swiftpm/
+ios/Package.resolved
+ios/JessicaCore/.build/
+ios/JessicaCore/.swiftpm/
+ios/**/*.xcuserstate
+ios/**/xcuserdata/
+ios/**/*.p12
+ios/**/*.mobileprovision
+
 # Generated code from IPC schemas (regenerate via `make gen-events`)
 crates/blazend-ipc/src/events/_generated.rs
 rpi5/src/blazend/events/_generated.py

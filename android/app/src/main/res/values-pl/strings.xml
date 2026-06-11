@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Jessica</string>
+    <string name="home_greeting">Cześć, jestem Jessica.</string>
+    <string name="home_status_intents">Załadowano %1$d intencji.</string>
+    <string name="home_listen_hint">Powiedz „hej Jessico”, żeby mnie obudzić.</string>
+</resources>

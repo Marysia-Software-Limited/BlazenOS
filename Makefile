@@ -22,6 +22,16 @@
 #   make test-soak         # 24h scenario loop (long-running)
 #   make audio-fixtures    # synth all WAV inputs via Piper TTS
 #   make audit             # security/safety lint of configs + image
+#
+# Mobile twins (Android + iOS in this monorepo — see docs/17-MOBILE-MONOREPO.md):
+#   make mobile            # build both surfaces (iOS only runs on macOS)
+#   make test-mobile       # test both surfaces
+#   make build-android     # ./gradlew assembleDebug
+#   make test-android      # :core JVM tests
+#   make build-ios         # xcodebuild (macOS only — no-op elsewhere)
+#   make test-ios          # JessicaCore swift tests
+#   make clean-mobile      # wipe android/build + ios/build + DerivedData
+#
 #   make clean             # remove build artifacts (NOT models)
 #   make distclean         # also remove models, fixtures, vm-images, target/
 #
@@ -220,5 +230,45 @@ clean: ## Remove build artifacts (keeps models + fixtures)
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +
 
 .PHONY: distclean
-distclean: clean ## Also remove models, audio fixtures, the venv, and Rust target
+distclean: clean clean-mobile ## Also remove models, audio fixtures, the venv, and Rust target
 	rm -rf models rpi5/tests/fixtures/audio $(VENV) crates/target rpi5/crates/target
+
+# -------- Mobile twins ---------------------------------------------------
+# Thin pass-through targets. The per-project Makefile owns the real logic
+# (android/Makefile, ios/Makefile). These exist so the root `make` knows
+# every surface and `make help` lists them.
+
+.PHONY: mobile
+mobile: build-android build-ios ## Build both mobile surfaces (iOS skipped on Linux)
+
+.PHONY: test-mobile
+test-mobile: test-android test-ios ## Test both mobile surfaces
+
+.PHONY: build-android
+build-android: ## Build the Android app (./gradlew assembleDebug)
+	$(MAKE) -C android build
+
+.PHONY: test-android
+test-android: ## Run the Android :core JVM tests
+	$(MAKE) -C android test
+
+.PHONY: build-ios
+build-ios: ## Build the iOS app (skipped on non-macOS; needs xcodebuild)
+	@if [ "$(shell uname)" = "Darwin" ]; then \
+		$(MAKE) -C ios build; \
+	else \
+		echo "Skipping build-ios: xcodebuild is macOS-only. Edit Swift sources and project.yml on paul; build the binary on the mac."; \
+	fi
+
+.PHONY: test-ios
+test-ios: ## Run JessicaCore Swift tests (skipped if `swift` is missing)
+	@if command -v swift >/dev/null 2>&1; then \
+		$(MAKE) -C ios test; \
+	else \
+		echo "Skipping test-ios: `swift` not on PATH. Install Swift CLI or run on the mac."; \
+	fi
+
+.PHONY: clean-mobile
+clean-mobile: ## Wipe Android + iOS build outputs
+	$(MAKE) -C android clean || true
+	$(MAKE) -C ios clean || true

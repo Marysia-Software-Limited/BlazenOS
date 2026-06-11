@@ -16,25 +16,40 @@ guidance unless the user explicitly overrides it. When in doubt, ask.
 4. `docs/00-INDEX.md` (documentation map)
 5. `docs/01-ARCHITECTURE.md` → `docs/11-CLAUDE-PLAYBOOK.md` (read in order
    the first time you touch the repo; afterwards re-read only what changed)
+6. `docs/17-MOBILE-MONOREPO.md` (monorepo map — Pi 5 + Android + iOS)
+
+When working inside `android/` or `ios/`, also load that surface's own
+`README.md`, `AGENTS.md`, `CLAUDE.md`, and `docs/architecture.md`.
 
 Whenever the user says "rules changed" or you modify a doc, refresh these.
 
 ## 2. Project Snapshot
 
-- **One-line:** voice-first Linux OS for Raspberry Pi 5 — **16 GB is the
-  reference platform**, 8 GB a supported secondary target (with optional
-  Hailo accelerator for the LLM), fully on-device ML, SSH only as a
-  service-recovery back door. See [`docs/02-HARDWARE.md`](docs/02-HARDWARE.md).
-- **Phase:** **M0 scaffolding** — the repo currently contains design docs,
-  configs, scripts, test harness skeletons. No bootable image yet.
-- **Monorepo layout (2026-06-11):** the repo root holds the **shared core**
-  common to all three platforms — `crates/` (Rust: `blazend-ipc`,
-  `blazend-fabric`, `jessica-core`, `jessica-ffi`), `configs/` (shared
-  contract + appliance config), `docs/`, `scripts/`. The **Raspberry Pi 5
-  appliance** is a self-contained project under **`rpi5/`** (Python
-  `rpi5/src/blazend`, appliance crates `rpi5/crates/*`, `rpi5/stage-blazen`,
-  `rpi5/tests`). The `ios`/`android` sibling repos consume `crates/` +
-  `configs/`. Full tree in [`docs/14-RUST-PYTHON-SPLIT.md`](docs/14-RUST-PYTHON-SPLIT.md) §4.
+- **One-line:** monorepo for the **Jessica** voice-first assistant —
+  Raspberry Pi 5 appliance ([`rpi5/`](rpi5/)), native Android
+  ([`android/`](android/)), native iOS ([`ios/`](ios/)), and a shared
+  Rust core ([`crates/jessica-core`](crates/jessica-core/),
+  [`crates/jessica-ffi`](crates/jessica-ffi/), [`crates/blazend-ipc`](crates/blazend-ipc/),
+  [`crates/blazend-fabric`](crates/blazend-fabric/)). Pi 5 is **16 GB
+  reference**, 8 GB supported secondary; optional Hailo accelerator on
+  the LLM path. Fully on-device ML across all three surfaces. SSH on
+  the Pi is break-glass only. See
+  [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md).
+- **Phase:** **M0 scaffolding** — design docs, configs, scripts, and
+  test harness skeletons for the Pi 5 surface under `rpi5/`; the mobile
+  trees ship Kotlin and Swift placeholders that exercise the shared
+  Rust API contract end-to-end. No bootable Pi image and no signed
+  mobile builds yet.
+- **Monorepo layout (2026-06-11):** the repo root holds the **shared
+  core** common to all three platforms — `crates/` (Rust:
+  `blazend-ipc`, `blazend-fabric`, `jessica-core`, `jessica-ffi`),
+  `configs/` (shared contract + appliance config), `docs/`, `scripts/`.
+  The **Raspberry Pi 5 appliance** is a self-contained project under
+  **`rpi5/`** (Python `rpi5/src/blazend`, appliance crates
+  `rpi5/crates/*`, `rpi5/stage-blazen`, `rpi5/tests`). The
+  `android/` and `ios/` trees consume `crates/` + `configs/`. Full tree
+  in [`docs/14-RUST-PYTHON-SPLIT.md`](docs/14-RUST-PYTHON-SPLIT.md) §4
+  and [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md).
 - **Five things that must always be true:**
   1. The system is usable with **zero peripherals beyond a USB mic + speaker**.
      If a change forces a keyboard/monitor for daily use, reject it.
@@ -51,12 +66,22 @@ Whenever the user says "rules changed" or you modify a doc, refresh these.
      ships in both languages. A change that lands an English-only
      intent / phrase / scenario is incomplete until the Polish
      counterpart exists. See [`docs/13-LANGUAGES.md`](docs/13-LANGUAGES.md).
-  6. **Python and Rust are the two implementation languages.** Hot loops,
-     audio I/O, wake word, TTS, watchdog and the IPC wire are **Rust**.
-     Orchestrator, ASR, LLM, bootstrap and config are **Python**. No
-     third language enters the core stack. Cross-language calls go
-     through the IPC contract, never through FFI inside a component.
-     See [`docs/14-RUST-PYTHON-SPLIT.md`](docs/14-RUST-PYTHON-SPLIT.md).
+  6. **Python and Rust are the two implementation languages for the
+     Pi 5 surface.** Hot loops, audio I/O, wake word, TTS, watchdog
+     and the IPC wire are **Rust**. Orchestrator, ASR, LLM, bootstrap
+     and config are **Python**. No third language enters the Pi 5
+     stack. Cross-language calls go through the IPC contract, never
+     through FFI inside a Pi 5 component. See
+     [`docs/14-RUST-PYTHON-SPLIT.md`](docs/14-RUST-PYTHON-SPLIT.md).
+  7. **Native per platform on mobile.** [`android/`](android/) is
+     Kotlin + Compose; [`ios/`](ios/) is Swift + SwiftUI. They share
+     business logic via the Rust mobile core
+     ([`crates/jessica-core`](crates/jessica-core/) +
+     [`crates/jessica-ffi`](crates/jessica-ffi/)), and ML is the OS's
+     job (Apple Speech / Foundation Models on iOS, Google Speech /
+     Gemini Nano on Android). See
+     [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md) and
+     [`docs/product/09-MOBILE-PLATFORM-DECISION.md`](docs/product/09-MOBILE-PLATFORM-DECISION.md).
 
 ## 3. Mandatory Test Artifact Location
 
@@ -97,21 +122,23 @@ VM). Surface only the failures.
 5. **Confirm before risky actions:** flashing real SD cards, pushing branches,
    force-push, `git reset --hard`, deleting `rpi5/tests/fixtures/audio/` (large
    regen cost), modifying `configs/system.yaml` defaults.
-6. **Dev rig split.** Linux (`paul`) is the **primary rig for blazen_os**
-   from now on; macOS is for `rachel` (the mobile twin) development.
-   See [`docs/15-DEV-WORKFLOW.md`](docs/15-DEV-WORKFLOW.md).
+6. **Dev rig.** Linux (`paul`) is the **primary rig for the whole
+   monorepo** — Pi 5, Android, iOS sources, Rust core, all docs. The
+   maintainer's Mac is required only for the final iOS
+   xcodebuild / TestFlight cut. See
+   [`docs/15-DEV-WORKFLOW.md`](docs/15-DEV-WORKFLOW.md) and
+   [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md) §4.
 
    **If you (Claude) are running on `paul`:** this is your home repo.
-   You handle the full blazen_os surface — image builds, cross-compile,
-   Tier 2-3 tests, hardware bring-up. Mobile spec changes (under
-   `docs/product/`) come from the macOS session via git or rsync;
-   coordinate before editing them.
+   Pi 5 image builds, cross-compile, Tier 2-3 tests, Android gradle
+   builds + adb, Rust core changes — all yours. For iOS, you edit
+   Swift / project.yml / docs and run `swift test` for `JessicaCore`,
+   but flag any task that needs `xcodebuild` as "needs Mac" in the
+   summary.
 
-   **If you (Claude) are running on macOS:** treat this repo as
-   **read-mostly**. You can edit `docs/product/` (the shared
-   cross-implementation spec, also consumed by `../rachel/`) but you
-   should not start image builds or run paul-only tasks. Sync with
-   `make sync-paul` after touching shared docs.
+   **If you (Claude) are running on macOS:** drive the final iOS
+   build (`xcodebuild`, signing, TestFlight). Everything else is
+   already covered by paul; sync via git.
 6. **Memory hygiene.** Repo structure is derivable — do not memorize file
    layouts. Persist only genuinely surprising user preferences or
    non-obvious project facts.
@@ -130,15 +157,26 @@ VM). Surface only the failures.
    - `_test_projects/`, `.venv/`, `vm-images/*.qcow2`
    - `target/` (Cargo build output)
 6. Update `AGENTS.md` and this file together when cross-agent rules change.
-7. **Language choice for new code:** check
-   [`docs/14-RUST-PYTHON-SPLIT.md`](docs/14-RUST-PYTHON-SPLIT.md) §1
-   before adding a new component. If a Rust component needs to do
-   "just one Python thing", that's a sign to expose it as a separate
-   blazend-* unit and let the IPC contract carry the call.
+7. **Language choice for new code:**
+   - **Pi 5 surface:** check
+     [`docs/14-RUST-PYTHON-SPLIT.md`](docs/14-RUST-PYTHON-SPLIT.md) §1
+     before adding a new component. If a Rust component needs to do
+     "just one Python thing", that's a sign to expose it as a separate
+     blazend-* unit and let the IPC contract carry the call.
+   - **Mobile surfaces:** any business logic that the Pi 5 also needs,
+     or that's worth sharing across iOS+Android, goes into
+     `crates/jessica-core/`. UI and ML-glue go in Kotlin
+     (`android/`) and Swift (`ios/`). Don't reimplement a Rust crate
+     in Kotlin or Swift.
 8. **When you add a new IPC event:** add the JSON Schema under
    `configs/_schema/events/` and regenerate types in both languages via
    `make gen-events`. The schema is the source of truth, not the
    hand-written Python or Rust type.
+9. **When you add a new FFI function** (`crates/jessica-ffi/`): update
+   the matching Kotlin `external fun` in
+   `android/core/.../JessicaCoreNative.kt` AND the Swift seam in
+   `ios/JessicaCore/Sources/JessicaCore/JessicaFFI.swift` in the same
+   commit. The FFI is a three-way contract.
 
 ## 7. Voice-First Sanity Check
 

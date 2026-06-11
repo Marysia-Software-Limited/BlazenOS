@@ -1,0 +1,20 @@
+# Bootstrap intent catalogue shipped with the APK. Mirrors the format of
+# blazen_os/configs/intents/system.yaml; the canonical set is loaded at
+# runtime from the synced fabric profile on first pair.
+version: 1
+intents:
+  - name: volume_up
+    triggers:
+      en: ["louder", "turn it up"]
+      pl: ["g(ł|l)o(ś|s)niej"]
+    action: mutate
+  - name: volume_down
+    triggers:
+      en: ["quieter", "turn it down"]
+      pl: ["ci(sz|sz)ej"]
+    action: mutate
+  - name: time_query
+    triggers:
+      en: ["what time is it"]
+      pl: ["która godzina", "co za godzina"]
+    action: query

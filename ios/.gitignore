@@ -1,0 +1,25 @@
+# XcodeGen output — regenerate via `make project`
+Jessica.xcodeproj/
+
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad/
+
+# Build outputs
+build/
+DerivedData/
+.build/
+.swiftpm/
+
+# Package resolution caches (Xcode regenerates)
+Package.resolved
+
+# Signing material
+*.p12
+*.mobileprovision
+*.cer
+*.certSigningRequest
+
+# OS junk
+.DS_Store

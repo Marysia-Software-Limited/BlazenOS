@@ -6,7 +6,15 @@ No keyboard, no monitor. The user speaks; Jessica listens, thinks, answers, read
 
 The LLM runs on the Pi 5 CPU by default; an optional Raspberry Pi AI HAT+ (Hailo) accelerates it. The product is **bilingual EN + PL from M1** and Jessica responds to **"hey Jessica" / "Jess" / "hej Jessico"**. SSH is reserved for break-glass administration only.
 
-> **Mobile twin:** **[`rachel`](../rachel/)** — Native mobile apps (iOS + Android) built with **SwiftUI** and **Jetpack Compose**, sharing a **Rust core**. See [`docs/product/09-MOBILE-PLATFORM-DECISION.md`](docs/product/09-MOBILE-PLATFORM-DECISION.md) for details.
+> **Monorepo mobile twins:** native iOS ([`ios/`](ios/), SwiftUI) and
+> Android ([`android/`](android/), Jetpack Compose) live alongside the
+> Pi 5 appliance in this repo. They share the Rust mobile core
+> ([`crates/jessica-core`](crates/jessica-core/),
+> [`crates/jessica-ffi`](crates/jessica-ffi/)). The Flutter prototype at
+> [`../rachel/`](../rachel/) is a **reference implementation of the
+> cross-platform contract**, not the shipping product. See
+> [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md) and
+> [`docs/product/09-MOBILE-PLATFORM-DECISION.md`](docs/product/09-MOBILE-PLATFORM-DECISION.md).
 
 > **Status:** **M0 done, M1 partial.** Bilingual Python + Rust
 > skeleton runs end-to-end. **Linux** (Arch on `paul`) is the primary
@@ -108,6 +116,8 @@ blazen_os/
 │   ├── blazend-fabric/      #   CRDT sync log (lib + appliance binary)
 │   ├── jessica-core/        #   intent router + fabric re-export
 │   └── jessica-ffi/         #   C ABI + JNI over jessica-core (iOS/Android)
+├── android/                 # ── Native Android app (Kotlin + Jetpack Compose)
+├── ios/                     # ── Native iOS app (SwiftUI + JessicaCore Swift Package)
 └── rpi5/                    # ── Raspberry Pi 5 APPLIANCE PROJECT ──
     ├── Makefile             #   forwards to the root orchestrator
     ├── pyproject.toml       #   Python project metadata + tooling
@@ -148,6 +158,27 @@ make flash DEVICE=/dev/disk4    # writes the same image to SD card
 
 ---
 
+## Mobile twins (in this monorepo)
+
+| Tree                       | Purpose                                              |
+|----------------------------|------------------------------------------------------|
+| [`android/`](android/)     | Native Android app — Kotlin 2.0, Compose, AGP 8.7, minSdk 30, target 35. Two modules: `:app`, `:core`. |
+| [`ios/`](ios/)             | Native iOS app — Swift 6.0, SwiftUI strict concurrency, iOS 17.0+, XcodeGen-driven project. Two targets: `Jessica`, `JessicaCore` (Swift Package). |
+| [`crates/jessica-core`](crates/jessica-core/) | Shared business logic — intent router, sync log (CRDT), adapter contracts. Pure Rust, no platform deps. |
+| [`crates/jessica-ffi`](crates/jessica-ffi/) | C ABI (cbindgen → `jessica_ffi.h` → `JessicaFFI.xcframework`) + JNI (`libjessica_ffi.so`). |
+
+Mobile dev rig is **paul** (Linux) — see
+[`docs/15-DEV-WORKFLOW.md`](docs/15-DEV-WORKFLOW.md). iOS final build /
+signing / TestFlight still needs a Mac; Android builds end-to-end on
+paul.
+
+```bash
+cd android/ && make build         # ./gradlew assembleDebug
+cd ios/     && make test          # JessicaCoreTests via swift test
+```
+
+---
+
 ## Where to read next
 
 1. [`docs/01-ARCHITECTURE.md`](docs/01-ARCHITECTURE.md) — high-level diagram + processes.
@@ -156,8 +187,11 @@ make flash DEVICE=/dev/disk4    # writes the same image to SD card
 4. [`docs/12-ML-ACCELERATOR.md`](docs/12-ML-ACCELERATOR.md) — optional Hailo accelerator for LLM.
 5. [`docs/13-LANGUAGES.md`](docs/13-LANGUAGES.md) — EN + PL spoken contract.
 6. [`docs/14-RUST-PYTHON-SPLIT.md`](docs/14-RUST-PYTHON-SPLIT.md) — implementation language boundary.
-7. [`docs/10-ROADMAP.md`](docs/10-ROADMAP.md) — milestone plan M0..M10.
-8. [`docs/11-CLAUDE-PLAYBOOK.md`](docs/11-CLAUDE-PLAYBOOK.md) — how Claude works on this repo.
+7. [`docs/15-DEV-WORKFLOW.md`](docs/15-DEV-WORKFLOW.md) — paul (Linux) primary rig + monorepo workflow.
+8. [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md) — how Pi5, Android, and iOS share the Rust core in this repo.
+9. [`docs/product/09-MOBILE-PLATFORM-DECISION.md`](docs/product/09-MOBILE-PLATFORM-DECISION.md) — why native, why shared Rust core.
+10. [`docs/10-ROADMAP.md`](docs/10-ROADMAP.md) — milestone plan M0..M10.
+11. [`docs/11-CLAUDE-PLAYBOOK.md`](docs/11-CLAUDE-PLAYBOOK.md) — how Claude works on this repo.
 
 ---
 
