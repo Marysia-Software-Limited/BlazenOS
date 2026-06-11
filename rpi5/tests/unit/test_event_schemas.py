@@ -13,7 +13,9 @@ from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parents[2]
+# configs/ and scripts/ are shared and stay at the repo root (parents[3]),
+# above the rpi5/ appliance project that holds these tests.
+REPO = Path(__file__).resolve().parents[3]
 SCHEMAS = REPO / "configs" / "_schema" / "events"
 sys.path.insert(0, str(REPO / "scripts"))
 

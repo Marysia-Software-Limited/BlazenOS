@@ -7,7 +7,7 @@ This doc is the concrete migration plan from the Flutter scaffold
 > **Decision (2026-06-12):** Drop Flutter as the shipping mobile
 > stack. New shipping projects: `ios/` (Swift + SwiftUI),
 > `android/` (Kotlin + Compose). Shared business logic moves
-> into `crates/jessica-mobile-core` + `crates/jessica-ffi` in the
+> into `crates/jessica-core` + `crates/jessica-ffi` in the
 > blazen_os repo. `rachel/` remains as the **reference
 > implementation** of the contract — used to verify the Rust port
 > behaves identically on the Dart side.
@@ -17,7 +17,7 @@ This doc is the concrete migration plan from the Flutter scaffold
 >
 > - Step 1 — repo layout shipped at `/Users/beret/dev/ios/` and
 >   `/Users/beret/dev/android/`.
-> - Step 2 — `crates/jessica-mobile-core` + `crates/jessica-ffi`
+> - Step 2 — `crates/jessica-core` + `crates/jessica-ffi`
 >   exist; cargo workspace builds clean, 3 FFI tests + 6 router
 >   tests + 8 fabric tests green; cbindgen emits a clean
 >   `include/jessica_ffi.h`; `scripts/build-ios-xcframework.sh` and
@@ -42,7 +42,7 @@ This doc is the concrete migration plan from the Flutter scaffold
 │   └── crates/
 │       ├── blazend-ipc              # existing
 │       ├── blazend-fabric           # existing, reused by mobile
-│       ├── jessica-mobile-core      # NEW
+│       ├── jessica-core      # NEW
 │       └── jessica-ffi              # NEW
 │
 ├── rachel/                          # Flutter REFERENCE (read-only post-migration)
@@ -81,7 +81,7 @@ spec (same pattern as `rachel/`).
 
 ## 2. Shared Rust crates
 
-### `crates/jessica-mobile-core`
+### `crates/jessica-core`
 
 Pure Rust, no platform deps. Exposes a single `JessicaCore`
 opaque type with methods:
@@ -177,7 +177,7 @@ into the mobile repos.
 ## 4. Migration steps (this iteration)
 
 1. **Update shared decision doc** (this doc + `09-MOBILE-PLATFORM-DECISION.md`).
-2. **Create the Rust core crates** (`jessica-mobile-core`,
+2. **Create the Rust core crates** (`jessica-core`,
    `jessica-ffi`) in blazen_os. Port intent router + sync log from
    Dart. Tests round-trip.
 3. **Scaffold `jessica-ios`** (Xcode SwiftUI project, bundle ID
@@ -225,7 +225,7 @@ into the mobile repos.
 
 Przerzucamy się z Fluttera na pełen natyw — **Swift + SwiftUI na
 iOS, Kotlin + Compose na Androidzie**, ze **wspólnym rdzeniem
-w Rust** (`jessica-mobile-core` + `jessica-ffi` w workspace
+w Rust** (`jessica-core` + `jessica-ffi` w workspace
 blazen_os). Powód: Apple Foundation Models, App Intents, Live
 Activities, Personal Voice — wszystko Swift-only; podobnie Gemini
 Nano AICore tylko Kotlin. Flutter dodaje kwartały lag dla każdej

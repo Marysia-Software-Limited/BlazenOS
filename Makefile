@@ -65,26 +65,32 @@ $(VENV)/bin/python:
 	$(PIP) install --upgrade pip wheel
 
 .PHONY: venv python
-venv python: $(VENV)/bin/python ## Create the Python virtualenv and install deps
-	$(PIP) install -e ".[dev]"
+venv python: $(VENV)/bin/python ## Create the Python virtualenv and install the rpi5 appliance package
+	cd rpi5 && $(PIP) install -e ".[dev]"
 
 # -------- build --------
+# Two Cargo workspaces: crates/ (shared core: ipc, fabric, jessica-core,
+# jessica-ffi) and rpi5/crates/ (appliance units). The appliance depends on
+# the core one-directionally. See docs/14-RUST-PYTHON-SPLIT.md.
 
 .PHONY: build
 build: python rust ## Build both Python (venv) and Rust (host arch)
 
 .PHONY: rust
-rust: ## Build all Rust crates for the host (cargo build --release)
+rust: ## Build all Rust crates for the host (shared core + appliance)
 	cd crates && $(CARGO) build --release --workspace
+	cd rpi5/crates && $(CARGO) build --release --workspace
 
 .PHONY: rust-aarch64
 rust-aarch64: ## Cross-build Rust crates for Pi 5 (aarch64-unknown-linux-gnu)
 	@if [ -x "$(CROSS)" ] || command -v "$(CROSS)" >/dev/null 2>&1; then \
 	  echo "Using $(CROSS) for aarch64 cross-build"; \
-	  cd crates && "$(CROSS)" build --release --workspace --target $(RUST_TARGET); \
+	  cd "$(REPO_ROOT)/crates" && "$(CROSS)" build --release --workspace --target $(RUST_TARGET); \
+	  cd "$(REPO_ROOT)/rpi5/crates" && "$(CROSS)" build --release --workspace --target $(RUST_TARGET); \
 	else \
 	  echo "cross not found at $(CROSS); falling back to cargo (needs ALSA aarch64 sysroot)"; \
-	  cd crates && $(CARGO) build --release --workspace --target $(RUST_TARGET); \
+	  cd "$(REPO_ROOT)/crates" && $(CARGO) build --release --workspace --target $(RUST_TARGET); \
+	  cd "$(REPO_ROOT)/rpi5/crates" && $(CARGO) build --release --workspace --target $(RUST_TARGET); \
 	fi
 
 # -------- IPC events code-gen --------
@@ -92,7 +98,7 @@ rust-aarch64: ## Cross-build Rust crates for Pi 5 (aarch64-unknown-linux-gnu)
 .PHONY: gen-events
 gen-events: python ## Regenerate IPC event types (Python + Rust) from JSON Schemas
 	$(PY) scripts/gen-event-types.py --schemas configs/_schema/events \
-	  --python-out src/blazend/events/_generated.py \
+	  --python-out rpi5/src/blazend/events/_generated.py \
 	  --rust-out  crates/blazend-ipc/src/events/_generated.rs
 
 # -------- model wrangling --------
@@ -179,25 +185,26 @@ run-vm: ## Boot the qcow2 image in QEMU with virtual audio
 test: test-fast test-vm ## Full pyramid (Tier 0..3)
 
 .PHONY: test-fast
-test-fast: venv ## Tier 0 (unit) + Tier 1 (component, mocked) — Python AND Rust
-	$(PY) -m pytest tests/unit tests/component -x --tb=short
+test-fast: venv ## Tier 0 (unit) + Tier 1 (component, mocked) — Python AND Rust (core + appliance)
+	cd rpi5 && $(PY) -m pytest tests/unit tests/component -x --tb=short
 	cd crates && $(CARGO) test --workspace --quiet
+	cd rpi5/crates && $(CARGO) test --workspace --quiet
 
 .PHONY: test-vm
 test-vm: venv ## Tier 2 (pipeline in VM) + Tier 3 (scenarios)
-	$(PY) tests/tools/e2e-runner.py --all --image $(VM_IMAGE)
+	$(PY) rpi5/tests/tools/e2e-runner.py --all --image $(VM_IMAGE)
 
 .PHONY: test-scenario
 test-scenario: venv ## Run one scenario: make test-scenario S=01-wake-word
-	$(PY) tests/tools/e2e-runner.py --scenario tests/scenarios/$(SCENARIO).yaml --image $(VM_IMAGE)
+	$(PY) rpi5/tests/tools/e2e-runner.py --scenario rpi5/tests/scenarios/$(SCENARIO).yaml --image $(VM_IMAGE)
 
 .PHONY: test-soak
 test-soak: venv ## Tier 5: 24-hour scenario loop with telemetry
-	$(PY) tests/tools/e2e-runner.py --soak 24h --image $(VM_IMAGE)
+	$(PY) rpi5/tests/tools/e2e-runner.py --soak 24h --image $(VM_IMAGE)
 
 .PHONY: audio-fixtures
 audio-fixtures: venv ## Synthesise all WAV inputs from scenario YAMLs (via Piper)
-	$(PY) tests/tools/synth-audio.py --scenarios tests/scenarios --out tests/fixtures/audio
+	$(PY) rpi5/tests/tools/synth-audio.py --scenarios rpi5/tests/scenarios --out rpi5/tests/fixtures/audio
 
 # -------- safety / hygiene --------
 
@@ -207,10 +214,11 @@ audit: venv ## Lint configs, scan deps, dry-run firewall rules
 
 .PHONY: clean
 clean: ## Remove build artifacts (keeps models + fixtures)
-	rm -rf vm-images _test_projects build dist .pytest_cache .ruff_cache
+	rm -rf vm-images _test_projects build dist .pytest_cache .ruff_cache rpi5/.pytest_cache rpi5/.ruff_cache
 	cd crates && $(CARGO) clean || true
+	cd rpi5/crates && $(CARGO) clean || true
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +
 
 .PHONY: distclean
 distclean: clean ## Also remove models, audio fixtures, the venv, and Rust target
-	rm -rf models tests/fixtures/audio $(VENV) crates/target
+	rm -rf models rpi5/tests/fixtures/audio $(VENV) crates/target rpi5/crates/target

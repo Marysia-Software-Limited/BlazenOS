@@ -19,7 +19,7 @@ mic PCM ─▶ AEC/AGC ─▶ ring buffer ─▶ wake word ─▶ VAD ─▶ ASR
   written by Rust, read by Rust (`blazend-wake`) and Python
   (`blazend-asr`) via `memmap2` / `mmap`. Lock-free SPMC ring.
 - **AEC/AGC:** WebRTC's `apm` linked as a thin Rust FFI shim
-  (`crates/blazend-audio-in/build.rs` builds the C++ AEC into a static
+  (`rpi5/crates/blazend-audio-in/build.rs` builds the C++ AEC into a static
   library). Off by default in dev, on by default in release.
 
 ## Stage 2 — Wake word (`blazend-wake`, **Rust**)

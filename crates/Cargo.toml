@@ -1,17 +1,15 @@
-# Cargo workspace root for blazen_os Rust components.
+# Shared CORE Cargo workspace for blazen_os — common to iOS, Android, and the
+# Raspberry Pi 5 appliance. Appliance-only Rust units live in ../rpi5/crates
+# and depend on this core one-directionally. The mobile FFI (jessica-ffi)
+# builds from here, so its path stays stable for the ios/android sibling repos.
 # See docs/14-RUST-PYTHON-SPLIT.md.
 
 [workspace]
 resolver = "2"
 members = [
   "blazend-ipc",
-  "blazend-audio-in",
-  "blazend-audio-out",
-  "blazend-wake",
-  "blazend-tts",
-  "blazend-health",
   "blazend-fabric",
-  "jessica-mobile-core",
+  "jessica-core",
   "jessica-ffi",
 ]
 

@@ -1,4 +1,4 @@
-//! `jessica-mobile-core` — shared mobile business logic.
+//! `jessica-core` — shared business logic (iOS, Android, Rpi5).
 //!
 //! Pure Rust, no platform deps. Reused via FFI by `jessica-ios` (Swift
 //! Package) and `jessica-android` (AAR through JNI).

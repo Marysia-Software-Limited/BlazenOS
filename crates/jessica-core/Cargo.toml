@@ -1,5 +1,5 @@
 [package]
-name = "jessica-mobile-core"
+name = "jessica-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

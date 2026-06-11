@@ -89,7 +89,7 @@ ensure_pi_gen() {
 inject_stage() {
   log "Injecting stage-blazen/ into pi-gen"
   rm -rf "$BUILD_DIR/pi-gen/stage-blazen"
-  cp -R "$REPO_ROOT/stage-blazen" "$BUILD_DIR/pi-gen/stage-blazen"
+  cp -R "$REPO_ROOT/rpi5/stage-blazen" "$BUILD_DIR/pi-gen/stage-blazen"
   # Dev images enable the openssh-server unit at the pi-gen level too;
   # the chroot script makes 'blazen' a login user to match. Release
   # images keep SSH off (break-glass contract, docs/06-SSH-BOOTSTRAP.md).
@@ -158,19 +158,23 @@ stage_payload() {
          "$out"
   mkdir -p "$out/blazen-src" "$out/blazen-rust" "$out/blazen-configs/intents" \
            "$out/blazen-configs/vm"
-  cp -R "$REPO_ROOT/src/blazend"            "$out/blazen-src/"
+  cp -R "$REPO_ROOT/rpi5/src/blazend"       "$out/blazen-src/"
   cp -R "$REPO_ROOT/configs/"*.yaml         "$out/blazen-configs/"
   cp -R "$REPO_ROOT/configs/intents/"*.yaml "$out/blazen-configs/intents/"
   cp -R "$REPO_ROOT/configs/vm/"*.yaml      "$out/blazen-configs/vm/"
   # Rust binaries: prefer the cross-compiled aarch64 release artefacts.
-  local rust_src="$REPO_ROOT/crates/target/aarch64-unknown-linux-gnu/release"
-  if [ ! -d "$rust_src" ]; then
-    warn "Rust aarch64 artefacts not found at $rust_src; run 'make rust-aarch64' first"
+  # Appliance units build in the rpi5/ project workspace; the shared-core
+  # blazend-fabric builds in the top-level crates/ workspace.
+  local app_rust="$REPO_ROOT/rpi5/crates/target/aarch64-unknown-linux-gnu/release"
+  local core_rust="$REPO_ROOT/crates/target/aarch64-unknown-linux-gnu/release"
+  if [ ! -d "$app_rust" ]; then
+    warn "Appliance Rust aarch64 artefacts not found at $app_rust; run 'make rust-aarch64' first"
     return 1
   fi
-  for bin in blazend-audio-in blazend-audio-out blazend-wake blazend-tts blazend-health blazend-fabric; do
-    install -m 0755 "$rust_src/$bin" "$out/blazen-rust/$bin"
+  for bin in blazend-audio-in blazend-audio-out blazend-wake blazend-tts blazend-health; do
+    install -m 0755 "$app_rust/$bin" "$out/blazen-rust/$bin"
   done
+  install -m 0755 "$core_rust/blazend-fabric" "$out/blazen-rust/blazend-fabric"
 
   # Dev flavour: drop the marker + SSH key that 01-run-chroot.sh keys off.
   # These live only in the staging payload and are deleted by the chroot

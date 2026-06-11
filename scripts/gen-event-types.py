@@ -148,7 +148,7 @@ def roundtrip_envelope(topic: str, schema: dict) -> str | None:
     if errors:
         return f"{topic}: synthetic envelope fails schema validation: {errors[0].message}"
     # Round-trip via the Python type.
-    sys.path.insert(0, str(REPO / "src"))
+    sys.path.insert(0, str(REPO / "rpi5" / "src"))
     from blazend.events import Envelope
 
     parsed = Envelope.from_wire(env)

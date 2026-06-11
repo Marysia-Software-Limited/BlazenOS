@@ -208,13 +208,13 @@ A handful of footguns we have hit in prototypes:
 - **TTS prosody on technical terms** — Piper Polish voices stumble on
   loanwords (SSH, Wi-Fi, ASR). We pre-substitute "es-es-ha", "wi-fi",
   "a-es-er" in TTS preprocessing for known terms — see
-  `src/blazend/tts/pronunciation.py` (M4).
+  `rpi5/src/blazend/tts/pronunciation.py` (M4).
 
 ---
 
 ## 6. Testing both languages
 
-Test scenarios under `tests/scenarios/` are organised by language tag:
+Test scenarios under `rpi5/tests/scenarios/` are organised by language tag:
 
 | File                                | Language | Tier |
 |-------------------------------------|----------|------|
@@ -232,7 +232,7 @@ Each scenario YAML has a `language:` key in metadata; the runner uses it
 to pick the right Piper voice when synthesising user audio (we want the
 test mic to "sound" Polish for the PL scenarios, not Anglo-Polish).
 
-A Tier 0 invariant test (`tests/unit/test_bilingual_coverage.py`) asserts:
+A Tier 0 invariant test (`rpi5/tests/unit/test_bilingual_coverage.py`) asserts:
 
 1. Every fast-path intent has both `en:` and `pl:` triggers.
 2. Every TTS confirmation phrase exists in EN and PL.

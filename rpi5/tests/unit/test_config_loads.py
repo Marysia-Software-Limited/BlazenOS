@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-CFG_DIR = Path(__file__).resolve().parents[2] / "configs"
+CFG_DIR = Path(__file__).resolve().parents[3] / "configs"
 
 EXPECTED = {
     "system.yaml":      ["version", "hostname", "ssh", "firewall"],

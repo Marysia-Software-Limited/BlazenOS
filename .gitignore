@@ -10,8 +10,8 @@ dist/
 models/
 
 # Generated audio fixtures (regen via `make audio-fixtures`)
-tests/fixtures/audio/
-!tests/fixtures/audio/.gitkeep
+rpi5/tests/fixtures/audio/
+!rpi5/tests/fixtures/audio/.gitkeep
 
 # Scratch / test projects
 _test_projects/
@@ -34,7 +34,7 @@ Cargo.lock.bak
 
 # Generated code from IPC schemas (regenerate via `make gen-events`)
 crates/blazend-ipc/src/events/_generated.rs
-src/blazend/events/_generated.py
+rpi5/src/blazend/events/_generated.py
 
 # Editor / OS
 .idea/

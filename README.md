@@ -86,32 +86,39 @@ AI HAT+ (Tier 4 — patrz [`docs/08-TESTING.md`](docs/08-TESTING.md)).
 
 ## Repository layout
 
+Monorepo: the **shared core** (common to iOS, Android and the Pi 5
+appliance) lives at the top level; the **Raspberry Pi 5 appliance** is a
+self-contained project under `rpi5/`.
+
 ```
 blazen_os/
 ├── README.md                # this file
 ├── CLAUDE.md                # entrypoint for Claude Code
 ├── AGENTS.md                # cross-agent baseline (Codex, Junie, etc.)
-├── Makefile                 # canonical commands (gen-image, run-vm, test, ...)
-├── .env.example             # required env vars for build + test
-├── pyproject.toml           # Python project metadata + tooling
+├── Makefile                 # root: cross-host git sync + build/test orchestration
 ├── rust-toolchain.toml      # pins Rust channel for reproducibility
-├── docs/                    # design documents (read top-to-bottom)
-├── configs/                 # YAML configs for each runtime component
-│   ├── vm/                  # QEMU/VM-specific configs
-│   └── _schema/events/      # JSON Schemas for IPC events (cross-language contract)
-├── scripts/                 # shell + Python scripts: flash, bootstrap, run-vm, ...
-├── src/                     # Python sources (orchestrator, asr, brain, config, ...)
-│   └── blazend/
-├── crates/                  # Rust workspace (audio-in/out, wake, tts, health, ipc lib)
-├── stage-blazen/            # pi-gen overlay (installs everything into the image)
-└── tests/                   # scenarios, harness, audio fixtures
-    ├── scenarios/           # YAML voice scenarios
-    ├── unit/                # Tier 0 (pytest + cargo test)
-    ├── component/           # Tier 1
-    ├── pipeline/            # Tier 2 (QEMU)
-    ├── fixtures/audio/      # generated WAV inputs (gitignored)
-    └── tools/               # voice-sim, e2e-runner
+├── docs/                    # design docs (incl. docs/product/ — shared spec)
+├── configs/                 # SHARED contract + appliance config (YAML)
+│   ├── intents/system.yaml  #   shared intent vocabulary (mobile reads it too)
+│   ├── vm/                  #   QEMU/VM-specific configs
+│   └── _schema/events/      #   JSON Schemas for IPC events (cross-language contract)
+├── scripts/                 # shared tooling: flash, bootstrap, run-vm, mobile FFI build
+├── crates/                  # SHARED CORE Cargo workspace (all 3 platforms)
+│   ├── blazend-ipc/         #   IPC wire / event envelope (lib)
+│   ├── blazend-fabric/      #   CRDT sync log (lib + appliance binary)
+│   ├── jessica-core/        #   intent router + fabric re-export
+│   └── jessica-ffi/         #   C ABI + JNI over jessica-core (iOS/Android)
+└── rpi5/                    # ── Raspberry Pi 5 APPLIANCE PROJECT ──
+    ├── Makefile             #   forwards to the root orchestrator
+    ├── pyproject.toml       #   Python project metadata + tooling
+    ├── src/blazend/         #   Python: orchestrator, asr, brain, config, ...
+    ├── crates/              #   appliance Cargo workspace (audio-in/out, wake, tts, health)
+    ├── stage-blazen/        #   pi-gen overlay (installs everything into the image)
+    └── tests/               #   scenarios, harness, audio fixtures (Tier 0-3)
 ```
+
+The `ios`/`android` sibling repos consume `crates/` (Rust core via
+`jessica-ffi`) and `configs/` (shared contract); they never touch `rpi5/`.
 
 ---
 

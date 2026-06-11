@@ -67,7 +67,7 @@ def _voice_for(scenario: dict, turn: dict, cli_voice: Path | None) -> str:
 
 
 def _resolve_voice_path(voice_name: str) -> Path:
-    return Path(__file__).resolve().parents[2] / "models" / "tts" / voice_name / f"{voice_name}.onnx"
+    return Path(__file__).resolve().parents[3] / "models" / "tts" / voice_name / f"{voice_name}.onnx"
 
 
 def walk(scenarios_dir: Path, out_root: Path, cli_voice: Path | None, force: bool) -> None:

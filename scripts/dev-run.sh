@@ -19,11 +19,16 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV="$REPO_ROOT/.venv"
 PY="$VENV/bin/python"
-CARGO_TARGET="$REPO_ROOT/crates/target/debug"
+# Appliance Rust units live in the rpi5/ project workspace; the shared core
+# (blazend-fabric etc.) builds under crates/. dev-run launches appliance units.
+CARGO_TARGET="$REPO_ROOT/rpi5/crates/target/debug"
 RUN_DIR="$REPO_ROOT/vm-runs/dev-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$RUN_DIR"
 
+# configs/ stays at the repo root (shared contract); the appliance Python
+# package lives under rpi5/src.
 export BLAZEN_CONFIG_ROOT="$REPO_ROOT/configs"
+export PYTHONPATH="$REPO_ROOT/rpi5/src${PYTHONPATH:+:$PYTHONPATH}"
 export BLAZEN_RUNTIME_DIR="${BLAZEN_RUNTIME_DIR:-/tmp/blazen-$UID}"
 mkdir -p "$BLAZEN_RUNTIME_DIR"
 
@@ -42,8 +47,8 @@ launch_rust() {
   shift
   local binary="$CARGO_TARGET/$unit"
   if [ ! -x "$binary" ]; then
-    log "missing $binary; building Rust workspace"
-    (cd "$REPO_ROOT/crates" && cargo build --workspace --quiet)
+    log "missing $binary; building appliance Rust workspace"
+    (cd "$REPO_ROOT/rpi5/crates" && cargo build --workspace --quiet)
   fi
   local logf="$RUN_DIR/$unit.log"
   log "starting $unit -> $logf"

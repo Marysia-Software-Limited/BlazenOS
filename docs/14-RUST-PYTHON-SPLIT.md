@@ -87,32 +87,44 @@ silently mishandles. The schema rejects it.
 
 ## 4. Repository layout
 
+The monorepo is split into a **shared core** (top level, common to iOS,
+Android and the Rpi5 appliance) and the **Rpi5 appliance project**
+(`rpi5/`, the device-only code). The ios/android sibling repos consume the
+shared core; nothing under `rpi5/` is built into the mobile apps.
+
 ```
 blazen_os/
-├── src/                         # Python sources
-│   └── blazend/
-│       ├── orchestrator/
-│       ├── asr/
-│       ├── brain/
-│       ├── bootstrap/
-│       ├── config/              # shared loader
-│       ├── events/              # generated + hand-written event helpers
-│       └── ipc/                 # Python client for the IPC contract
-├── crates/                      # Rust workspace
-│   ├── Cargo.toml               # workspace root
-│   ├── blazend-ipc/             # shared library
-│   ├── blazend-audio-in/        # binary
-│   ├── blazend-audio-out/       # binary
-│   ├── blazend-wake/            # binary
-│   ├── blazend-tts/             # binary
-│   └── blazend-health/          # binary
-├── configs/_schema/events/      # authoritative JSON Schemas
-├── stage-blazen/                # pi-gen overlay (installs both)
+├── crates/                      # SHARED CORE Cargo workspace (all 3 platforms)
+│   ├── Cargo.toml
+│   ├── blazend-ipc/             # IPC wire / event envelope (lib)
+│   ├── blazend-fabric/          # CRDT sync log (lib + appliance binary)
+│   ├── jessica-core/            # intent router + fabric re-export (was jessica-mobile-core)
+│   └── jessica-ffi/             # C ABI + JNI over jessica-core (iOS/Android)
+├── configs/                     # shared contract + appliance config
+│   ├── _schema/events/          #   authoritative JSON Schemas (shared)
+│   ├── intents/system.yaml      #   shared intent vocabulary (mobile reads it)
+│   └── *.yaml                   #   appliance ML/runtime config
+├── docs/                        # incl. docs/product/ (shared spec)
+├── scripts/                     # shared tooling (incl. mobile FFI build scripts)
+├── rpi5/                        # ── Raspberry Pi 5 APPLIANCE PROJECT ──
+│   ├── Makefile                 #   forwards to the root orchestrator
+│   ├── pyproject.toml
+│   ├── src/blazend/             #   Python: orchestrator, asr, brain, config, events, ipc
+│   ├── crates/                  #   appliance Cargo workspace (audio-in/out, wake, tts, health)
+│   │   └── Cargo.toml           #   path-depends on ../../crates (one-directional)
+│   ├── stage-blazen/            #   pi-gen overlay
+│   └── tests/                   #   unit + component + scenarios + fixtures
+├── Makefile                     # root: cross-host sync + build/test orchestration
 └── ...
 ```
 
-The Python and Rust trees are **siblings**, not nested. Each has its own
-build system; the top-level `Makefile` orchestrates both.
+Two Cargo workspaces — `crates/` (core) and `rpi5/crates/` (appliance) —
+plus the Python tree under `rpi5/src/`. The appliance depends on the core
+**one-directionally** (`blazend-ipc` etc. by path); the core never depends
+back. The shared `configs/` and `crates/` stay at the repo root so the
+ios/android sibling repos reference them at a stable path. The root
+`Makefile` orchestrates both workspaces and the venv; `rpi5/Makefile`
+forwards the appliance targets up.
 
 ---
 

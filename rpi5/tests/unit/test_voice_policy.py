@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-CFG = Path(__file__).resolve().parents[2] / "configs" / "voice-policy.yaml"
+CFG = Path(__file__).resolve().parents[3] / "configs" / "voice-policy.yaml"
 
 VALID_CONFIRM = {"never", "single", "loud", "double_loud", "timed_window"}
 

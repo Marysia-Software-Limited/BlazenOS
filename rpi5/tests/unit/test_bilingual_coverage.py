@@ -17,9 +17,12 @@ from pathlib import Path
 
 import yaml
 
-REPO = Path(__file__).resolve().parents[2]
-CFG = REPO / "configs"
-SCN = REPO / "tests" / "scenarios"
+# Appliance tests live under rpi5/tests; the shared config contract (consumed
+# by the appliance AND the ios/android sibling repos) stays at the repo root.
+APP_ROOT = Path(__file__).resolve().parents[2]      # rpi5/
+REPO_ROOT = Path(__file__).resolve().parents[3]     # repo root
+CFG = REPO_ROOT / "configs"
+SCN = APP_ROOT / "tests" / "scenarios"
 
 
 def _load(p: Path):

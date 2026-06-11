@@ -12,7 +12,7 @@ from blazend.config import ConfigLoader, load
 
 @pytest.fixture
 def repo_configs(monkeypatch: pytest.MonkeyPatch) -> Path:
-    root = Path(__file__).resolve().parents[2] / "configs"
+    root = Path(__file__).resolve().parents[3] / "configs"
     monkeypatch.setenv("BLAZEN_CONFIG_ROOT", str(root))
     return root
 

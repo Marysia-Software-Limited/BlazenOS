@@ -1,0 +1,64 @@
+# Cargo workspace for the blazen_os Raspberry Pi 5 appliance Rust units.
+# The appliance (hot loops: audio I/O, wake word, TTS, health/watchdog)
+# depends one-directionally on the SHARED CORE workspace at ../../crates
+# (blazend-ipc for the IPC wire). The shared core never depends back.
+# See docs/14-RUST-PYTHON-SPLIT.md and docs/01-ARCHITECTURE.md.
+
+[workspace]
+resolver = "2"
+members = [
+  "blazend-audio-in",
+  "blazend-audio-out",
+  "blazend-wake",
+  "blazend-tts",
+  "blazend-health",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.78"
+license = "Apache-2.0"
+repository = "https://github.com/beret/blazen_os"
+
+[workspace.dependencies]
+# Shared deps — versions pinned at the workspace level for consistency.
+tokio        = { version = "1.40", features = ["rt", "macros", "net", "signal", "sync", "time", "io-util", "fs", "process"] }
+serde        = { version = "1.0",  features = ["derive"] }
+serde_json   = "1.0"
+anyhow       = "1.0"
+thiserror    = "1.0"
+tracing      = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap         = { version = "4.5", features = ["derive"] }
+crossbeam-channel = "0.5"
+
+# Audio.
+cpal         = "0.15"
+rodio        = "0.19"
+
+# ML / ONNX (wake + VAD). Added in M2 once the loader stabilises.
+# ort = { version = "...", default-features = false, features = ["load-dynamic"] }
+
+# Shared core (lives in the top-level crates/ workspace; consumed here by path).
+# Single source of truth for all three platforms (iOS, Android, Rpi5):
+#  - blazend-ipc   : IPC wire / event envelope
+#  - blazend-fabric: CRDT sync log — already runs as the blazend-fabric.service
+#                    appliance unit, and is re-exported via jessica-core for mobile
+#  - jessica-core  : intent router + fabric re-export. Mobile consumes it via
+#                    jessica-ffi; the appliance's future NLU unit consumes it
+#                    directly here — NO duplicated Python/Rust router.
+blazend-ipc     = { path = "../../crates/blazend-ipc" }
+blazend-fabric  = { path = "../../crates/blazend-fabric" }
+jessica-core    = { path = "../../crates/jessica-core" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+[profile.dev]
+opt-level = 1
+debug = true

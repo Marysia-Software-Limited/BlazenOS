@@ -1,4 +1,4 @@
-//! C ABI + JNI bridge over [`jessica_mobile_core`].
+//! C ABI + JNI bridge over [`jessica_core`].
 //!
 //! Two surfaces, one body:
 //!
@@ -27,7 +27,7 @@ use std::ffi::{c_char, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Mutex;
 
-use jessica_mobile_core::{IntentRouter, SyncLog, SyncMergeOutcome};
+use jessica_core::{IntentRouter, SyncLog, SyncMergeOutcome};
 
 #[cfg(target_os = "android")]
 pub mod jni_bridge;
@@ -226,7 +226,7 @@ pub unsafe extern "C" fn jessica_ffi_match_intent(
 /// `JESSICA_ERR_*` value on bad input.
 ///
 /// `fact_json_ptr` must point at a buffer containing a valid
-/// [`Fact`](jessica_mobile_core::Fact) serialised as JSON.
+/// [`Fact`](jessica_core::Fact) serialised as JSON.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn jessica_ffi_merge_fact(
     handle: *mut JessicaHandle,
@@ -235,7 +235,7 @@ pub unsafe extern "C" fn jessica_ffi_merge_fact(
 ) -> i32 {
     flatten_status(with_handle(handle, |state| {
         let bytes = unsafe { read_slice(fact_json_ptr, fact_json_len)? };
-        let fact: jessica_mobile_core::Fact =
+        let fact: jessica_core::Fact =
             serde_json::from_slice(bytes).map_err(|_| JESSICA_ERR_BAD_INPUT)?;
         Ok(JessicaMergeOutcome::from(state.log.merge(fact)) as i32)
     }))

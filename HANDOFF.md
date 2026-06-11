@@ -4,6 +4,49 @@ Created **2026-06-11** during the macOS → paul session transition.
 
 ---
 
+## Session log — 2026-06-11 (paul) — monorepo restructure: rpi5/ project + shared core
+
+paul Claude split the repo into a **shared core** (top level, common to
+iOS, Android, Rpi5) and a self-contained **Raspberry Pi 5 appliance
+project** under `rpi5/`, and renamed the shared crate. `make test-fast`
+green (63 passed + 1 env-skip Python, 27 Rust; both Cargo workspaces).
+
+**New layout** (full tree: `docs/14-RUST-PYTHON-SPLIT.md` §4):
+
+- **Top level = shared core** (consumed by all 3 platforms):
+  - `crates/` — Cargo workspace: `blazend-ipc`, `blazend-fabric`,
+    **`jessica-core`** (⚠️ renamed from `jessica-mobile-core`), `jessica-ffi`.
+  - `configs/`, `docs/`, `scripts/` — unchanged locations.
+- **`rpi5/` = appliance project** (device-only): `rpi5/src/blazend`
+  (Python), `rpi5/crates/*` (appliance Cargo workspace: audio-in/out,
+  wake, tts, health — path-depend on `../../crates`), `rpi5/stage-blazen`,
+  `rpi5/tests`, `rpi5/pyproject.toml`, `rpi5/Makefile` (forwards to root).
+
+**⚠️ Mobile (ios/android/rachel) impact — rachel Claude read this:**
+
+- **Nothing mobile-facing moved.** `crates/jessica-ffi` and `configs/`
+  keep their paths, so the `ios`/`android` build scripts
+  (`scripts/build-{ios,android}*.sh`) and shared-contract asset paths
+  (`configs/intents/system.yaml`, `configs/_schema/events`) are **stable**.
+  Mobile builds should be unaffected.
+- **One rename to mirror:** the Rust crate `jessica-mobile-core` →
+  `jessica-core`. The C-ABI/JNI symbols (`jessica_ffi_*`,
+  `JessicaCoreNative`) are **unchanged** — only the internal crate name.
+  If any ios/android/rachel doc or comment names `jessica-mobile-core`,
+  update it to `jessica-core`. No code change needed on the mobile side.
+- **Rust core is now explicitly common to all 3.** `jessica-core` +
+  `blazend-fabric` are declared available to the appliance workspace
+  (`rpi5/crates/Cargo.toml`). There is **no Python intent router** — the
+  appliance had none; routing stays single-source in `jessica-core`. The
+  appliance's future NLU unit will consume it directly (no duplicate).
+- **Action for rachel Claude:** `make sync-pull`, then re-run your
+  ios/android builds to confirm green (expected: yes), and grep your
+  repos for `jessica-mobile-core` → rename to `jessica-core` in docs.
+
+**Still open (unchanged):** M1 QEMU boot blocker (see earlier paul log).
+
+---
+
 ## Session log — 2026-06-11 (paul) — git sync + hardware-version doc parity
 
 paul Claude moved the cross-host sync from **rsync → git/GitHub** and
@@ -98,7 +141,7 @@ Pending follow-ups for these projects (intentional — not blockers):
 - `src/jni_bridge.rs` (gated on `target_os = "android"`) wraps the
   same internals for `os.blazen.jessica.core.JessicaCoreNative.*`.
 - 3 unit tests in the crate, `cargo test --workspace` green
-  (27 tests across blazend-ipc/fabric, jessica-mobile-core, jessica-ffi).
+  (27 tests across blazend-ipc/fabric, jessica-core, jessica-ffi).
 - Build scripts: `scripts/build-ios-xcframework.sh` (cargo build
   for aarch64-apple-ios + aarch64-apple-ios-sim + optional x86_64
   simulator slice, lipo, xcodebuild -create-xcframework, rsync into
@@ -198,7 +241,7 @@ With the corrected cmdline the kernel (6.18.33-rpi-v8) boots →
   boot blocker is raspi4b/userland, independent of the dev/release flavour.
 - Seen on paul: macOS pushed `docs/product/15-NATIVE-MIGRATION.md` (drop
   Flutter → native `jessica-ios`/`jessica-android` + Rust
-  `crates/jessica-mobile-core`+`jessica-ffi` in this repo). Propagated to
+  `crates/jessica-core`+`jessica-ffi` in this repo). Propagated to
   rachel; not acted on by paul yet — those crates are future work.
 
 ### Cross-repo (for macOS / rachel Claude)
@@ -352,7 +395,7 @@ checkout, it should:
 Following user direction, the mobile stack moved from Flutter to
 **fully native** (Swift + SwiftUI on iOS, Kotlin + Compose on
 Android), with **shared Rust business core** in
-`crates/jessica-mobile-core/` exposed via FFI. Reason: iOS 26+/27
+`crates/jessica-core/` exposed via FFI. Reason: iOS 26+/27
 features (Foundation Models, App Intents, Live Activities, Personal
 Voice, BackgroundAssets) are Swift-only; Flutter wraps add quarters
 of lag.
@@ -365,7 +408,7 @@ New project layout:
   `REFERENCE-ONLY.md`)
 
 Shared logic in this repo:
-- ✓ `crates/jessica-mobile-core/` — pure Rust, intent router +
+- ✓ `crates/jessica-core/` — pure Rust, intent router +
   re-export of `blazend-fabric` types. **6/6 tests green.**
 - ⧗ `crates/jessica-ffi/` — cbindgen + jni-rs (next).
 
@@ -376,7 +419,7 @@ and the revised
 
 ### Native roadmap
 
-1. ✓ `jessica-mobile-core` Rust crate (intent router ported from Dart,
+1. ✓ `jessica-core` Rust crate (intent router ported from Dart,
    sync log re-exported from `blazend-fabric`). 6/6 tests green.
 2. ⧗ `jessica-ffi` Rust crate (cbindgen → Swift Package, jni-rs → AAR).
 3. ⧗ `jessica-ios` SwiftUI shell + Foundation Models hello-world.
@@ -398,7 +441,7 @@ and the revised
 
 ### What paul Claude needs to know
 
-- `crates/jessica-mobile-core/` lives in this workspace now. It
+- `crates/jessica-core/` lives in this workspace now. It
   compiles + tests as part of `cargo test --workspace`. If you
   rebuild the Pi image, this crate ships nowhere new — it's mobile-
   only. But it's wired into the workspace so paul's `make test-fast`

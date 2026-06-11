@@ -129,7 +129,7 @@ pub extern "system" fn Java_os_blazen_jessica_core_JessicaCoreNative_nativeInten
     handle: jlong,
 ) -> jlong {
     with_handle(handle as *mut JessicaHandle, |state| {
-        Ok(state.router.as_ref().map_or(0, jessica_mobile_core::IntentRouter::len) as i64)
+        Ok(state.router.as_ref().map_or(0, jessica_core::IntentRouter::len) as i64)
     })
     .unwrap_or(-1)
 }

@@ -53,10 +53,10 @@ tool-specific operational notes; when they disagree with this file, the
   them in code or configs is a bug.
 - **Configs** are YAML under `configs/`. Runtime reads `/etc/blazen/`
   on the device; the build pipeline copies `configs/*` there.
-- **Tests** are scenario-driven (`tests/scenarios/*.yaml`). Adding an
+- **Tests** are scenario-driven (`rpi5/tests/scenarios/*.yaml`). Adding an
   intent means adding a scenario.
 - **Generated test artifacts** go under `_test_projects/` or
-  `tests/fixtures/` — gitignored. Never scatter scratch dirs.
+  `rpi5/tests/fixtures/` — gitignored. Never scatter scratch dirs.
 - **Models** are downloaded by `make models`, written to `./models/`,
   gitignored, and checksummed in `configs/llm.yaml` / `configs/asr.yaml` /
   `configs/tts.yaml`.
@@ -75,7 +75,7 @@ tool-specific operational notes; when they disagree with this file, the
    - `README.md`, `AGENTS.md`, `CLAUDE.md`
    - `docs/*.md` for anything that changed behaviour
    - `configs/*.yaml` defaults if the contract changed
-   - `tests/scenarios/*.yaml` if expected behaviour shifted
+   - `rpi5/tests/scenarios/*.yaml` if expected behaviour shifted
 
 ---
 
@@ -118,5 +118,5 @@ tool-specific operational notes; when they disagree with this file, the
 - [ ] Docs reflect new behaviour (in the same commit).
 - [ ] No model weights, audio fixtures, or VM images staged.
 - [ ] Cross-agent rule files agree.
-- [ ] New voice intents have scenarios under `tests/scenarios/`.
+- [ ] New voice intents have scenarios under `rpi5/tests/scenarios/`.
 - [ ] Latency budget unchanged or explicitly renegotiated.

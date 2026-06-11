@@ -25,8 +25,9 @@ from typing import Any
 
 import yaml
 
-REPO = Path(__file__).resolve().parents[2]
-SCENARIOS_DIR = REPO / "tests" / "scenarios"
+APP_ROOT = Path(__file__).resolve().parents[2]   # rpi5/ (appliance project)
+REPO = Path(__file__).resolve().parents[3]        # repo root (shared artefacts)
+SCENARIOS_DIR = APP_ROOT / "tests" / "scenarios"
 RUNS_DIR = REPO / "vm-runs"
 
 
@@ -143,7 +144,7 @@ def evaluate_expect(expect: Any, vm: VMHandle, transcript: str) -> list[str]:
 
 def run_scenario(path: Path, vm: VMHandle) -> ScenarioResult:
     scenario = yaml.safe_load(path.read_text())
-    fixtures_dir = REPO / "tests" / "fixtures" / "audio" / scenario["id"]
+    fixtures_dir = APP_ROOT / "tests" / "fixtures" / "audio" / scenario["id"]
     fixtures_dir.mkdir(parents=True, exist_ok=True)
     synth_user_turns(scenario, fixtures_dir)
 

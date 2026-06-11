@@ -19,7 +19,7 @@ embedded distro. The test pyramid is therefore deeper than usual.
 
 ## Tier 0 — Unit
 
-- **Python:** `pytest tests/unit` — config schema validation, intent
+- **Python:** `pytest rpi5/tests/unit` — config schema validation, intent
   parsing, voice-policy evaluation, scenario YAML parser, latency
   budget checker, IPC client.
 - **Rust:** `cargo test --workspace` — per-crate unit tests for IPC
@@ -48,7 +48,7 @@ component test does not need a Rust runtime and vice versa.
   through a stub server, assert state transitions written to
   `/run/blazen/state.json`.
 
-Python tests live under `tests/component/<unit>/`. Rust tests live in
+Python tests live under `rpi5/tests/component/<unit>/`. Rust tests live in
 each crate's `tests/` directory (`crates/<crate>/tests/*.rs`).
 
 ## Tier 2 — Pipeline integration
@@ -63,7 +63,7 @@ each crate's `tests/` directory (`crates/<crate>/tests/*.rs`).
 ## Tier 3 — Voice scenarios
 
 A **scenario** is a YAML file that describes a conversation. The runner
-(`tests/tools/e2e-runner.py`):
+(`rpi5/tests/tools/e2e-runner.py`):
 
 1. Reads the scenario.
 2. Boots the QEMU image (or reuses a hot snapshot).
@@ -180,7 +180,7 @@ For EN + PL parity (see [`13-LANGUAGES.md`](13-LANGUAGES.md)):
   separate scenarios or as a parametrised one.
 - Latency budgets for PL scenarios are 10–15% looser than EN to account
   for slightly higher ASR time and TTS voice prosody.
-- `tests/unit/test_bilingual_coverage.py` is the gate that fails CI
+- `rpi5/tests/unit/test_bilingual_coverage.py` is the gate that fails CI
   when an intent ships EN-only triggers, or when there are <3 PL
   scenarios, or when the language-switch scenario is missing.
 

@@ -21,13 +21,13 @@ image builder, with our own "stage" appended:
 ```
 pi-gen/
   stage0..stage2     # upstream — minimal Lite system
-  stage-blazen/      # ours: installs blazend-* + models + configs + systemd units
+  rpi5/stage-blazen/      # ours: installs blazend-* + models + configs + systemd units
 ```
 
 Build is driven by `scripts/build-image.sh`, which:
 
 1. Clones a pinned `pi-gen` revision into `build/pi-gen-src/`.
-2. Drops our `stage-blazen/` next to it.
+2. Drops our `rpi5/stage-blazen/` next to it.
 3. Sets `IMG_NAME=$BLAZEN_IMAGE_NAME` and runs `pi-gen` in Docker.
 4. Outputs `vm-images/<name>-<version>.{img,qcow2}` depending on format.
 

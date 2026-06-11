@@ -27,6 +27,14 @@ Whenever the user says "rules changed" or you modify a doc, refresh these.
   service-recovery back door. See [`docs/02-HARDWARE.md`](docs/02-HARDWARE.md).
 - **Phase:** **M0 scaffolding** — the repo currently contains design docs,
   configs, scripts, test harness skeletons. No bootable image yet.
+- **Monorepo layout (2026-06-11):** the repo root holds the **shared core**
+  common to all three platforms — `crates/` (Rust: `blazend-ipc`,
+  `blazend-fabric`, `jessica-core`, `jessica-ffi`), `configs/` (shared
+  contract + appliance config), `docs/`, `scripts/`. The **Raspberry Pi 5
+  appliance** is a self-contained project under **`rpi5/`** (Python
+  `rpi5/src/blazend`, appliance crates `rpi5/crates/*`, `rpi5/stage-blazen`,
+  `rpi5/tests`). The `ios`/`android` sibling repos consume `crates/` +
+  `configs/`. Full tree in [`docs/14-RUST-PYTHON-SPLIT.md`](docs/14-RUST-PYTHON-SPLIT.md) §4.
 - **Five things that must always be true:**
   1. The system is usable with **zero peripherals beyond a USB mic + speaker**.
      If a change forces a keyboard/monitor for daily use, reject it.
@@ -53,7 +61,7 @@ Whenever the user says "rules changed" or you modify a doc, refresh these.
 ## 3. Mandatory Test Artifact Location
 
 Any generated test projects, audio fixtures, or scratch builds go under
-`tests/fixtures/` or `_test_projects/` (gitignored). **Never** scatter test
+`rpi5/tests/fixtures/` or `_test_projects/` (gitignored). **Never** scatter test
 artifacts across the repo.
 
 ## 4. Default Maintenance Workflow ("let do maintenance")
@@ -70,7 +78,7 @@ artifacts across the repo.
    - `README.md`, `AGENTS.md`, this file
    - `docs/*.md` for any behaviour change
    - `configs/*.yaml` defaults if the contract changed
-   - `tests/scenarios/*.yaml` if expected behaviour shifted
+   - `rpi5/tests/scenarios/*.yaml` if expected behaviour shifted
 
 For long-running maintenance, use `make test-soak` (24-hour run inside the
 VM). Surface only the failures.
@@ -87,7 +95,7 @@ VM). Surface only the failures.
    design work. Spawn `general-purpose` agents for parallel independent
    investigations (e.g., simultaneously evaluating two LLM choices).
 5. **Confirm before risky actions:** flashing real SD cards, pushing branches,
-   force-push, `git reset --hard`, deleting `tests/fixtures/audio/` (large
+   force-push, `git reset --hard`, deleting `rpi5/tests/fixtures/audio/` (large
    regen cost), modifying `configs/system.yaml` defaults.
 6. **Dev rig split.** Linux (`paul`) is the **primary rig for blazen_os**
    from now on; macOS is for `rachel` (the mobile twin) development.
@@ -118,7 +126,7 @@ VM). Surface only the failures.
 4. Never weaken a failing test. Investigate root causes.
 5. Never commit:
    - `models/` (large ML weights — git-lfs only if explicitly enabled)
-   - `tests/fixtures/audio/*.wav` (regen via `make audio-fixtures`)
+   - `rpi5/tests/fixtures/audio/*.wav` (regen via `make audio-fixtures`)
    - `_test_projects/`, `.venv/`, `vm-images/*.qcow2`
    - `target/` (Cargo build output)
 6. Update `AGENTS.md` and this file together when cross-agent rules change.
@@ -155,7 +163,7 @@ the feature is incomplete.
 - [ ] Cross-agent rules (`AGENTS.md`, this file) agree.
 - [ ] Any new YAML config has a default in `configs/` AND a doc entry in
       `docs/07-CONFIGURATION.md`.
-- [ ] Any new voice intent has a scenario file in `tests/scenarios/`.
+- [ ] Any new voice intent has a scenario file in `rpi5/tests/scenarios/`.
 - [ ] **EN + PL parity:** every new intent has both `en:` and `pl:`
       triggers; every new assistant phrase exists in both languages;
       every new scenario has a PL counterpart (or a documented reason

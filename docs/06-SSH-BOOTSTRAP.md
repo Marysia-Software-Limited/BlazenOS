@@ -135,7 +135,7 @@ cheaper failure mode and we keep it small and audited.
 The break-glass model above is the **release** contract. During bring-up
 (M1–M7) there is no working voice path yet, so the image we boot in QEMU
 and flash for hardware bring-up needs a standing login. We express this
-as two image **flavours** produced from the same `stage-blazen/` overlay:
+as two image **flavours** produced from the same `rpi5/stage-blazen/` overlay:
 
 | Flavour | Built by | `blazen` account | SSH at boot | Use |
 |---------|----------|------------------|-------------|-----|
@@ -147,7 +147,7 @@ The flavour is selected by `scripts/build-image.sh --dev` (or
 
 - sets `ENABLE_SSH=1` in the pi-gen config;
 - drops a `DEV_IMAGE` marker + the dev public key into the staging
-  payload, which `stage-blazen/00-install/01-run-chroot.sh` keys off to
+  payload, which `rpi5/stage-blazen/00-install/01-run-chroot.sh` keys off to
   create the login `blazen` user, install
   `~blazen/.ssh/authorized_keys`, set the serial-console fallback
   password `blazen:blazen`, and `systemctl enable ssh`;

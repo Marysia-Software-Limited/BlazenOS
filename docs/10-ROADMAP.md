@@ -34,7 +34,7 @@ starts.
 
 ## M1 — Bootable image (VM only) **(image built ✓ — awaiting QEMU boot test)**
 
-- ✓ `stage-blazen/` overlay for pi-gen exists (9 systemd unit files,
+- ✓ `rpi5/stage-blazen/` overlay for pi-gen exists (9 systemd unit files,
   `00-packages`, `00-debconf`, `00-run-chroot.sh`,
   `files/etc/systemd/system/blazend.target` + 8 services).
 - ✓ `scripts/build-image.sh` wires the Python sources + cross-compiled
@@ -52,7 +52,7 @@ starts.
   Master had Bookworm signature trust failures in the build container;
   Trixie tag works cleanly.
 - ✓ Cross-language Tier 1+ integration test
-  (`tests/component/test_cross_language_stack.py`) — spawns real Rust
+  (`rpi5/tests/component/test_cross_language_stack.py`) — spawns real Rust
   binaries + Python orchestrator and asserts state flows through.
 - ✓ Full `make vm-image` end-to-end SUCCEEDED on build #14 (paul,
   2026-06-11). Output: `vm-images/blazen_os-0.0.1-dev.qcow2` (2.3 GB).
