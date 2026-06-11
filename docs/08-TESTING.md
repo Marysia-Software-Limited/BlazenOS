@@ -85,7 +85,7 @@ description: User asks to set volume to 70 percent.
 preconditions:
   audio.volume: 50
 turns:
-  - user: "hey blazen"
+  - user: "hey Jessica"
     expect: wake_acknowledged
   - user: "set the volume to seventy percent"
     expect:

@@ -1,19 +1,12 @@
-# blazen_os — Jessica on a Raspberry Pi 5
+# blazen_os — Personal assistant for the blind
 
-**Voice-first Linux distribution for Raspberry Pi 5 16 GB.** The
-appliance twin of **Jessica**, a voice-first personal assistant. No
-keyboard, no monitor. The user speaks; Jessica listens, thinks,
-answers, reads things aloud, drafts replies, takes notes, surfaces
-the morning briefing, plays podcasts, integrates with Gemini for
-deep-research questions, and learns the user's voice over time. The
-LLM runs on the Pi 5 CPU by default; an optional Raspberry Pi AI HAT+
-(Hailo) accelerates it. The product is **bilingual EN + PL from M1**
-and Jessica responds to **"hey Jessica" / "Jess" / "hej Jessico"**.
-SSH is reserved for break-glass administration only.
+**Voice-first Linux distribution for Raspberry Pi 5.** The appliance twin of **Jessica**, a voice-first personal assistant designed specifically for **blind and visually impaired users**.
 
-> **Mobile twin:** [`rachel`](../rachel/) — Flutter app for iOS +
-> Android with native ML plugins. Same product, two skins. See
-> [`docs/product/`](docs/product/) for the shared specification.
+No keyboard, no monitor. The user speaks; Jessica listens, thinks, answers, reads things aloud, drafts replies, takes notes, surfaces the morning briefing, plays podcasts, integrates with Gemini for deep-research questions, and learns the user's voice over time.
+
+The LLM runs on the Pi 5 CPU by default; an optional Raspberry Pi AI HAT+ (Hailo) accelerates it. The product is **bilingual EN + PL from M1** and Jessica responds to **"hey Jessica" / "Jess" / "hej Jessico"**. SSH is reserved for break-glass administration only.
+
+> **Mobile twin:** **[`rachel`](../rachel/)** — Native mobile apps (iOS + Android) built with **SwiftUI** and **Jetpack Compose**, sharing a **Rust core**. See [`docs/product/09-MOBILE-PLATFORM-DECISION.md`](docs/product/09-MOBILE-PLATFORM-DECISION.md) for details.
 
 > **Status:** **M0 done, M1 partial.** Bilingual Python + Rust
 > skeleton runs end-to-end. **Linux** (Arch on `paul`) is the primary
@@ -42,8 +35,9 @@ SSH is reserved for break-glass administration only.
 ## TL;DR (PL)
 
 System operacyjny `blazen_os` to zbudowana na Raspberry Pi OS Lite
-(Bookworm 64-bit) dystrybucja dla **Raspberry Pi 5 8 GB**, w której
-**całe codzienne UI to głos**:
+(Bookworm 64-bit) dystrybucja dla **Raspberry Pi 5**, w której
+**całe codzienne UI to głos**, a głównym celem jest pomoc osobom
+niewidomym i słabowidzącym:
 
 1. Mikrofon ciągle nasłuchuje słowa wybudzającego (wake word).
 2. Po wybudzeniu lokalny model ASR (Whisper przez `faster-whisper`)
@@ -78,7 +72,7 @@ AI HAT+ (Tier 4 — patrz [`docs/08-TESTING.md`](docs/08-TESTING.md)).
 |---|---|---|
 | Base OS | Raspberry Pi OS Lite 64-bit (Bookworm) | No GUI. Read-only `/usr` (overlayfs) by default. |
 | Audio HAL | ALSA + PipeWire | USB mic or ReSpeaker HAT. |
-| Wake word | [openWakeWord](https://github.com/dscripka/openWakeWord) | Two models loop in parallel: `hey blazen` (EN) + `hej blazen` (PL). |
+| Wake word | [openWakeWord](https://github.com/dscripka/openWakeWord) | Two models loop in parallel: `hey jessica` (EN) + `hej jessico` (PL). |
 | ASR | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | Multilingual `small` default — EN + PL out of the box. |
 | VAD | [silero-vad](https://github.com/snakers4/silero-vad) | End-of-utterance detection. |
 | LLM (CPU) | [llama.cpp](https://github.com/ggml-org/llama.cpp) | Qwen 2.5 3B Q4 default — multilingual EN/PL. See [docs/05-MODELS.md](docs/05-MODELS.md). |
@@ -135,7 +129,7 @@ make test                   # full Tier 0..3 pyramid
 make test-scenario S=01-wake-word
 ```
 
-On a real Raspberry Pi 5 (8 GB):
+On a real Raspberry Pi 5:
 
 ```bash
 make flash DEVICE=/dev/disk4    # writes the same image to SD card

@@ -14,7 +14,7 @@ preconditions:
   languages.default: pl
   languages.pinned: null
 turns:
-  - user: "hey blazen"                       # EN wake
+  - user: "hey Jessica"                       # EN wake
     synth_voice: en_US-amy-medium
     expect:
       wake_acknowledged: true

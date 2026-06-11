@@ -187,10 +187,10 @@ hailo:
 
 By voice:
 
-- *"hey blazen, switch to the accelerator"* → sets `active_engine: hailo`
+- *"Jessica, switch to the accelerator"* → sets `active_engine: hailo`
   (confirmation: `single`).
-- *"hey blazen, switch to cpu"* → sets `active_engine: cpu`.
-- *"hey blazen, use eco power"* → sets `hailo.power_profile: eco`.
+- *"Jessica, switch to cpu"* → sets `active_engine: cpu`.
+- *"Jessica, use eco power"* → sets `hailo.power_profile: eco`.
 
 ## 7. Testing the accelerator path
 

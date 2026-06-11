@@ -12,7 +12,7 @@ preconditions:
   llm.temperature: 0.0
   llm.seed: 0
 turns:
-  - user: "hej blazen"
+  - user: "hej Jessico"
     expect:
       wake_acknowledged: true
       detected_language: pl

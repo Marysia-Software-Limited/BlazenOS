@@ -203,8 +203,8 @@ AND WER ≤ 12% on the 50-line PL `commands` fixture set.
 - `blazend-tts` runs Piper with **both** `en_US-lessac-medium` and
   `pl_PL-darkman-medium` warm; voice is selected per utterance.
 - First end-to-end conversations:
-  - EN: "hey blazen, what time is it" → spoken English reply.
-  - PL: "hej blazen, która godzina" → spoken Polish reply.
+  - EN: "hey Jessica, what time is it" → spoken English reply.
+  - PL: "hej Jessico, która godzina" → spoken Polish reply.
 
 **Exit criterion:** Scenarios `04-conversation.yaml` (EN) and
 `08-pl-conversation.yaml` (PL) pass with the semantic-similarity

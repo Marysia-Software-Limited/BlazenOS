@@ -22,6 +22,14 @@ Read top-to-bottom on first contact. Afterwards, re-read only what changed.
 | 15  | [`15-DEV-WORKFLOW.md`](15-DEV-WORKFLOW.md)        | Linux (`paul`) vs macOS hybrid workflow; what runs where. |
 | 16  | [`16-SYNC-PROTOCOL.md`](16-SYNC-PROTOCOL.md)      | **Bidirectional sync** — how paul Claude and macOS Claude exchange changes; what crosses the shared boundary. |
 
+## Android & iOS (Mobile twin)
+
+| Path | Purpose |
+|------|---------|
+| [`product/09-MOBILE-PLATFORM-DECISION.md`](product/09-MOBILE-PLATFORM-DECISION.md) | **Mobile platform decision** — Native Swift/Kotlin + Rust core. |
+| [`product/10-MOBILE-HARDWARE.md`](product/10-MOBILE-HARDWARE.md) | **Mobile hardware** — Reference iPhones, Pixels, and accessories. |
+| [`product/15-NATIVE-MIGRATION.md`](product/15-NATIVE-MIGRATION.md) | **Native migration** — Plan for moving from Flutter to native mobile apps. |
+
 ## Cross-implementation product spec
 
 | Path | Purpose |

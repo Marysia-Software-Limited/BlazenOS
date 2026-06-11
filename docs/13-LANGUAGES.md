@@ -57,8 +57,8 @@ Two openWakeWord models loop in parallel:
 
 | Wake phrase  | Language | Model file              |
 |--------------|----------|--------------------------|
-| "hey blazen" | EN       | `hey_blazen_en.onnx`     |
-| "hej blazen" | PL       | `hey_blazen_pl.onnx`     |
+| "hey Jessica" | EN       | `jessica_en.onnx`     |
+| "hej Jessico" | PL       | `jessica_pl.onnx`     |
 
 The wake module emits `wake.detected` with a `language` hint that biases
 ASR's first-pass language ID. If a third language is added, append another
@@ -114,14 +114,16 @@ System prompt is bilingual; the model is instructed to reply in the
 detected language:
 
 ```
-You are blazen, a helpful voice assistant running on a Raspberry Pi 5.
+You are Jessica, a helpful voice assistant running on a Raspberry Pi 5.
+You are designed to assist blind and visually impaired users.
 The user hears you through a speaker; they cannot see a screen.
 
 Reply in the same language the user used. If unsure, default to Polish.
 Keep replies short — one or two sentences unless the user asks for detail.
 Never invent tool outputs. If you don't know, say so plainly.
 
-[PL] Jesteś blazen, asystentem głosowym uruchomionym na Raspberry Pi 5.
+[PL] Jesteś Jessicą, asystentką głosową uruchomioną na Raspberry Pi 5.
+Twoim zadaniem jest pomaganie osobom niewidomym i słabowidzącym.
 Użytkownik słyszy Cię przez głośnik; nie ma ekranu. Odpowiadaj zwięźle
 — jedno lub dwa zdania, chyba że poprosi o szczegóły. Nie wymyślaj
 wyników narzędzi. Jeśli czegoś nie wiesz, powiedz to wprost.
@@ -150,7 +152,7 @@ free at synthesis time.
 | *"speak English"* / *"mów po angielsku"* | Pin language to EN until unpinned.                   |
 | *"speak Polish"* / *"mów po polsku"*     | Pin language to PL until unpinned.                   |
 | *"detect my language"* / *"słuchaj uważnie"* | Unpin; auto-detect resumes.                      |
-| *"what language can you speak?"* / *"jakie znasz języki?"* | List supported languages.            |
+| *"Jessica, what language can you speak?"* / *"Jessico, jakie znasz języki?"* | List supported languages.            |
 
 Pinned state is in `/run/blazen/state.json` (`language.pinned: "pl" | "en" | null`).
 
@@ -263,7 +265,7 @@ EN+PL (German is the most-requested next).
 W skrócie:
 
 - `blazen_os` rozumie i mówi **po polsku** od pierwszej iteracji.
-- Wake word: *"hej blazen"* (PL) lub *"hey blazen"* (EN). Oba aktywne
+- Wake word: *"hej Jessico"* (PL) lub *"hey Jessica"* (EN). Oba aktywne
   jednocześnie.
 - Język odpowiedzi dopasowuje się do języka zapytania. Można go też
   przypiąć: *"mów po polsku"* lub *"speak English"*.
@@ -272,5 +274,5 @@ W skrócie:
 - Domyślny ASR to multilingualny `small` (lepszy dla PL niż `small.en`).
 - Polski głos TTS: `pl_PL-darkman-medium` (alternatywnie `pl_PL-gosia-medium`).
 - Polskie wymowy literek "ą/ę" w `small` bywają niepewne — przy reklamacji
-  użytkownika system może zaproponować przejście na `medium` lub
+  użytkownika Jessica może zaproponować przejście na `medium` lub
   `large-v3-turbo`.

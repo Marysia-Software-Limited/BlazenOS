@@ -1,16 +1,15 @@
 id: 06-pl-wake-word
 language: pl
-description: Polski wake word ("hej blazen") aktywuje się i zostaje potwierdzony.
+description: Polski wake word ("hej Jessico") aktywuje się i zostaje potwierdzony.
 tags: [smoke, wake, pl]
-synth_voice: pl_PL-gosia-medium      # different from assistant default; tests acoustic robustness
 preconditions:
   audio.volume: 50
-  wake_word.active: [hey_blazen_en, hey_blazen_pl]
+  wake_word.active: [jessica_en, jessica_pl]
 turns:
-  - user: "hej blazen"
+  - user: "hej Jessico"
     expect:
       wake_acknowledged: true
-      wake_word.last_fired: hey_blazen_pl
+      wake_word.last_fired: jessica_pl
       detected_language: pl
       led: blue
       latency_ms_max: 250

@@ -11,7 +11,7 @@ preconditions:
   llm.temperature: 0.0
   llm.seed: 0
 turns:
-  - user: "hey blazen"
+  - user: "hey Jessica"
     expect:
       wake_acknowledged: true
 

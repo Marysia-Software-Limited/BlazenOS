@@ -6,7 +6,7 @@ preconditions:
   audio.volume: 50
   wake_word.active: [hey_blazen_en, hey_blazen_pl]
 turns:
-  - user: "hey blazen"
+  - user: "hey Jessica"
     expect:
       wake_acknowledged: true
       led: blue

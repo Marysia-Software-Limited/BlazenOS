@@ -1,8 +1,6 @@
 # 01 — Product overview
 
-**Jessica** (also "Jess") is a voice-first personal assistant. The user
-talks; Jessica listens, answers, reads things aloud, drafts replies,
-remembers context, and proactively surfaces what matters today.
+**Jessica** (also "Jess") is a voice-first personal assistant designed to help blind and visually impaired persons. The user talks; Jessica listens, answers, reads things aloud, drafts replies, remembers context, and proactively surfaces what matters today.
 
 She runs in **two skins**:
 
@@ -115,7 +113,7 @@ This is documented in:
 
 ## Quick reference (PL)
 
-Jessica (lub Jess / Jessica) to **głosowy asystent osobisty**. Działa
+Jessica (lub Jess / Jessica) to **głosowy asystent osobisty, stworzony z myślą o osobach niewidomych i słabowidzących**. Działa
 w dwóch wcieleniach: jako urządzenie na półce (Raspberry Pi 5 —
 projekt `blazen_os`) oraz jako aplikacja mobilna na iOS i Androida
 (projekt `rachel`). Oba wcielenia robią to samo: budzą się na imię,

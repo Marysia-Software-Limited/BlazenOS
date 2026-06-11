@@ -11,7 +11,7 @@ tool-specific operational notes; when they disagree with this file, the
 ## 1. Product invariants (do not violate)
 
 1. **Voice-only daily UX.** A normal user has no keyboard, no monitor, no
-   mouse. Everything routine — including reading the news, asking a
+   mouse. **Jessica is designed as a personal assistant for blind and visually impaired persons.** Everything routine — including reading the news, asking a
    question, changing the volume, restarting a service — must be reachable
    by voice.
 2. **On-device ML.** No internet round-trip during ASR, intent routing, LLM

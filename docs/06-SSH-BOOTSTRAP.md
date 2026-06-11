@@ -25,12 +25,12 @@ On first boot, `blazend-bootstrap.service`:
 2. Creates the user account, installs the SSH key.
 3. Connects to WiFi (or waits for Ethernet).
 4. Computes a one-time pairing code and announces it via TTS:
-   *"Your pairing code is four-seven-two-nine. Say 'hey blazen, my code is
+   *"Your pairing code is four-seven-two-nine. Say 'Jessica, my code is
    four-seven-two-nine' when you are ready."*
 5. Once paired, deletes `/boot/blazen-firstboot/` (so the SD card can't be
    yanked and impersonated).
 6. Disables SSH again unless `keep_ssh_on: true` is set in the bootstrap
-   YAML or the user later says `"hey blazen, enable ssh"`.
+   YAML or the user later says `"Jessica, enable ssh"`.
 
 If the user has no laptop to prepare the boot files, an **AP-mode
 fallback** is available: a fresh image with no `wpa_supplicant.conf`

@@ -27,8 +27,8 @@ mic PCM ─▶ AEC/AGC ─▶ ring buffer ─▶ wake word ─▶ VAD ─▶ ASR
 - **Crate:** [`ort`](https://crates.io/crates/ort) (ONNX Runtime
   Rust bindings) running [openWakeWord](https://github.com/dscripka/openWakeWord)
   models.
-- **Default wake words (bilingual):** `hey blazen` (`hey_blazen_en.onnx`)
-  and `hej blazen` (`hey_blazen_pl.onnx`). Both models loop in parallel —
+- **Default wake words (bilingual):** `hey Jessica` (`jessica_en.onnx`)
+  and `hej Jessico` (`jessica_pl.onnx`). Both models loop in parallel —
   whichever fires first wins and its `language` field hints ASR.
 - **Fallback wake words:** `jarvis`, `alexa` (shipped pretrained).
 - **Threshold:** 0.6 (probability) with a 200 ms cooldown.
@@ -92,9 +92,10 @@ Fast path keeps "stop talking" reliable even when the brain is busy.
   back to CPU.
 - **Context:** 4096 tokens by default. Conversation history truncated by
   oldest turns.
-- **System prompt:** "You are blazen, a helpful voice assistant running
-  entirely on a Raspberry Pi. Answers are short (one or two sentences)
-  unless the user asks for detail. Never invent tool outputs."
+- **System prompt:** "You are Jessica, a helpful voice assistant running
+  entirely on a Raspberry Pi. You are designed to assist blind and visually
+  impaired users. Answers are short (one or two sentences) unless the user
+  asks for detail. Never invent tool outputs."
 - **Streaming:** tokens stream to TTS so the speaker starts before the
   reply is finished, hiding latency.
 
@@ -110,7 +111,7 @@ Fast path keeps "stop talking" reliable even when the brain is busy.
   utterance based on the detected reply language.
 - **Mode:** streaming PCM at 22.05 kHz int16 — chunks emitted to
   `audio-out` as they are synthesised.
-- **Interrupt:** "stop talking" / "przestań mówić" kills the TTS process
+- **Interrupt:** "stop talking" / "przestań mówić" / "Jessica, stop" kills the TTS process
   group via `SIGTERM` for instant cutoff.
 - **Pronunciation overrides:** `configs/tts.yaml: pronunciation_overrides`
   rewrites loanwords (SSH, Wi-Fi, ASR, LLM, Hailo) per language so the

@@ -6,7 +6,7 @@ synth_voice: pl_PL-gosia-medium
 preconditions:
   audio.volume: 50
 turns:
-  - user: "hej blazen"
+  - user: "hej Jessico"
     expect:
       wake_acknowledged: true
       detected_language: pl

@@ -5,7 +5,7 @@ tags: [intents, fast-path, en]
 preconditions:
   audio.volume: 50
 turns:
-  - user: "hey blazen"
+  - user: "hey Jessica"
     expect:
       wake_acknowledged: true
 
