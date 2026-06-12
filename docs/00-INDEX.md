@@ -22,6 +22,7 @@ Read top-to-bottom on first contact. Afterwards, re-read only what changed.
 | 15  | [`15-DEV-WORKFLOW.md`](15-DEV-WORKFLOW.md)        | Linux (`paul`) vs macOS hybrid workflow; what runs where. |
 | 16  | [`16-SYNC-PROTOCOL.md`](16-SYNC-PROTOCOL.md)      | **Bidirectional sync** — how paul Claude and macOS Claude exchange changes; what crosses the shared boundary. |
 | 17  | [`17-MOBILE-MONOREPO.md`](17-MOBILE-MONOREPO.md)  | **Monorepo layout** — Pi 5 + Android + iOS + shared Rust core in one tree. The map. |
+| 18  | [`18-PROTOTYPE.md`](18-PROTOTYPE.md)              | **Working prototype** — `make demo`: name reaction, Polish chat, Gemini news, memory + reminders. |
 
 ## Android & iOS (mobile twins in this monorepo)
 
