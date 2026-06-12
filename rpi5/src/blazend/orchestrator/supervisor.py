@@ -17,6 +17,7 @@ from typing import Any
 
 from blazend.events import Envelope, system_event
 from blazend.ipc import Publisher, Subscriber, runtime_dir
+from blazend.led import LedSimulator
 from blazend.state import StateWriter
 
 log = logging.getLogger("blazend.orchestrator")
@@ -44,6 +45,7 @@ class Orchestrator:
         self._runtime_dir = runtime_dir_ or runtime_dir()
         self._peers = tuple(peers)
         self._state = StateWriter(self._runtime_dir / "state.json")
+        self._led = LedSimulator(self._runtime_dir / "led.json")
         self._publisher = Publisher(self._runtime_dir / "orchestrator.sock")
         self._stop = asyncio.Event()
         self._subscribers: list[tuple[str, Subscriber]] = []
@@ -52,6 +54,7 @@ class Orchestrator:
         """Bind sockets, connect to peers, react until interrupted."""
         await self._publisher.bind()
         await self._state.update({"v": 1, "ready": False, "units": {}})
+        self._led.write()  # initial state (off)
         log.info("orchestrator bound at %s", self._publisher._socket_path)  # noqa: SLF001
 
         # Connect to every peer (idempotent; missing peers are retried lazily).
@@ -104,6 +107,9 @@ class Orchestrator:
                 "last_language": env.data.get("language"),
                 "last_score": env.data.get("score"),
             }
+        if self._led.observe(env.topic, env.data):
+            self._led.write()
+            patch["led"] = self._led.color
         await self._state.update(patch)
         await self._publisher.publish(
             system_event(source="blazend-orchestrator", kind="observed", detail=env.topic)

@@ -182,14 +182,24 @@ SSH-able).
 
 ## M2 — Audio capture + wake word
 
-- `blazend-audio-in` running in the VM with a virtual mic.
-- `blazend-wake` running openWakeWord with `hey_blazen` pretrained
-  model.
-- LED simulator (since the VM has no GPIO) writes status to
-  `/run/blazen/led.json`.
-- Tier 3 scenario `01-wake-word.yaml` passes.
+- ✓ **LED simulator (2026-06-12):** the orchestrator derives the status
+  colour from the live event stream and writes `/run/blazen/led.json`
+  (`blazend/led.py`); off/green/blue/magenta/yellow/red per
+  `docs/02-HARDWARE.md`. Unit + transition tests green.
+- ✓ **`blazend-audio-in` real `cpal` probe (2026-06-12):** opens the
+  default input device, reports `mic.ready` / `mic.absent`, and falls
+  back to synthetic frames when none is present (WSL/CI). The streaming
+  capture → shared-memory ring buffer needs a live ALSA device and lands
+  on real hardware.
+- ⧗ `blazend-wake` running openWakeWord with the pretrained model — needs
+  the ONNX model + `ort` (which has host-SDK build issues; deferred).
+- ⧗ Tier 3 scenario `01-wake-word.yaml` — its exit criterion runs the
+  e2e-runner against a booted VM with real audio; both are blocked on
+  this WSL host (no audio device, M1 boot blocker). **Validates on real
+  Pi 5** — see the M1 boot note above.
 
-**Exit criterion:** `make test-scenario S=01-wake-word` is green in CI.
+**Exit criterion:** `make test-scenario S=01-wake-word` green in CI
+(on a Pi-class runner with audio + a bootable image).
 
 ## M3 — ASR pipeline (bilingual)
 

@@ -87,8 +87,13 @@ Because there is no monitor, the system communicates state out-of-band:
 | Long beep   | Falling into SSH recovery mode.               |
 | Voice tone  | Optional persona tone marking state changes.  |
 
-The LED protocol is defined in [`07-CONFIGURATION.md`](07-CONFIGURATION.md)
-and implemented in `blazend-health`.
+The LED protocol is defined in [`07-CONFIGURATION.md`](07-CONFIGURATION.md).
+The orchestrator runs an **LED simulator** that derives the colour from the
+live event stream and writes it to `/run/blazen/led.json`
+(off→asleep, green→listening, blue→capturing, magenta→processing,
+yellow→reprompt, red→error) — see `blazend/led.py`. On real hardware a GPIO
+driver consumes the identical colour contract; in the VM / on the dev host
+`led.json` is the status surface (and what Tier-3 scenarios assert on).
 
 ## Power
 
