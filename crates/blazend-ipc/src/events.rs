@@ -120,6 +120,21 @@ pub enum Event {
         confidence: f32,
     },
 
+    /// Fast-path intent match produced by the NLU router (`blazend-nlu`,
+    /// over the shared `jessica-core` crate). Action/tool/confirm are not on
+    /// the wire — consumers look those up from `configs/intents/system.yaml`.
+    #[serde(rename = "nlu.intent")]
+    NluIntent {
+        /// Matched intent name (e.g. `"volume_up"`).
+        intent: String,
+        /// Language tag: `"en"` | `"pl"`.
+        language: String,
+        /// Captured slot params (named regex groups).
+        params: std::collections::HashMap<String, String>,
+        /// The transcript that matched.
+        transcript: String,
+    },
+
     /// LLM streaming reply token.
     #[serde(rename = "brain.reply")]
     BrainReply {

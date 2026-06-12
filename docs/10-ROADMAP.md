@@ -225,6 +225,14 @@ matcher on the CPU engine.
 
 ## M5 — System command intents (bilingual)
 
+- ✓ **Fast-path router landed early (2026-06-12):** `blazend-nlu` (Rust)
+  consumes `asr.final` and routes via the **shared `jessica-core`**
+  `IntentRouter` over `configs/intents/system.yaml`, publishing
+  `nlu.intent`. Same crate as the iOS/Android apps (via `jessica-ffi`) —
+  one source of truth, no Python copy. Unit + IPC integration tests cover
+  EN and PL (`rpi5/crates/blazend-nlu`). Still open for M5: the
+  orchestrator acting on each intent (mutate/tool/confirm dispatch) and
+  the `voice-policy.yaml` confirmation flow below.
 - Regex/keyword fast-path router with EN + PL triggers for every
   intent: `volume up/down/set`, `stop talking`, `repeat`, `go to sleep`,
   `what time is it`, `what's the date`, `reboot`, `shutdown`,

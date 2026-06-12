@@ -1,0 +1,24 @@
+[Unit]
+Description=blazen_os fast-path intent router (Rust, shared jessica-core)
+PartOf=blazend.target
+After=blazend-asr.service
+Requires=blazend-asr.service
+
+[Service]
+Type=simple
+User=blazen
+Group=blazen
+Environment=BLAZEN_RUNTIME_DIR=/run/blazen
+# Intents YAML ships to /etc/blazen/intents/system.yaml (default lookup).
+ExecStart=/usr/lib/blazen/bin/blazend-nlu
+RuntimeDirectory=blazen
+RuntimeDirectoryMode=0750
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/blazen
+ProtectHome=yes
+
+[Install]
+WantedBy=blazend.target

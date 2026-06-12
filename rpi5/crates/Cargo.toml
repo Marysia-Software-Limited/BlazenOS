@@ -12,6 +12,7 @@ members = [
   "blazend-wake",
   "blazend-tts",
   "blazend-health",
+  "blazend-nlu",
 ]
 
 [workspace.package]

@@ -62,13 +62,19 @@ mic PCM ─▶ AEC/AGC ─▶ ring buffer ─▶ wake word ─▶ VAD ─▶ ASR
   commands `"speak Polish"` / `"mów po angielsku"` pin a language until
   the user says `"detect my language"` / `"słuchaj uważnie"`.
 
-## Stage 5 — NLU / intent routing
+## Stage 5 — NLU / intent routing (`blazend-nlu`, **Rust**)
 
 We use a **hybrid** matcher:
 
-1. **Regex/keyword router** first (fast path) — matches a curated set of
-   system commands ("volume up", "what time is it", "stop talking", "go
-   to sleep"). Defined in `configs/intents/system.yaml`.
+1. **Regex/keyword router** first (fast path) — `blazend-nlu` subscribes to
+   `asr.final`, runs the **shared `jessica-core` `IntentRouter`** over the
+   bilingual `configs/intents/system.yaml`, and publishes `nlu.intent` on a
+   match (`{intent, language, params, transcript}`). It matches a curated
+   set of system commands ("volume up", "what time is it", "stop talking",
+   "go to sleep") with EN+PL triggers. This is the **same Rust router** the
+   iOS/Android apps use via `jessica-ffi` — one source of truth, no Python
+   copy (see `docs/14-RUST-PYTHON-SPLIT.md`). Misses stay silent and fall
+   through to the brain.
 2. **LLM intent classification** as fallback — the LLM is asked to pick
    one of a known intent set OR `freeform` (chat).
 3. **Tool calls** — when an intent maps to a tool (timer, weather, home

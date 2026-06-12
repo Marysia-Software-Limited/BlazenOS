@@ -50,6 +50,7 @@ component is a smell — split the component first.
 | `blazend-wake`             | Rust   | `ort` (ONNX Runtime)   | openWakeWord ONNX loop; loads N models in parallel.    |
 | `blazend-tts`              | Rust   | `piper-rs` or wrapped  | Streaming PCM out, voice swap on language change.      |
 | `blazend-health`           | Rust   | `tokio`, `systemd`     | Watchdog; talks to systemd notify socket.              |
+| `blazend-nlu`              | Rust   | `jessica-core`         | Fast-path intent router: `asr.final` → `nlu.intent` over the **shared** `jessica-core` `IntentRouter` (same crate the iOS/Android apps use via `jessica-ffi`). No Python copy. |
 | `blazend-orchestrator`     | Python | asyncio, pydantic, pyyaml | Pipeline supervisor; the conductor.              |
 | `blazend-asr`              | Python | `faster-whisper` (CT2) | Streaming partial transcripts; language detection.     |
 | `blazend-brain`            | Python | `llama-cpp-python` / `hailort` Python | Engine selector + sampler. |

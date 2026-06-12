@@ -171,7 +171,7 @@ stage_payload() {
     warn "Appliance Rust aarch64 artefacts not found at $app_rust; run 'make rust-aarch64' first"
     return 1
   fi
-  for bin in blazend-audio-in blazend-audio-out blazend-wake blazend-tts blazend-health; do
+  for bin in blazend-audio-in blazend-audio-out blazend-wake blazend-nlu blazend-tts blazend-health; do
     install -m 0755 "$app_rust/$bin" "$out/blazen-rust/$bin"
   done
   install -m 0755 "$core_rust/blazend-fabric" "$out/blazen-rust/blazend-fabric"

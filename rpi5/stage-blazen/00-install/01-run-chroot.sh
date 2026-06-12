@@ -40,7 +40,7 @@ cp -R "$STAGE/blazen-src/blazend" "$INSTALL_DIR/blazend"
 
 # --- Rust binaries (pre-cross-compiled on the host) ----------------------
 
-for bin in blazend-audio-in blazend-audio-out blazend-wake blazend-tts blazend-health blazend-fabric; do
+for bin in blazend-audio-in blazend-audio-out blazend-wake blazend-nlu blazend-tts blazend-health blazend-fabric; do
   install -m 0755 "$STAGE/blazen-rust/$bin" "$INSTALL_DIR/bin/$bin"
 done
 
@@ -56,8 +56,8 @@ cp -R "$STAGE/blazen-configs/vm"                 /usr/share/blazen/defaults/
 
 systemctl enable blazend.target
 for unit in blazend-audio-in blazend-audio-out blazend-wake blazend-asr \
-            blazend-brain blazend-tts blazend-health blazend-orchestrator \
-            blazend-bootstrap blazend-fabric; do
+            blazend-nlu blazend-brain blazend-tts blazend-health \
+            blazend-orchestrator blazend-bootstrap blazend-fabric; do
   systemctl enable "${unit}.service" 2>/dev/null || true
 done
 

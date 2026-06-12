@@ -25,6 +25,7 @@ DEFAULT_PEERS: tuple[str, ...] = (
     "audio-in",
     "wake",
     "asr",
+    "nlu",
     "brain",
     "tts",
     "audio-out",

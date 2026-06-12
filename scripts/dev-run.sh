@@ -83,6 +83,7 @@ launch_rust blazend-wake       --mock --mock-period-s 15
 launch_rust blazend-tts        --mock
 launch_rust blazend-health
 launch_py   blazend.asr        --mock
+launch_rust blazend-nlu                              # routes asr.final → nlu.intent via jessica-core
 launch_py   blazend.brain      --mock
 
 # Orchestrator last — it connects to peers.

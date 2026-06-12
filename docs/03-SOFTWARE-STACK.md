@@ -70,6 +70,7 @@ The implementation language of each unit is fixed by
 | `blazend-audio-in`         | Rust   | `cpal` + ring buffer + WebRTC AEC FFI   | ~30 MB       |
 | `blazend-wake`             | Rust   | `ort` (ONNX Runtime) — N models in parallel | ~120 MB  |
 | `blazend-asr`              | Python | `faster-whisper` (CTranslate2)          | 400–1500 MB  |
+| `blazend-nlu`              | Rust   | shared `jessica-core` intent router     | ~10 MB       |
 | `blazend-brain`            | Python | `llama-cpp-python` (CPU) **or** HailoRT | 1.8–3 GB CPU / 1.8 GB Hailo |
 | `blazend-tts`              | Rust   | `piper-rs` wrapping Piper voices        | ~150 MB      |
 | `blazend-audio-out`        | Rust   | `cpal` + `rodio` mixer                  | ~25 MB       |
