@@ -47,3 +47,33 @@ intents:
       en: ["stop", "be quiet", "shut up"]
       pl: ["stop", "cisza", "zamilcz"]
     action: mutate
+  - name: news_query
+    triggers:
+      en: ["what's the news", "any news", "news today", "tell me the news"]
+      pl: ["co w wiadomo(ś|s)ciach", "jakie s(ą|a) wiadomo(ś|s)ci", "wiadomo(ś|s)ci dnia", "co s(ł|l)ycha(ć|c) na (ś|s)wiecie"]
+    action: query
+  - name: remember_fact
+    triggers:
+      en: ["remember that", "remember"]
+      pl: ["zapami(ę|e)taj (ż|z)e", "zapami(ę|e)taj, (ż|z)e", "pami(ę|e)taj (ż|z)e", "pami(ę|e)taj, (ż|z)e"]
+    action: mutate
+  - name: recall_fact
+    triggers:
+      en: ["what do you know about", "what did i tell you about", "tell me about"]
+      pl: ["co wiesz o", "co pami(ę|e)tasz o", "co wiesz na temat"]
+    action: query
+  - name: set_reminder
+    triggers:
+      en: ["remind me to", "remind me that", "remind me"]
+      pl: ["przypomnij mi (ż|z)e", "przypomnij mi, (ż|z)e", "przypomnij mi o", "przypomnij mi"]
+    action: mutate
+  - name: list_reminders
+    triggers:
+      en: ["what reminders", "list reminders", "any reminders"]
+      pl: ["jakie mam przypomnienia", "wymie(ń|n) przypomnienia", "co mi przypomnisz"]
+    action: query
+  - name: cancel_reminders
+    triggers:
+      en: ["cancel all reminders", "clear reminders"]
+      pl: ["anuluj wszystkie przypomnienia", "wyczy(ść|sc) przypomnienia"]
+    action: mutate

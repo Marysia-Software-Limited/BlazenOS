@@ -19,13 +19,32 @@ struct HomeView: View {
 
     @State private var micStatus: AVAuthorizationStatus =
         AVCaptureDevice.authorizationStatus(for: .audio)
+    @State private var showSettings = false
 
     var body: some View {
-        Group {
-            if micStatus == .denied || micStatus == .restricted {
-                PermissionDeniedView()
-            } else {
-                pipelineSurface
+        NavigationStack {
+            Group {
+                if micStatus == .denied || micStatus == .restricted {
+                    PermissionDeniedView()
+                } else {
+                    pipelineSurface
+                }
+            }
+            .navigationTitle("Jessica")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel(L10n.settingsTitle)
+                }
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
+                    .environmentObject(host)
             }
         }
         .onAppear { refreshMicStatus() }

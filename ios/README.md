@@ -79,22 +79,27 @@ See [`docs/build.md`](docs/build.md) for the full build matrix
 greeting; `JessicaCore` ships a pure-Swift reference implementation that
 returns the same intent matches as the Rust crate.
 
-**M1 (now):** always-listen voice loop end-to-end. `VoicePipeline`
-(`@Observable @MainActor`) drives `WakeWordDetector` → `SpeechEngine`
-(iOS 26 `SpeechAnalyzer` + `SpeechTranscriber`) →
-`JessicaCore.matchIntent` → `ReplyGenerator` (canned PL+EN replies)
-with a Foundation Models fallback (`FoundationModelResponder` +
-`@Generable IntentResult`) → `TextToSpeech` (`AVSpeechSynthesizer`).
-HomeView shows a state chip, mic button, last turn ("You: …" / "Jessica:
-…"), and a language toggle (PL / EN / Auto). Voice intents
-`language_pin_pl/en`, `language_unpin` flip the pin. Denied-mic state
-routes to `PermissionDeniedView` with a Settings deep link. `CoreHost`
-owns the pipeline so state survives view restarts.
+**M1 (now):** working voice agent prototype. `VoicePipeline`
+(`@Observable @MainActor`) drives a `WakeWordDetector` that listens
+continuously via `SpeechAnalyzer` + `SpeechTranscriber` and scans
+partials for "jessica" / "jessico" (debounced 4 s) → `SpeechEngine`
+captures the post-wake utterance → routing dispatches to
+`MemoryStore` (remember / recall facts), `ReminderScheduler`
+(`UserNotifications` calendar triggers + `NSDataDetector` date parse),
+`GeminiClient` (cloud `gemini-1.5-flash:generateContent` for news /
+open-domain queries, API key in Keychain), or `FoundationModelResponder`
+(on-device LLM) → `TextToSpeech` (`AVSpeechSynthesizer`) reads the
+reply. HomeView shows state, language toggle (PL / EN / Auto), last
+turn, and a toolbar gear that opens a `SettingsView` for Gemini key /
+memory inspector / reminder list. `CoreHost` owns every singleton so
+state survives view restarts.
 
 **M2 (next):** openWakeWord CoreML on the Neural Engine inside
-`WakeWordDetector`; Personal Voice opt-in flow for TTS; pairing with
-the Pi appliance over the fabric sync log; flip `JessicaCore` to call
-the Rust FFI via `JessicaFFI.xcframework`.
+`WakeWordDetector` for background-mode listening; Personal Voice
+opt-in flow for TTS; pairing with the Pi appliance over the fabric
+sync log; multi-turn `LanguageModelSession` context; richer date
+parsing for reminders; flip `JessicaCore` to call the Rust FFI via
+`JessicaFFI.xcframework`.
 
 See [`docs/15-DEV-WORKFLOW.md`](../docs/15-DEV-WORKFLOW.md) for how this
 project fits into the monorepo workflow on paul (note: iOS work

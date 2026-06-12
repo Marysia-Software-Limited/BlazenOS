@@ -48,13 +48,34 @@ enum L10n {
     static var permissionRationaleBody: String  { localized("permission.rationale_body") }
     static var permissionOpenSettings: String   { localized("permission.open_settings") }
 
+    // MARK: Settings
+    static var settingsTitle: String            { localized("settings.title") }
+    static var settingsDone: String             { localized("settings.done") }
+    static var settingsGeminiSection: String    { localized("settings.gemini.section") }
+    static var settingsGeminiPlaceholder: String { localized("settings.gemini.placeholder") }
+    static var settingsGeminiSave: String       { localized("settings.gemini.save") }
+    static var settingsGeminiClear: String      { localized("settings.gemini.clear") }
+    static var settingsGeminiSaved: String      { localized("settings.gemini.saved") }
+    static var settingsGeminiFooter: String     { localized("settings.gemini.footer") }
+    static var settingsMemorySection: String    { localized("settings.memory.section") }
+    static var settingsMemoryEmpty: String      { localized("settings.memory.empty") }
+    static var settingsMemoryClear: String      { localized("settings.memory.clear") }
+    static var settingsMemoryConfirmClear: String { localized("settings.memory.confirm_clear") }
+    static var settingsRemindersSection: String { localized("settings.reminders.section") }
+    static var settingsRemindersEmpty: String   { localized("settings.reminders.empty") }
+    static var settingsRemindersClear: String   { localized("settings.reminders.clear") }
+    static var settingsRemindersConfirmClear: String { localized("settings.reminders.confirm_clear") }
+    static var settingsAboutSection: String     { localized("settings.about.section") }
+    static var settingsAboutVersion: String     { localized("settings.about.version") }
+    static var settingsAboutIntents: String     { localized("settings.about.intents") }
+
     // MARK: - Lookup
 
     private static let strings: [String: [String: String]] = [
         "pl": [
             "home.greeting":             "Cześć, jestem Jessica.",
             "home.status.intents":       "Załadowano %lld intencji.",
-            "home.listenHint":           "Stuknij w mikrofon i o coś zapytaj.",
+            "home.listenHint":           "Powiedz \"hej Jessico\", żeby mnie obudzić.",
 
             "voice.idle":                "Bezczynna",
             "voice.listening":           "Słucham…",
@@ -79,11 +100,31 @@ enum L10n {
             "permission.rationale_title": "Jessica potrzebuje mikrofonu",
             "permission.rationale_body":  "Nasłuchuje Twojego głosu na urządzeniu, więc dźwięk nigdy nie opuszcza telefonu. Bez mikrofonu nie odpowie.",
             "permission.open_settings":   "Otwórz Ustawienia",
+
+            "settings.title":               "Ustawienia",
+            "settings.done":                "Gotowe",
+            "settings.gemini.section":      "Gemini (chmura, opcjonalnie)",
+            "settings.gemini.placeholder":  "Klucz API",
+            "settings.gemini.save":         "Zapisz",
+            "settings.gemini.clear":        "Usuń",
+            "settings.gemini.saved":        "Klucz zapisany w pęku kluczy.",
+            "settings.gemini.footer":       "Klucz służy do zapytań o wiadomości i pytań spoza katalogu. Bez klucza Jessica używa tylko modelu na urządzeniu.",
+            "settings.memory.section":      "Pamięć",
+            "settings.memory.empty":        "Nic jeszcze nie zapamiętałam.",
+            "settings.memory.clear":        "Wyczyść pamięć",
+            "settings.memory.confirm_clear": "Wyczyścić wszystkie zapisane fakty?",
+            "settings.reminders.section":   "Przypomnienia",
+            "settings.reminders.empty":     "Brak nadchodzących przypomnień.",
+            "settings.reminders.clear":     "Anuluj wszystkie",
+            "settings.reminders.confirm_clear": "Anulować wszystkie przypomnienia?",
+            "settings.about.section":       "O aplikacji",
+            "settings.about.version":       "Wersja",
+            "settings.about.intents":       "Załadowane intencje",
         ],
         "en": [
             "home.greeting":             "Hi, I'm Jessica.",
             "home.status.intents":       "%lld intents loaded.",
-            "home.listenHint":           "Tap the mic and ask me something.",
+            "home.listenHint":           "Say \"hey Jessica\" to wake me.",
 
             "voice.idle":                "Idle",
             "voice.listening":           "Listening…",
@@ -108,6 +149,26 @@ enum L10n {
             "permission.rationale_title": "Jessica needs the microphone",
             "permission.rationale_body":  "She listens for your voice on-device, so the audio never leaves the phone. Without the mic she can't answer you.",
             "permission.open_settings":   "Open Settings",
+
+            "settings.title":               "Settings",
+            "settings.done":                "Done",
+            "settings.gemini.section":      "Gemini (cloud, optional)",
+            "settings.gemini.placeholder":  "API key",
+            "settings.gemini.save":         "Save",
+            "settings.gemini.clear":        "Remove",
+            "settings.gemini.saved":        "Key saved to Keychain.",
+            "settings.gemini.footer":       "Used for news queries and questions outside the catalogue. Without a key Jessica answers only from the on-device model.",
+            "settings.memory.section":      "Memory",
+            "settings.memory.empty":        "Nothing remembered yet.",
+            "settings.memory.clear":        "Clear memory",
+            "settings.memory.confirm_clear": "Clear all remembered facts?",
+            "settings.reminders.section":   "Reminders",
+            "settings.reminders.empty":     "No upcoming reminders.",
+            "settings.reminders.clear":     "Cancel all",
+            "settings.reminders.confirm_clear": "Cancel all reminders?",
+            "settings.about.section":       "About",
+            "settings.about.version":       "Version",
+            "settings.about.intents":       "Loaded intents",
         ],
     ]
 

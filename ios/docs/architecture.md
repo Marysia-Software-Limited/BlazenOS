@@ -46,36 +46,44 @@
 ## Voice loop (M1)
 
 ```
-  user taps mic            Idle ──tap──▶ Listening (wake window open)
-                                         │
-   WakeWordDetector fires   ─────────────┘
-                                         │
-                                         ▼
-                                   Recognizing (SpeechAnalyzer)
-                                         │ ASR returns transcript
-                                         ▼
-                              JessicaCore.matchIntent
-                                  ├── hit (incl. language_* → applyLanguageIntent)
-                                  │       │
-                                  │       ▼
-                                  │   ReplyGenerator.reply(match, effectiveLang)
-                                  │
-                                  └── miss
-                                          │
-                                          ▼
-                                   Responding (FoundationModels session)
-                                          │
-                                          ▼
-                                   Speaking (AVSpeechSynthesizer)
-                                          │
-                                          ▼
-                                       Listening
+   user taps Start            Idle ──tap──▶ Listening (wake window open)
+                                            │
+   WakeWordDetector            continuous SpeechAnalyzer scanning partials
+   yields .triggered           for "jessica" / "jessico" / "dżesika" …
+   ───────────────────────────▶┤
+                               │ stop wake (free mic)
+                               ▼
+                          Recognizing (SpeechEngine single-utterance ASR)
+                               │ ASR returns transcript
+                               ▼
+                          stripWakePhrase + JessicaCore.matchIntent
+                               │
+       ┌─ language_*           │
+       │  flip pin             │
+       ├─ remember/recall ─────┼──▶ MemoryStore (JSON in Application Support)
+       │                       │
+       ├─ set/list/cancel ─────┼──▶ ReminderScheduler (UNCalendarNotificationTrigger)
+       │  reminder             │
+       │                       │
+       ├─ news_query     ──────┼──▶ GeminiClient (gemini-1.5-flash:generateContent)
+       │                       │
+       ├─ canned intent  ──────┼──▶ ReplyGenerator
+       │                       │
+       └─ no match       ──────┼──▶ FoundationModelResponder
+                               │      └─ fallback ─▶ GeminiClient
+                               │              └─ fallback ─▶ canned "I don't know"
+                               ▼
+                          Speaking (AVSpeechSynthesizer)
+                               │ TTS finishes
+                               ▼
+                          start wake again (back to Listening)
 ```
 
-Tap during `Speaking` interrupts TTS and returns to `Listening`.
-Tap during any other non-idle state calls `stop()` and returns to
-`Idle`. The `VoicePipeline` is owned by `CoreHost` so its state
-survives view restarts (rotation, scene re-entry) — mirrors Android's
+`Stop` button cancels the whole pipeline (`pipelineTask.cancel()` +
+`wake.stop()` + `tts.stopSpeaking()`). Tap during `Speaking` interrupts
+TTS only; tap during any other non-idle state calls `stop()`. The
+`VoicePipeline` is owned by `CoreHost` so its state survives view
+restarts (rotation, scene re-entry) — mirrors Android's
 `JessicaApp.orchestrator` ownership.
 
 ## Milestones
@@ -85,11 +93,16 @@ survives view restarts (rotation, scene re-entry) — mirrors Android's
 | `JessicaCore` body   | Pure Swift fallback (`PureSwiftIntents`) | Same (PureSwiftIntents drives the M1 UI)                     | FFI calls into `JessicaFFI.xcframework`            |
 | FFI library          | not built                                | not built                                                    | `cargo build -p jessica-ffi --release` + cbindgen + `xcodebuild -create-xcframework` |
 | FFI seam             | `JessicaFFI.swift` returns nil / 0       | unchanged                                                    | calls `jessica_ffi_*` C symbols                    |
-| Voice loop           | UI placeholder                           | tap-to-start always-listen: WakeWordDetector → SpeechAnalyzer → intent / FoundationModels → AVSpeechSynthesizer | openWakeWord CoreML on Neural Engine; in-Place app-intents wiring |
-| Permissions          | n/a                                      | mic permission gate (`PermissionDeniedView` + Settings link) | `NSPersonalVoiceUsageDescription` runtime prompt   |
+| Voice loop           | UI placeholder                           | tap-to-start always-listen with continuous wake-phrase scan + utterance ASR + intent routing | openWakeWord CoreML on Neural Engine; in-Place app-intents wiring |
+| Wake word            | not present                              | continuous `SpeechAnalyzer` scanning partials for "jessica"/"jessico" tokens (debounced 4 s) | openWakeWord ONNX → CoreML on Neural Engine        |
+| Permissions          | n/a                                      | mic gate (`PermissionDeniedView` + Settings link); `UNUserNotifications` prompt on first reminder | `NSPersonalVoiceUsageDescription` runtime prompt   |
 | Language pinning     | n/a                                      | UI toggle + voice intents (`language_pin_pl/en`, `language_unpin`) | per-utterance auto-detect                     |
-| Reply path           | n/a                                      | canned per-intent PL+EN replies (`ReplyGenerator`) → FoundationModels fallback | Foundation Models with intent catalogue tools     |
-| Wake word            | not present                              | energy-threshold placeholder in `WakeWordDetector`           | openWakeWord ONNX → CoreML on Neural Engine        |
+| Memory               | n/a                                      | `MemoryStore` — JSON file in Application Support; remember/recall/forget facts | SQLite + per-fact vector embedding for fuzzy recall |
+| Reminders            | n/a                                      | `ReminderScheduler` — `UNCalendarNotificationTrigger`; `NSDataDetector` + PL relative-time fallback | richer NL date parsing; recurring reminders        |
+| Cloud (Gemini)       | n/a                                      | `GeminiClient` — `gemini-1.5-flash:generateContent`; API key in Keychain; opt-in via Settings | streaming responses; tool-use for live web fetches |
+| On-device LLM        | n/a                                      | `FoundationModelResponder` — `LanguageModelSession` with `@Generable IntentResult` (single-turn) | multi-turn conversational context across utterances |
+| Reply path           | n/a                                      | dispatch: canned (ReplyGenerator) / Memory / Reminder / Gemini / FM → cloud fallback → unknown reply | unified planner with tool calls                    |
+| Settings UI          | n/a                                      | `SettingsView` sheet — Gemini key entry, memory inspector, reminder list, clear/cancel | pairing flow with the Pi appliance                 |
 
 The Swift public API (`JessicaCore.init`, `.loadIntents`,
 `.matchIntent`, `.intentCount`) stays identical across M0 → M2 — only
