@@ -1,8 +1,8 @@
 """Tier 1 — the brain unit driving the real assistant engine over IPC.
 
-Binds a stand-in ASR publisher, runs `blazend.brain.serve()` against a
+Binds a stand-in NLU publisher, runs `blazend.brain.serve()` against a
 keyless engine (so memory commands are deterministic, no network), and
-asserts that an `asr.final` produces the matching `brain.reply`.
+asserts that an `nlu.miss` produces the matching `brain.reply`.
 """
 from __future__ import annotations
 
@@ -41,20 +41,20 @@ async def test_asr_final_routes_through_brain(tmp_path):
         always_awake=True,
     )
 
-    asr = Publisher(rt / "asr.sock")
-    await asr.bind()
+    nlu = Publisher(rt / "nlu.sock")  # stand-in for blazend-nlu (publishes nlu.miss)
+    await nlu.bind()
 
     stop = asyncio.Event()
     server = asyncio.create_task(serve(engine, runtime_dir_=rt, stop=stop))
     try:
-        # Let serve() bind brain.sock and connect to asr.sock.
+        # Let serve() bind brain.sock and connect to nlu.sock.
         brain_sub = await _connect(rt / "brain.sock")
         await asyncio.sleep(0.3)
 
-        # A memory command → deterministic note ack (no Gemini needed).
-        await asr.publish(Envelope(
-            topic="asr.final", source="blazend-asr",
-            data={"language": "pl", "text": "zapamiętaj że kod do bramy to 4729", "confidence": 0.9},
+        # A memory command (router missed → nlu.miss) → deterministic note ack.
+        await nlu.publish(Envelope(
+            topic="nlu.miss", source="blazend-nlu",
+            data={"language": "pl", "transcript": "zapamiętaj że kod do bramy to 4729"},
         ))
         env = await asyncio.wait_for(brain_sub.next(), timeout=3.0)
         assert env.topic == "brain.reply"
@@ -62,9 +62,9 @@ async def test_asr_final_routes_through_brain(tmp_path):
         assert "4729" in env.data["text"]
 
         # A reminder fires through the ticker as a brain.reply.
-        await asr.publish(Envelope(
-            topic="asr.final", source="blazend-asr",
-            data={"language": "pl", "text": "przypomnij mi o herbacie za 1 sekundę", "confidence": 0.9},
+        await nlu.publish(Envelope(
+            topic="nlu.miss", source="blazend-nlu",
+            data={"language": "pl", "transcript": "przypomnij mi o herbacie za 1 sekundę"},
         ))
         ack = await asyncio.wait_for(brain_sub.next(), timeout=3.0)
         assert ack.data["action"] == "reminder"
@@ -73,4 +73,4 @@ async def test_asr_final_routes_through_brain(tmp_path):
     finally:
         stop.set()
         await asyncio.wait_for(server, timeout=3.0)
-        await asr.close()
+        await nlu.close()

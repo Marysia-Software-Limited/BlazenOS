@@ -52,6 +52,8 @@ pub enum Topic {
     AsrFinal,
     /// Routed intent.
     NluIntent,
+    /// No fast-path intent matched — route to the conversational brain.
+    NluMiss,
     /// LLM streaming reply chunk.
     BrainReply,
     /// Streamed TTS audio chunk.
@@ -73,6 +75,7 @@ impl Topic {
             Topic::AsrPartial => "asr.partial",
             Topic::AsrFinal => "asr.final",
             Topic::NluIntent => "nlu.intent",
+            Topic::NluMiss => "nlu.miss",
             Topic::BrainReply => "brain.reply",
             Topic::TtsFrame => "tts.frame",
             Topic::SystemEvent => "system.event",
@@ -132,6 +135,17 @@ pub enum Event {
         /// Captured slot params (named regex groups).
         params: std::collections::HashMap<String, String>,
         /// The transcript that matched.
+        transcript: String,
+    },
+
+    /// No fast-path intent matched the transcript — the conversational brain
+    /// should handle it (chat / memory / news). Keeps the brain and the
+    /// command dispatcher from both replying to the same utterance.
+    #[serde(rename = "nlu.miss")]
+    NluMiss {
+        /// Language tag: `"en"` | `"pl"`.
+        language: String,
+        /// The unmatched transcript.
         transcript: String,
     },
 

@@ -83,7 +83,16 @@ async fn run(asr_sock: PathBuf, nlu_sock: PathBuf, router: IntentRouter) -> anyh
                         .publish(EventEnvelope::new("blazend-nlu", env.ts_ms, intent_event))
                         .await?;
                 }
-                None => tracing::debug!(%language, %text, "no fast-path intent; deferring to brain"),
+                None => {
+                    tracing::debug!(%language, %text, "no fast-path intent → nlu.miss");
+                    publisher
+                        .publish(EventEnvelope::new(
+                            "blazend-nlu",
+                            env.ts_ms,
+                            Event::NluMiss { language, transcript: text },
+                        ))
+                        .await?;
+                }
             }
         }
     }
@@ -247,6 +256,33 @@ intents:
                 assert_eq!(params.get("value").map(String::as_str), Some("45"));
             }
             other => panic!("wrong event: {other:?}"),
+        }
+
+        // Unmatched utterance → nlu.miss (routed to the conversational brain).
+        asr_pub
+            .publish(EventEnvelope::new(
+                "blazend-asr",
+                300,
+                Event::AsrFinal {
+                    language: "pl".into(),
+                    text: "opowiedz mi bajkę o smoku".into(),
+                    confidence: 0.9,
+                },
+            ))
+            .await
+            .unwrap();
+
+        let env = tokio::time::timeout(Duration::from_secs(3), nlu_sub.next())
+            .await
+            .expect("nlu.miss timed out")
+            .unwrap()
+            .unwrap();
+        match env.event {
+            Event::NluMiss { language, transcript } => {
+                assert_eq!(language, "pl");
+                assert_eq!(transcript, "opowiedz mi bajkę o smoku");
+            }
+            other => panic!("expected nlu.miss, got: {other:?}"),
         }
 
         let _ = std::fs::remove_dir_all(&dir);

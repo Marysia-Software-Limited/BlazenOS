@@ -1,13 +1,15 @@
 """Entrypoint: `python -m blazend.brain`.
 
 The brain is the conversational half of the assistant. It subscribes to
-`asr.final`, runs :class:`blazend.assistant.engine.Assistant` (name/memory/
-reminders + Gemini-backed Polish chat and news), and publishes `brain.reply`
-for `blazend-tts` to speak. Due reminders are fired on a timer. `--mock`
-keeps the old canned-reply behaviour for smoke tests.
+`nlu.miss` (utterances the fast-path router did **not** match — so command
+intents go to the dispatcher, not here, and there is no double-reply), runs
+:class:`blazend.assistant.engine.Assistant` (name/memory/reminders +
+Gemini-backed Polish chat and news), and publishes `brain.reply` for
+`blazend-tts` to speak. Due reminders are fired on a timer. `--mock` keeps
+the old canned-reply behaviour for smoke tests.
 
-The `asr.final` transcript only exists after the wake word fired upstream, so
-the engine runs ``always_awake=True`` here.
+The transcript only exists after the wake word fired upstream, so the engine
+runs ``always_awake=True`` here.
 """
 
 from __future__ import annotations
@@ -38,9 +40,9 @@ def _reply_envelope(reply: Reply) -> Envelope:
     )
 
 
-async def _connect_asr(rt) -> Subscriber:
-    """Connect to the ASR publisher, retrying until it appears."""
-    sock = rt / "asr.sock"
+async def _connect_nlu(rt) -> Subscriber:
+    """Connect to the NLU publisher (nlu.miss / nlu.intent), retrying."""
+    sock = rt / "nlu.sock"
     while True:
         if sock.exists():
             try:
@@ -73,8 +75,8 @@ async def serve(engine: Assistant, *, runtime_dir_=None, stop: asyncio.Event | N
     log.info("brain online at %s", rt / "brain.sock")
 
     ticker = asyncio.create_task(_reminder_ticker(engine, pub, stop))
-    sub = await _connect_asr(rt)
-    log.info("brain subscribed to asr.final")
+    sub = await _connect_nlu(rt)
+    log.info("brain subscribed to nlu.miss")
     try:
         while not stop.is_set():
             # Race the next ASR frame against a stop signal so shutdown is
@@ -91,8 +93,8 @@ async def serve(engine: Assistant, *, runtime_dir_=None, stop: asyncio.Event | N
             env = next_task.result()
             if env is None:
                 break
-            if env.topic == "asr.final":
-                text = env.data.get("text", "")
+            if env.topic == "nlu.miss":
+                text = env.data.get("transcript", "")
                 reply = engine.route(text, now=datetime.now())
                 if reply.text:
                     log.info("reply (%s/%s): %s", reply.language, reply.action, reply.text)

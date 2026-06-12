@@ -38,6 +38,7 @@ EXPECTED_TOPICS: set[str] = {
     "asr.partial",
     "asr.final",
     "nlu.intent",
+    "nlu.miss",
     "brain.reply",
     "tts.frame",
     "system.event",

@@ -268,10 +268,13 @@ matcher on the CPU engine.
   `potwierdzam`.
 - `voice-policy.yaml` enforced including `confirm: loud` for reboot /
   shutdown — confirmation phrase accepted in either language.
-- ⧗ Remaining: the `brain`/`nlu` arbitration so a matched fast-path
-  command suppresses the conversational reply (an `nlu.miss` event routes
-  unmatched utterances to the brain) — avoids a double-reply in the full
-  pipeline.
+- ✓ **`brain`/`nlu` arbitration (2026-06-12):** `blazend-nlu` now emits an
+  **`nlu.miss`** event for unmatched utterances; the **brain consumes
+  `nlu.miss`** (not `asr.final`) while the **orchestrator dispatches
+  `nlu.intent`**. So a matched command goes only to the dispatcher and an
+  unmatched utterance only to the conversational brain — no double-reply.
+  New Rust event + schema + topic registries; nlu IPC test covers the miss
+  path; brain component test drives `nlu.miss`.
 
 **Exit criterion:** Scenarios `03-system-control.yaml`,
 `05-fail-modes.yaml`, and `09-language-switch.yaml` pass.
