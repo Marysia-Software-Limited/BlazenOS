@@ -248,9 +248,19 @@ matcher on the CPU engine.
   `IntentRouter` over `configs/intents/system.yaml`, publishing
   `nlu.intent`. Same crate as the iOS/Android apps (via `jessica-ffi`) —
   one source of truth, no Python copy. Unit + IPC integration tests cover
-  EN and PL (`rpi5/crates/blazend-nlu`). Still open for M5: the
-  orchestrator acting on each intent (mutate/tool/confirm dispatch) and
-  the `voice-policy.yaml` confirmation flow below.
+  EN and PL (`rpi5/crates/blazend-nlu`).
+- ✓ **Intent dispatch + confirmation grammar (2026-06-12):** the
+  orchestrator acts on `nlu.intent` via `blazend/dispatch.py` — looks up
+  each intent's `action`/`mutate`/`tool` from `configs/intents/system.yaml`,
+  enforces `configs/voice-policy.yaml` (deny globs, `allowed_values`, and
+  the **never / single / loud / double_loud** confirmation grammar),
+  applies voice-mutable settings to a `SettingsStore`, runs simple tools
+  (`clock.time`/`date`), and emits signals (`tts_interrupt`, `reboot`,
+  `shutdown`…). Confirmation is a stateful flow: `reboot` → "Na pewno?
+  Powiedz „potwierdzam”." → `apply_change` → reboot signal; `factory_reset`
+  needs two. Dispatched replies go out as `brain.reply` for TTS. 8 tests
+  (`rpi5/tests/unit/test_dispatch.py`), validated against all 52 real
+  intents.
 - Regex/keyword fast-path router with EN + PL triggers for every
   intent: `volume up/down/set`, `stop talking`, `repeat`, `go to sleep`,
   `what time is it`, `what's the date`, `reboot`, `shutdown`,
@@ -258,6 +268,10 @@ matcher on the CPU engine.
   `potwierdzam`.
 - `voice-policy.yaml` enforced including `confirm: loud` for reboot /
   shutdown — confirmation phrase accepted in either language.
+- ⧗ Remaining: the `brain`/`nlu` arbitration so a matched fast-path
+  command suppresses the conversational reply (an `nlu.miss` event routes
+  unmatched utterances to the brain) — avoids a double-reply in the full
+  pipeline.
 
 **Exit criterion:** Scenarios `03-system-control.yaml`,
 `05-fail-modes.yaml`, and `09-language-switch.yaml` pass.

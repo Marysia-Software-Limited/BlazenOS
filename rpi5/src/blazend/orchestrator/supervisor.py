@@ -15,6 +15,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from blazend.config import load as load_config
+from blazend.dispatch import IntentDispatcher, SettingsStore
 from blazend.events import Envelope, system_event
 from blazend.ipc import Publisher, Subscriber, runtime_dir
 from blazend.led import LedSimulator
@@ -41,14 +43,33 @@ class Orchestrator:
         self,
         peers: Iterable[str] = DEFAULT_PEERS,
         runtime_dir_: Path | None = None,
+        dispatcher: IntentDispatcher | None = None,
     ):
         self._runtime_dir = runtime_dir_ or runtime_dir()
         self._peers = tuple(peers)
         self._state = StateWriter(self._runtime_dir / "state.json")
         self._led = LedSimulator(self._runtime_dir / "led.json")
         self._publisher = Publisher(self._runtime_dir / "orchestrator.sock")
+        self._dispatcher = dispatcher if dispatcher is not None else self._build_dispatcher()
         self._stop = asyncio.Event()
         self._subscribers: list[tuple[str, Subscriber]] = []
+
+    def _build_dispatcher(self) -> IntentDispatcher | None:
+        """Load intents + voice-policy for fast-path command dispatch.
+
+        Returns ``None`` (commands just observed) if the configs aren't
+        reachable — e.g. a bare test runtime with no ``BLAZEN_CONFIG_ROOT``.
+        """
+        try:
+            intents = load_config("intents/system").data
+            policy = load_config("voice-policy").data
+            if not intents.get("intents"):
+                return None
+            settings = SettingsStore(self._runtime_dir / "settings.json")
+            return IntentDispatcher(intents, policy, settings)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("intent dispatcher disabled (%s)", exc)
+            return None
 
     async def run(self) -> None:
         """Bind sockets, connect to peers, react until interrupted."""
@@ -107,12 +128,45 @@ class Orchestrator:
                 "last_language": env.data.get("language"),
                 "last_score": env.data.get("score"),
             }
+        if env.topic == "nlu.intent" and self._dispatcher is not None:
+            reply = self._dispatch_intent(env)
+            if reply is not None:
+                await self._publisher.publish(reply)
+                patch["last_command"] = {
+                    "intent": env.data.get("intent"),
+                    "result": reply.data.get("action"),
+                }
         if self._led.observe(env.topic, env.data):
             self._led.write()
             patch["led"] = self._led.color
         await self._state.update(patch)
         await self._publisher.publish(
             system_event(source="blazend-orchestrator", kind="observed", detail=env.topic)
+        )
+
+    def _dispatch_intent(self, env: Envelope) -> Envelope | None:
+        """Act on a fast-path `nlu.intent`; return the spoken reply (if any)."""
+        result = self._dispatcher.dispatch(
+            env.data.get("intent", ""),
+            env.data.get("params", {}),
+            env.data.get("language", "pl"),
+        )
+        if result.signal in ("reboot", "shutdown"):
+            # In the VM / dev we never actually power off; on the device a
+            # power unit consumes this. Log it loudly.
+            log.warning("system command requested: %s (not executed in dev)", result.signal)
+        if not result.speak:
+            return None
+        return Envelope(
+            topic="brain.reply",
+            source="blazend-orchestrator",
+            data={
+                "language": result.language,
+                "text": result.speak,
+                "chunk": result.speak,
+                "final_": True,
+                "action": f"command.{result.action}",
+            },
         )
 
 
