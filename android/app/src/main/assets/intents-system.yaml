@@ -5,16 +5,41 @@ version: 1
 intents:
   - name: volume_up
     triggers:
-      en: ["louder", "turn it up"]
-      pl: ["g(ł|l)o(ś|s)niej"]
+      en: ["louder", "turn it up", "volume up"]
+      pl: ["g(ł|l)o(ś|s)niej", "podg(ł|l)o(ś|s)"]
     action: mutate
   - name: volume_down
     triggers:
-      en: ["quieter", "turn it down"]
-      pl: ["ci(sz|sz)ej"]
+      en: ["quieter", "turn it down", "volume down"]
+      pl: ["ci(sz|sz)ej", "(ś|s)cisz"]
     action: mutate
   - name: time_query
     triggers:
-      en: ["what time is it"]
-      pl: ["która godzina", "co za godzina"]
+      en: ["what time is it", "tell me the time"]
+      pl: ["która godzina", "co za godzina", "ile czasu"]
     action: query
+  - name: what_can_you_do
+    triggers:
+      en: ["what can you do", "help me", "what are you good for"]
+      pl: ["co potrafisz", "pomó(ż|z) mi", "do czego s(ł|l)u(ż|z)ysz"]
+    action: query
+  - name: language_pin_pl
+    triggers:
+      en: ["speak polish", "switch to polish"]
+      pl: ["m(ó|o)w po polsku", "przejd(ź|z) na polski"]
+    action: mutate
+  - name: language_pin_en
+    triggers:
+      en: ["speak english", "switch to english"]
+      pl: ["m(ó|o)w po angielsku", "przejd(ź|z) na angielski"]
+    action: mutate
+  - name: language_unpin
+    triggers:
+      en: ["detect my language", "auto language"]
+      pl: ["s(ł|l)uchaj uwa(ż|z)nie", "auto j(ę|e)zyk"]
+    action: mutate
+  - name: stop
+    triggers:
+      en: ["stop", "be quiet", "shut up"]
+      pl: ["stop", "cisza", "zamilcz"]
+    action: mutate

@@ -1,32 +1,63 @@
 # Android architecture
 
 ```
-┌────────────────────────────────────────────────────┐
-│  app/  (Compose UI, ML wiring, Activity, manifest)  │
-│   ├── MainActivity                                  │
-│   ├── ui/ (HomeScreen, theme, future shell)         │
-│   └── voice/ (wake/asr/tts plugins — M1)            │
-└──────────────────────┬─────────────────────────────┘
-                       │  Kotlin call
-┌──────────────────────▼─────────────────────────────┐
-│  core/  (Kotlin façade — JessicaCore)               │
-│   ├── JessicaCore        (idiomatic API)            │
-│   ├── JessicaCoreNative  (internal external fun)    │
-│   └── IntentMatch        (data class)               │
-└──────────────────────┬─────────────────────────────┘
-                       │  JNI                M1 only
-┌──────────────────────▼─────────────────────────────┐
-│  crates/jessica-ffi  (Rust → cdylib)                │
-│   └── libjessica_ffi.so   (jniLibs/<abi>/)          │
-└──────────────────────┬─────────────────────────────┘
-                       │  Rust call
-┌──────────────────────▼─────────────────────────────┐
-│  crates/jessica-core                         │
-│   ├── intent.rs (regex router)                      │
-│   ├── lib.rs    (SyncLog, Fact, IntentRouter)       │
-│   └── (shared with iOS — single source of truth)    │
-└────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│  app/  (Compose UI, voice loop, foreground service)         │
+│   ├── MainActivity   (hosts HomeScreen behind PermissionGate)│
+│   ├── JessicaApp     (Application — owns the orchestrator)  │
+│   ├── ui/            (HomeScreen, PermissionGate, theme)    │
+│   ├── voice/                                                 │
+│   │    ├── JessicaOrchestrator (state machine + StateFlow)  │
+│   │    ├── JessicaAsr   (SpeechRecognizer wrapper)          │
+│   │    ├── JessicaTts   (TextToSpeech wrapper)              │
+│   │    └── JessicaForegroundService (M2 wake-word host)     │
+│   └── brain/                                                 │
+│        └── ReplyGenerator (intent → canned PL+EN reply)     │
+└──────────────────────────────┬─────────────────────────────┘
+                               │  Kotlin call
+┌──────────────────────────────▼─────────────────────────────┐
+│  core/  (Kotlin façade — JessicaCore)                       │
+│   ├── JessicaCore        (idiomatic API)                    │
+│   ├── JessicaCoreNative  (internal external fun)            │
+│   ├── PureKotlinIntents  (M1 fallback matcher)              │
+│   └── IntentMatch        (data class)                       │
+└──────────────────────────────┬─────────────────────────────┘
+                               │  JNI                M2 only
+┌──────────────────────────────▼─────────────────────────────┐
+│  crates/jessica-ffi  (Rust → cdylib)                        │
+│   └── libjessica_ffi.so   (jniLibs/<abi>/)                  │
+└──────────────────────────────┬─────────────────────────────┘
+                               │  Rust call
+┌──────────────────────────────▼─────────────────────────────┐
+│  crates/jessica-core                                        │
+│   ├── intent.rs (regex router)                              │
+│   ├── lib.rs    (SyncLog, Fact, IntentRouter)               │
+│   └── (shared with iOS — single source of truth)            │
+└────────────────────────────────────────────────────────────┘
 ```
+
+## Voice loop (M1)
+
+```
+  user taps mic            Idle ──tap──▶ Listening(lang, partial)
+                                         │
+  SpeechRecognizer fires    ─────────────┘
+                                         │ onResult(transcript, lang)
+                                         ▼
+                                   Thinking(transcript, lang)
+                                         │
+                                         │ JessicaCore.matchIntent → IntentMatch?
+                                         │ (+ applyLanguageIntent if language_*)
+                                         │ ReplyGenerator.reply(match, effectiveLang)
+                                         ▼
+                                   Speaking(reply, effectiveLang)
+                                         │
+                                         │ TTS onDone
+                                         ▼
+                                       Idle
+```
+
+Tap during `Speaking` interrupts TTS; tap during `Listening` cancels ASR.
 
 ## Why two modules
 
@@ -37,19 +68,22 @@
   Android SDK, which keeps the round-trip for unit-test work fast and
   lets the iOS team check the contract by reading the Kotlin source.
 
-## M0 vs M1
+## Milestones
 
-| Concern              | M0 (now)                                | M1 (target)                                   |
-|----------------------|-----------------------------------------|-----------------------------------------------|
-| `:core` body         | Pure Kotlin port (`PureKotlinIntents`)  | JNI delegate to `libjessica_ffi.so`           |
-| Native lib           | not built                               | `cargo ndk -t arm64-v8a -t x86_64 build`      |
-| FFI consumer         | none (Kotlin runs)                      | `System.loadLibrary("jessica_ffi")` on first use |
-| JSON parsing of FFI  | n/a                                     | kotlinx.serialization (new `:core` dep)       |
-| Voice loop           | UI placeholder                          | foreground service + `SpeechRecognizer` + TTS |
+| Concern              | M0                                       | M1 (now)                                                    | M2 (next)                                          |
+|----------------------|------------------------------------------|-------------------------------------------------------------|----------------------------------------------------|
+| `:core` body         | Pure Kotlin port (`PureKotlinIntents`)   | Same (PureKotlinIntents drives the M1 UI)                   | JNI delegate to `libjessica_ffi.so`                |
+| Native lib           | not built                                | not built                                                   | `cargo ndk -t arm64-v8a -t x86_64 build`           |
+| FFI consumer         | none                                     | none (Kotlin runs)                                          | `System.loadLibrary("jessica_ffi")` on first use   |
+| JSON parsing of FFI  | n/a                                      | n/a                                                         | kotlinx.serialization (new `:core` dep)            |
+| Voice loop           | UI placeholder                           | tap-to-talk: `SpeechRecognizer` → intent → `TextToSpeech`   | always-listen: openWakeWord TFLite + foreground service |
+| Permissions          | n/a                                      | `RECORD_AUDIO` runtime prompt via `PermissionGate`          | `POST_NOTIFICATIONS` + `FOREGROUND_SERVICE_MICROPHONE` runtime flow |
+| Language pinning     | n/a                                      | UI toggle + voice intents (`language_pin_pl/en`, `language_unpin`) | per-utterance auto-detect                     |
+| Reply path           | n/a                                      | canned per-intent PL+EN replies (`ReplyGenerator`)          | Gemini Nano via AICore (Pixel 8+ / S24+) behind `SDK_INT ≥ 36` |
 
 The Kotlin public API (`JessicaCore.create`, `.loadIntents`,
-`.matchIntent`, `.intentCount`, `.close`) stays identical across M0 and
-M1 — only the implementation switches.
+`.matchIntent`, `.intentCount`, `.close`) stays identical across M0 → M2 — only the
+implementation behind it switches.
 
 ## Naming choices
 

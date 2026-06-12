@@ -21,13 +21,23 @@ class JessicaCoreTest {
               en: ["what time is it"]
               pl: ["która godzina"]
             action: query
+          - name: language_pin_en
+            triggers:
+              en: ["speak english"]
+              pl: ["m(ó|o)w po angielsku"]
+            action: mutate
+          - name: stop
+            triggers:
+              en: ["stop"]
+              pl: ["stop", "cisza"]
+            action: mutate
     """.trimIndent()
 
     @Test
     fun `loads catalogue and exposes count`() {
         val core = JessicaCore.create()
         assertTrue(core.loadIntents(yaml), "loadIntents returned false")
-        assertEquals(2L, core.intentCount())
+        assertEquals(4L, core.intentCount())
         core.close()
     }
 
@@ -48,6 +58,32 @@ class JessicaCoreTest {
         val m = core.matchIntent("Louder, please", "en")
         assertNotNull(m)
         assertEquals("volume_up", m!!.name)
+        core.close()
+    }
+
+    @Test
+    fun `polish language pin intent matches`() {
+        val core = JessicaCore.create().apply { loadIntents(yaml) }
+        val m = core.matchIntent("mów po angielsku", "pl")
+        assertNotNull(m)
+        assertEquals("language_pin_en", m!!.name)
+        core.close()
+    }
+
+    @Test
+    fun `english language pin intent matches`() {
+        val core = JessicaCore.create().apply { loadIntents(yaml) }
+        val m = core.matchIntent("Speak English please", "en")
+        assertNotNull(m)
+        assertEquals("language_pin_en", m!!.name)
+        core.close()
+    }
+
+    @Test
+    fun `stop intent matches both languages`() {
+        val core = JessicaCore.create().apply { loadIntents(yaml) }
+        assertNotNull(core.matchIntent("Stop", "en"))
+        assertNotNull(core.matchIntent("cisza", "pl"))
         core.close()
     }
 

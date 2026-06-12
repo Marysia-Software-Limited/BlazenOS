@@ -78,8 +78,19 @@ toolchain, NDK, cargo-ndk, signing).
 home screen; `:core` ships a pure-Kotlin reference implementation that
 returns the same intent matches as the Rust crate.
 
-**M1 (next):** flip `:core` to JNI against `libjessica_ffi.so`; wire wake
-word + on-device Speech recognizer + TTS; bring in the pairing flow.
+**M1 (now):** tap-to-talk voice loop end-to-end. `JessicaOrchestrator`
+drives `SpeechRecognizer` → `JessicaCore.matchIntent` → `ReplyGenerator`
+→ `TextToSpeech` through an `Idle/Listening/Thinking/Speaking/Error`
+state machine. `PermissionGate` handles the `RECORD_AUDIO` runtime
+prompt. Language toggle (PL / EN / Auto) on the home screen; voice
+intents `language_pin_pl/en` and `language_unpin` also flip it.
+Foreground-service shell (`JessicaForegroundService`) declared and
+notification-channel-ready for the M2 always-listen loop.
+
+**M2 (next):** wake word — openWakeWord ONNX via TFLite/NNAPI driving
+the foreground service; Gemini Nano via AICore for the open-domain
+reply path; pairing flow with the Pi appliance over the fabric sync
+log; flip `:core` to JNI against `libjessica_ffi.so`.
 
 See [`docs/15-DEV-WORKFLOW.md`](../docs/15-DEV-WORKFLOW.md) for how this
 project fits into the monorepo workflow on paul.

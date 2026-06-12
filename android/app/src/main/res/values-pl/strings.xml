@@ -1,7 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Jessica</string>
+
+    <!-- Home -->
     <string name="home_greeting">Cześć, jestem Jessica.</string>
     <string name="home_status_intents">Załadowano %1$d intencji.</string>
-    <string name="home_listen_hint">Powiedz „hej Jessico”, żeby mnie obudzić.</string>
+    <string name="home_listen_hint">Stuknij w mikrofon i o coś zapytaj.</string>
+    <string name="last_turn_you">Ty: %1$s</string>
+    <string name="last_turn_jessica">Jessica: %1$s</string>
+
+    <!-- State badge -->
+    <string name="state_idle">Stuknij, by mówić</string>
+    <string name="state_listening">Słucham…</string>
+    <string name="state_thinking">Myślę…</string>
+    <string name="state_speaking">Mówię…</string>
+    <string name="state_error">Coś poszło nie tak</string>
+
+    <!-- Mic button labels -->
+    <string name="button_listen">Mów</string>
+    <string name="button_cancel">Anuluj</string>
+    <string name="button_interrupt">Stop</string>
+    <string name="button_busy">…</string>
+
+    <!-- Language toggle -->
+    <string name="language_pinned">Język: %1$s (przypięty)</string>
+    <string name="language_auto">Język: %1$s (auto)</string>
+    <string name="language_pl">PL</string>
+    <string name="language_en">EN</string>
+    <string name="language_auto_button">Auto</string>
+
+    <!-- Permission gate -->
+    <string name="permission_rationale_title">Jessica potrzebuje mikrofonu</string>
+    <string name="permission_rationale_body">Nasłuchuje Twojego głosu na urządzeniu, więc dźwięk nigdy nie opuszcza telefonu. Bez mikrofonu nie odpowie.</string>
+    <string name="permission_request_button">Pozwól na mikrofon</string>
+
+    <!-- Foreground service -->
+    <string name="service_listening_title">Jessica słucha</string>
+    <string name="service_listening_text">Stuknij, by otworzyć, albo wypowiedz słowo wybudzające.</string>
+    <string name="service_channel_name">Słuchanie</string>
+    <string name="service_channel_description">Powiadomienia, gdy działa tryb ciągłego nasłuchu Jessiki.</string>
 </resources>
