@@ -7,6 +7,12 @@ import JessicaCore
 /// Coordinates: wake-word detection → ASR → intent match / Foundation
 /// Models → TTS.  Exposed as `@Observable` so SwiftUI views rebuild
 /// automatically on state transitions.
+///
+/// Mirrors `android/app/.../voice/JessicaOrchestrator.kt` — same state
+/// names, same language-pinning rules. Per `docs/13-LANGUAGES.md`,
+/// PL is the development default; the user can pin PL or EN explicitly
+/// (UI toggle OR voice intent `language_pin_pl` / `language_pin_en` /
+/// `language_unpin`).
 @Observable
 @MainActor
 final class VoicePipeline {
@@ -30,9 +36,29 @@ final class VoicePipeline {
         }
     }
 
+    /// One completed turn — what the user said, what Jessica replied,
+    /// in which language. Persists across state transitions so the UI
+    /// can show the last interaction at all times.
+    struct Turn: Equatable {
+        let transcript: String
+        let reply: String
+        let language: String
+    }
+
     private(set) var state: State = .idle
     private(set) var transcript: String = ""
     private(set) var lastReply: String = ""
+    private(set) var lastTurn: Turn?
+
+    /// Current language tag ("pl" or "en"). Drives ASR locale,
+    /// TTS voice, and the canned-reply lookup.
+    private(set) var language: String = "pl"
+
+    /// When `true`, the orchestrator ignores ASR's language hint and
+    /// stays in `language`. When `false`, the orchestrator follows
+    /// ASR's detected language (M2 will add per-utterance auto-detect;
+    /// M1 stays in PL by default).
+    private(set) var isLanguagePinned: Bool = false
 
     private let core: JessicaCore
     private let wake = WakeWordDetector()
@@ -58,13 +84,34 @@ final class VoicePipeline {
         state = .idle
     }
 
+    /// User-facing interrupt: stops TTS, returns to listening. Used by
+    /// the "Stop" button while Jessica is speaking. Does NOT cancel
+    /// the whole pipeline (use ``stop`` for that).
+    func interrupt() {
+        tts.stopSpeaking()
+        if state != .idle { state = .listening }
+    }
+
+    // MARK: - Language pinning
+
+    func pinLanguage(_ lang: String) {
+        let normalized = lang.hasPrefix("pl") ? "pl" : "en"
+        language = normalized
+        isLanguagePinned = true
+    }
+
+    func unpinLanguage() {
+        isLanguagePinned = false
+        language = "pl"
+    }
+
     // MARK: - Main loop
 
     private func runLoop() async {
         guard await asr.requestPermission() else {
             state = .error(L10n.voicePermissionDenied); return
         }
-        await llm.prepare(knownIntents: [])   // M1: expose intent names from core
+        await llm.prepare(knownIntents: [])   // M2: pass real intent names from core
 
         do {
             try await wake.start()
@@ -84,9 +131,13 @@ final class VoicePipeline {
         state = .recognizing
         transcript = ""
 
+        let asrLocale = isLanguagePinned
+            ? Locale(identifier: language == "pl" ? "pl-PL" : "en-US")
+            : Locale.current
+
         let text: String
         do {
-            text = try await asr.transcribeUtterance(locale: Locale.current)
+            text = try await asr.transcribeUtterance(locale: asrLocale)
         } catch {
             state = .error(error.localizedDescription); return
         }
@@ -94,28 +145,55 @@ final class VoicePipeline {
         guard !text.isEmpty else { state = .listening; return }
         transcript = text
 
-        let lang = Locale.preferredLanguages.first
-            .flatMap { String($0.prefix(2)) } ?? "pl"
+        // ASR's working locale → BCP-47 language tag normalised to 2 chars.
+        let asrLanguage = asrLocale.identifier
+            .split(separator: "-").first
+            .map { String($0).lowercased() }
+            ?? "pl"
 
+        await routeUtterance(text, asrLanguage: asrLanguage)
+    }
+
+    private func routeUtterance(_ text: String, asrLanguage: String) async {
         // Fast path: local regex matcher in JessicaCore.
-        if let match = core.matchIntent(transcript: text, language: lang) {
-            lastReply = builtinReply(for: match)
-            await speak(lastReply, language: match.language)
+        if let match = core.matchIntent(transcript: text, language: asrLanguage) {
+            // Voice-driven language control flips the pin before the
+            // reply is spoken, so the next utterance uses the new language.
+            if match.name.hasPrefix("language_") {
+                applyLanguageIntent(match)
+            }
+            let effective = isLanguagePinned ? language : asrLanguage
+            let reply = ReplyGenerator.reply(match: match, language: effective)
+            await complete(transcript: text, reply: reply, language: effective)
             return
         }
 
-        // Slow path: on-device Foundation Models.
+        // Slow path: on-device Foundation Models (iOS 26+ on A17+).
         state = .responding
-        if let result = try? await llm.respond(to: text) {
-            lastReply = result.reply
-            await speak(lastReply, language: lang)
+        let effective = isLanguagePinned ? language : asrLanguage
+        if let result = try? await llm.respond(to: text), !result.reply.isEmpty {
+            await complete(transcript: text, reply: result.reply, language: effective)
         } else {
-            // Foundation Models unavailable — acknowledge and continue.
-            let sorry = lang == "pl"
-                ? "Nie rozumiem. Spróbuj ponownie."
-                : "I didn't understand. Please try again."
-            await speak(sorry, language: lang)
+            // Foundation Models unavailable or empty — fall back to the
+            // unknown-intent canned reply so the user gets *something*.
+            let fallback = ReplyGenerator.reply(match: nil, language: effective)
+            await complete(transcript: text, reply: fallback, language: effective)
         }
+    }
+
+    private func applyLanguageIntent(_ match: IntentMatch) {
+        switch match.name {
+        case "language_pin_pl": pinLanguage("pl")
+        case "language_pin_en": pinLanguage("en")
+        case "language_unpin":  unpinLanguage()
+        default: break
+        }
+    }
+
+    private func complete(transcript: String, reply: String, language: String) async {
+        lastReply = reply
+        lastTurn = Turn(transcript: transcript, reply: reply, language: language)
+        await speak(reply, language: language)
     }
 
     private func speak(_ text: String, language: String) async {
@@ -123,25 +201,5 @@ final class VoicePipeline {
         let bcp47 = language.hasPrefix("pl") ? "pl-PL" : "en-US"
         await tts.speak(text, language: bcp47)
         state = .listening
-    }
-
-    // MARK: - Built-in replies for local intents
-
-    private func builtinReply(for match: IntentMatch) -> String {
-        let pl = match.language == "pl"
-        switch match.name {
-        case "volume_up":
-            return pl ? "Zwiększam głośność." : "Turning it up."
-        case "volume_down":
-            return pl ? "Zmniejszam głośność." : "Turning it down."
-        case "time_query":
-            let fmt = DateFormatter()
-            fmt.timeStyle = .short
-            fmt.locale = Locale(identifier: pl ? "pl-PL" : "en-US")
-            let t = fmt.string(from: Date())
-            return pl ? "Jest godzina \(t)." : "It's \(t)."
-        default:
-            return pl ? "Zrobione." : "Done."
-        }
     }
 }

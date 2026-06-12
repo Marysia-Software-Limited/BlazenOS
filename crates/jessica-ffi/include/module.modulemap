@@ -1,0 +1,8 @@
+// Clang module so SwiftPM/Xcode can `import JessicaFFI` from the
+// JessicaFFI.xcframework static-library binary target. Hand-written
+// (cbindgen only emits the header); kept next to jessica_ffi.h so
+// `xcodebuild -create-xcframework -headers include/` bundles both.
+module JessicaFFI {
+    header "jessica_ffi.h"
+    export *
+}

@@ -79,9 +79,22 @@ See [`docs/build.md`](docs/build.md) for the full build matrix
 greeting; `JessicaCore` ships a pure-Swift reference implementation that
 returns the same intent matches as the Rust crate.
 
-**M1 (next):** flip `JessicaCore` to call the Rust FFI via
-`JessicaFFI.xcframework`; wire `Speech` + Foundation Models + Personal
-Voice; bring in the pairing flow.
+**M1 (now):** always-listen voice loop end-to-end. `VoicePipeline`
+(`@Observable @MainActor`) drives `WakeWordDetector` → `SpeechEngine`
+(iOS 26 `SpeechAnalyzer` + `SpeechTranscriber`) →
+`JessicaCore.matchIntent` → `ReplyGenerator` (canned PL+EN replies)
+with a Foundation Models fallback (`FoundationModelResponder` +
+`@Generable IntentResult`) → `TextToSpeech` (`AVSpeechSynthesizer`).
+HomeView shows a state chip, mic button, last turn ("You: …" / "Jessica:
+…"), and a language toggle (PL / EN / Auto). Voice intents
+`language_pin_pl/en`, `language_unpin` flip the pin. Denied-mic state
+routes to `PermissionDeniedView` with a Settings deep link. `CoreHost`
+owns the pipeline so state survives view restarts.
+
+**M2 (next):** openWakeWord CoreML on the Neural Engine inside
+`WakeWordDetector`; Personal Voice opt-in flow for TTS; pairing with
+the Pi appliance over the fabric sync log; flip `JessicaCore` to call
+the Rust FFI via `JessicaFFI.xcframework`.
 
 See [`docs/15-DEV-WORKFLOW.md`](../docs/15-DEV-WORKFLOW.md) for how this
 project fits into the monorepo workflow on paul (note: iOS work

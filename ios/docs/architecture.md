@@ -43,18 +43,56 @@
   the unit-test loop fast and lets the Android team verify the
   cross-platform contract by reading Swift source.
 
-## M0 vs M1
+## Voice loop (M1)
 
-| Concern              | M0 (now)                                | M1 (target)                                      |
-|----------------------|-----------------------------------------|--------------------------------------------------|
-| `JessicaCore` body   | Pure Swift fallback (`PureSwiftIntents`) | FFI calls into `JessicaFFI.xcframework`         |
-| FFI library          | not built                               | `cargo build -p jessica-ffi --release` → cbindgen → `xcodebuild -create-xcframework` |
-| FFI seam             | `JessicaFFI.swift` returns nil / 0      | calls `jessica_ffi_*` C symbols                  |
-| Voice loop           | UI placeholder                          | `AVAudioEngine` + `Speech` framework + `AVSpeechSynthesizer` |
-| LLM (short)          | n/a                                     | Apple Intelligence Foundation Models (iOS 18.4+) |
+```
+  user taps mic            Idle ──tap──▶ Listening (wake window open)
+                                         │
+   WakeWordDetector fires   ─────────────┘
+                                         │
+                                         ▼
+                                   Recognizing (SpeechAnalyzer)
+                                         │ ASR returns transcript
+                                         ▼
+                              JessicaCore.matchIntent
+                                  ├── hit (incl. language_* → applyLanguageIntent)
+                                  │       │
+                                  │       ▼
+                                  │   ReplyGenerator.reply(match, effectiveLang)
+                                  │
+                                  └── miss
+                                          │
+                                          ▼
+                                   Responding (FoundationModels session)
+                                          │
+                                          ▼
+                                   Speaking (AVSpeechSynthesizer)
+                                          │
+                                          ▼
+                                       Listening
+```
+
+Tap during `Speaking` interrupts TTS and returns to `Listening`.
+Tap during any other non-idle state calls `stop()` and returns to
+`Idle`. The `VoicePipeline` is owned by `CoreHost` so its state
+survives view restarts (rotation, scene re-entry) — mirrors Android's
+`JessicaApp.orchestrator` ownership.
+
+## Milestones
+
+| Concern              | M0                                       | M1 (now)                                                     | M2 (next)                                          |
+|----------------------|------------------------------------------|--------------------------------------------------------------|----------------------------------------------------|
+| `JessicaCore` body   | Pure Swift fallback (`PureSwiftIntents`) | Same (PureSwiftIntents drives the M1 UI)                     | FFI calls into `JessicaFFI.xcframework`            |
+| FFI library          | not built                                | not built                                                    | `cargo build -p jessica-ffi --release` + cbindgen + `xcodebuild -create-xcframework` |
+| FFI seam             | `JessicaFFI.swift` returns nil / 0       | unchanged                                                    | calls `jessica_ffi_*` C symbols                    |
+| Voice loop           | UI placeholder                           | tap-to-start always-listen: WakeWordDetector → SpeechAnalyzer → intent / FoundationModels → AVSpeechSynthesizer | openWakeWord CoreML on Neural Engine; in-Place app-intents wiring |
+| Permissions          | n/a                                      | mic permission gate (`PermissionDeniedView` + Settings link) | `NSPersonalVoiceUsageDescription` runtime prompt   |
+| Language pinning     | n/a                                      | UI toggle + voice intents (`language_pin_pl/en`, `language_unpin`) | per-utterance auto-detect                     |
+| Reply path           | n/a                                      | canned per-intent PL+EN replies (`ReplyGenerator`) → FoundationModels fallback | Foundation Models with intent catalogue tools     |
+| Wake word            | not present                              | energy-threshold placeholder in `WakeWordDetector`           | openWakeWord ONNX → CoreML on Neural Engine        |
 
 The Swift public API (`JessicaCore.init`, `.loadIntents`,
-`.matchIntent`, `.intentCount`) stays identical across M0 and M1 — only
+`.matchIntent`, `.intentCount`) stays identical across M0 → M2 — only
 the body switches.
 
 ## Concurrency
