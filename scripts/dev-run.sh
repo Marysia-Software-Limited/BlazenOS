@@ -84,7 +84,7 @@ launch_rust blazend-tts        --mock
 launch_rust blazend-health
 launch_py   blazend.asr        --mock
 launch_rust blazend-nlu                              # routes asr.final → nlu.intent via jessica-core
-launch_py   blazend.brain      --mock
+launch_py   blazend.brain                            # real engine: memory/reminders + Gemini chat/news
 
 # Orchestrator last — it connects to peers.
 sleep 1

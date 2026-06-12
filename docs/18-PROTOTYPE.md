@@ -55,9 +55,11 @@ tests run fully offline and deterministically.
 ## Where it fits
 
 `engine.Assistant` is **pure and synchronous** — the same object drives the
-REPL today and the IPC `blazend-brain` unit next (consuming `nlu.intent` /
-`asr.final`, publishing `brain.reply`). Fast-path system commands (volume,
-"stop talking") are already handled in Rust by
+REPL **and** the IPC `blazend-brain` unit, which consumes `asr.final` and
+publishes `brain.reply` (and fires due reminders on a timer) for
+`blazend-tts` to speak. So `make dev` brings up the real conversational
+brain, not a mock. Fast-path system commands (volume, "stop talking") are
+handled in Rust by
 [`blazend-nlu`](14-RUST-PYTHON-SPLIT.md) over the shared `jessica-core`;
 this engine owns the conversational + memory + cloud side.
 

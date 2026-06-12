@@ -216,6 +216,14 @@ AND WER ≤ 12% on the 50-line PL `commands` fixture set.
 
 ## M4 — Local LLM (CPU) + bilingual TTS
 
+- ✓ **Brain wired to the real engine (2026-06-12):** `blazend-brain` now
+  subscribes to `asr.final` and runs `blazend.assistant.engine.Assistant`
+  (name gate, memory/reminders, Gemini-backed Polish chat + news),
+  publishing `brain.reply`; due reminders fire on a timer. Component test
+  drives `asr.final → brain.reply` over real IPC (`rpi5/tests/component/
+  test_brain_engine.py`). The conversational LLM is **Gemini** for now —
+  the **local CPU GGUF** path (`qwen2.5-1.5b…`) and **Piper TTS** below are
+  the remaining M4 work (need the models + the audio-out path).
 - `blazend-brain` runs `qwen2.5-1.5b-instruct-q4_k_m.gguf` in the VM
   (size chosen for QEMU memory headroom). Pi 5 hardware tests in M8
   will use the 3B default. The bilingual system prompt is in place;
