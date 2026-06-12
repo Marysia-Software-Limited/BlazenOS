@@ -11,13 +11,31 @@ Plus the shared Rust mobile core ([`crates/jessica-core`](../crates/jessica-core
 
 This doc fixes the **canonical workflow** across all three surfaces.
 
-> **Decision (2026-06-11, revised 2026-06-11):** **Linux** (`paul` Arch
-> box) is the **primary** rig for the whole monorepo — Pi 5 builds and
-> tests, Android gradle + adb, Rust core, all docs and shared specs. The
-> maintainer's Mac is required only for the final iOS xcodebuild and
-> TestFlight cut. The Flutter prototype at `../rachel/` is a reference,
-> not a shipping target; it stays editable from either rig but is no
-> longer the canonical mobile dev surface.
+> **Decision (2026-06-11, revised 2026-06-12):** **Linux** (`paul` —
+> **Arch Linux running under WSL2 on Windows 11**, x86_64) is the
+> **primary** rig for the whole monorepo — Pi 5 builds and tests, Android
+> gradle + adb, Rust core, all docs and shared specs. The maintainer's Mac
+> is required only for the final iOS xcodebuild and TestFlight cut. The
+> Flutter prototype at `../rachel/` is a reference, not a shipping target.
+
+> **WSL2 host notes (2026-06-12).** `paul` is a WSL2 guest, not bare metal.
+> Consequences for the Pi 5 surface:
+> - **QEMU is TCG-only for aarch64.** `/dev/kvm` exists but it is x86
+>   nested KVM (Hyper-V) — it cannot accelerate the aarch64 Pi kernel, so
+>   `make run-vm` runs under slow TCG emulation. This is a root cause
+>   behind the M1 QEMU-boot limits (see `docs/10-ROADMAP.md` M1): the
+>   `raspi4b` systemd boot dies in TCG at the `clone3`/`sd-executor` path.
+>   **Full-boot validation belongs on real Pi 5 hardware**; QEMU here is
+>   for the mocked Tier 0-1 tiers + rootfs loopback checks.
+> - **Real Pi 5 SD flashing:** the SD card is not at `/dev/sdX` by default.
+>   Either flash from the Windows side (Raspberry Pi Imager) or attach the
+>   block device with `wsl --mount --bare \\.\PhysicalDriveN` first, then
+>   `make flash DEVICE=/dev/sdX`.
+> - **USB mic / ReSpeaker HAT passthrough:** use **usbipd-win** on Windows
+>   (`usbipd attach --wsl --busid <b-p>`) to expose the USB device into
+>   WSL2; only then does ALSA/`cpal` see it.
+> - **pi-gen image build works** (Docker 29.5.2 inside WSL2; build #14
+>   succeeded here).
 
 ## 1. Why Linux (paul) is primary
 
@@ -153,10 +171,10 @@ A `scripts/sync-to-paul.sh` wrapping the above is in flight; M1.
 | cargo build (host)   | ✓    | ✓     | parity 1:1 |
 | cargo cross-compile  | ✓ (native + cross) | ✓ (cross + colima) | Linux simpler |
 | pi-gen image build   | ✓    | ✗ (or colima) | Linux primary |
-| make qemu-smoke      | ✓ (KVM) | ✓ (HVF) | both fine |
-| make run-vm          | ✓ (KVM, raspi4b) | ⧗ (HVF, virt only — raspi4b is x86-host-only in QEMU upstream) | Linux full path |
-| ReSpeaker HAT bring-up | ✓ (with USB passthrough) | ⧗ | physical Pi recommended |
-| Real Pi 5 flash      | ✓ (`/dev/sdX`) | ✓ (`/dev/diskN`) | platform-specific cmd |
+| make qemu-smoke      | ✓ (TCG — x86/WSL2) | ✓ (HVF) | both fine |
+| make run-vm          | ⧗ (TCG raspi4b — slow; boot blocked, see ROADMAP M1) | ⧗ (HVF, virt only) | real Pi 5 for full boot |
+| ReSpeaker HAT bring-up | ⧗ (WSL2: needs usbipd-win attach) | ⧗ | physical Pi recommended |
+| Real Pi 5 flash      | ⧗ (WSL2: `wsl --mount` or flash from Windows) | ✓ (`/dev/diskN`) | platform-specific cmd |
 
 ## 5. CI shape (M2+)
 

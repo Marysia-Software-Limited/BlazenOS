@@ -123,11 +123,15 @@ VM). Surface only the failures.
    force-push, `git reset --hard`, deleting `rpi5/tests/fixtures/audio/` (large
    regen cost), modifying `configs/system.yaml` defaults.
 6. **Dev rig.** Linux (`paul`) is the **primary rig for the whole
-   monorepo** — Pi 5, Android, iOS sources, Rust core, all docs. The
-   maintainer's Mac is required only for the final iOS
-   xcodebuild / TestFlight cut. See
-   [`docs/15-DEV-WORKFLOW.md`](docs/15-DEV-WORKFLOW.md) and
-   [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md) §4.
+   monorepo** — Pi 5, Android, iOS sources, Rust core, all docs. `paul`
+   is **Arch Linux running under WSL2 on Windows 11** (x86_64), not bare
+   metal: aarch64 QEMU is **TCG-only** (no KVM accel → `make run-vm` is
+   slow and the full Pi boot is blocked, see `docs/10-ROADMAP.md` M1),
+   real-SD flashing needs `wsl --mount` (or the Windows Imager), and USB
+   mic/HAT bring-up needs `usbipd-win`. The maintainer's Mac is required
+   only for the final iOS xcodebuild / TestFlight cut. See
+   [`docs/15-DEV-WORKFLOW.md`](docs/15-DEV-WORKFLOW.md) (§ WSL2 host notes)
+   and [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md) §4.
 
    **If you (Claude) are running on `paul`:** this is your home repo.
    Pi 5 image builds, cross-compile, Tier 2-3 tests, Android gradle
