@@ -1,15 +1,26 @@
-# 13 — Languages (EN + PL prototype)
+# 13 — Languages (PL + EN prototype, Polish-first)
 
-The prototype ships **English** and **Polish** as first-class supported
-languages from M1. Every voice surface — wake word, ASR, intents, LLM
-replies, TTS, confirmation phrases — works in both. The voice-policy and
-configuration plumbing is language-tagged so additional languages plug in
-without code changes.
+The prototype ships **Polish** and **English** as first-class supported
+languages from M1, with **Polish as the primary language** (default,
+first-listed, examples-first). English is co-equal and parity-required.
+Every voice surface — wake word, ASR, intents, LLM replies, TTS,
+confirmation phrases — works in both. The voice-policy and configuration
+plumbing is language-tagged so additional languages plug in without code
+changes.
 
-> **Decision (2026-06-11):** EN and PL are co-equal default targets for the
-> prototype. The single-language baseline (`small.en` + `en_US-lessac-medium`)
-> is **demoted to an optional "EN-only build flavour"**; the default
-> prototype ships multilingual models out of the box.
+> **Decision (2026-06-14):** **Polish is the primary language** of the
+> prototype — it leads in config order (`languages.enabled: [pl, en]`),
+> defaults, docs, and examples. English remains a **co-equal,
+> parity-required** first-class language: every intent / phrase / scenario
+> still ships in both, and a Polish-only **or** English-only surface is
+> incomplete. This supersedes the 2026-06-11 "EN and PL are co-equal"
+> framing (which left English listed first); functional parity is
+> unchanged, only the primacy/order flips to Polish.
+>
+> _(Superseded — Decision (2026-06-11): EN and PL are co-equal default
+> targets; the `small.en` + `en_US-lessac-medium` single-language baseline
+> is an optional "EN-only build flavour" and the default prototype ships
+> multilingual models out of the box.)_
 
 ---
 
@@ -57,8 +68,8 @@ Two openWakeWord models loop in parallel:
 
 | Wake phrase  | Language | Model file              |
 |--------------|----------|--------------------------|
-| "hey Jessica" | EN       | `jessica_en.onnx`     |
 | "hej Jessico" | PL       | `jessica_pl.onnx`     |
+| "hey Jessica" | EN       | `jessica_en.onnx`     |
 
 The wake module emits `wake.detected` with a `language` hint that biases
 ASR's first-pass language ID. If a third language is added, append another
@@ -69,12 +80,12 @@ model to the loop — `blazend-wake` loads them at startup.
 Default model: `faster-whisper-small` (multilingual, ~466 MB, ~750 ms on
 Pi 5 for a 5 s utterance). Drop-in alternatives:
 
-| Model               | EN WER | PL WER | Notes |
+| Model               | PL WER | EN WER | Notes |
 |---------------------|-------:|-------:|-------|
-| `small` (default)   | 6%     | 9%     | Balanced; the prototype default. |
-| `medium`            | 4%     | 6%     | Better PL; +1.2 GB RAM. |
-| `large-v3-turbo`    | 3%     | 5%     | Best PL quality on Pi 5 8 GB. |
-| `small.en` (EN-only)| 5%     | n/a    | Demoted; only when `lang_mode: en_only`. |
+| `small` (default)   | 9%     | 6%     | Balanced; the prototype default. |
+| `medium`            | 6%     | 4%     | Better PL; +1.2 GB RAM. |
+| `large-v3-turbo`    | 5%     | 3%     | Best PL quality on Pi 5 8 GB. |
+| `small.en` (EN-only)| n/a    | 5%     | Demoted; only when `lang_mode: en_only`. |
 
 The ASR config (`configs/asr.yaml`) supports `language: auto` (default),
 which runs Whisper's built-in detection on the first 1 s of audio, and
@@ -139,8 +150,8 @@ Two Piper voices are pre-loaded and switched per utterance:
 
 | Language | Default voice            | Alt voices                |
 |----------|---------------------------|---------------------------|
-| EN       | `en_US-lessac-medium`     | `en_US-amy-medium`, `en_GB-alan-low` |
 | PL       | `pl_PL-darkman-medium`    | `pl_PL-gosia-medium` (optional download) |
+| EN       | `en_US-lessac-medium`     | `en_US-amy-medium`, `en_GB-alan-low` |
 
 The TTS engine keeps both voices warm in RAM (~150 MB total) so swap is
 free at synthesis time.
@@ -149,10 +160,10 @@ free at synthesis time.
 
 | User says                               | Effect                                              |
 |------------------------------------------|------------------------------------------------------|
-| *"speak English"* / *"mów po angielsku"* | Pin language to EN until unpinned.                   |
-| *"speak Polish"* / *"mów po polsku"*     | Pin language to PL until unpinned.                   |
-| *"detect my language"* / *"słuchaj uważnie"* | Unpin; auto-detect resumes.                      |
-| *"Jessica, what language can you speak?"* / *"Jessico, jakie znasz języki?"* | List supported languages.            |
+| *"mów po polsku"* / *"speak Polish"*     | Pin language to PL until unpinned.                   |
+| *"mów po angielsku"* / *"speak English"* | Pin language to EN until unpinned.                   |
+| *"słuchaj uważnie"* / *"detect my language"* | Unpin; auto-detect resumes.                      |
+| *"Jessico, jakie znasz języki?"* / *"Jessica, what language can you speak?"* | List supported languages.            |
 
 Pinned state is in `/run/blazen/state.json` (`languages.pinned: "pl" | "en" | null`).
 
@@ -175,7 +186,7 @@ the voice-settings overlay (`languages.pinned`) and mirrored into
 
 ```yaml
 languages:
-  enabled: [en, pl]                # the set the assistant will accept
+  enabled: [pl, en]                # the set the assistant will accept (Polish first)
   default: pl                      # used when detection confidence < threshold
   detection:
     min_confidence: 0.6
@@ -198,7 +209,7 @@ auto_detect:
 The configs already carry `allowed:` lists. The bilingual set is:
 
 - `wake-word.yaml: allowed: [hey_blazen_en, hey_blazen_pl, hey_jarvis, alexa]`
-- `tts.yaml: allowed: [en_US-lessac-medium, en_US-amy-medium, pl_PL-darkman-medium, pl_PL-gosia-medium, en_GB-alan-low]`
+- `tts.yaml: allowed: [pl_PL-darkman-medium, pl_PL-gosia-medium, en_US-lessac-medium, en_US-amy-medium, en_GB-alan-low]`
 - `asr.yaml: allowed: [small, small.en, medium, large-v3-turbo, tiny.en, base.en]`
 
 ---
@@ -265,7 +276,7 @@ For the bilingual prototype:
   dispatched and the reply language follows the pin (§3.6).
 - **M6** (voice config): adds the WiFi/model voice-mutation flows and the
   custom-PL-wake-word training script. The pivot from "EN only with PL
-  on demand" to "EN + PL co-default" makes this milestone smaller, not
+  on demand" to "PL + EN co-default" makes this milestone smaller, not
   larger.
 
 A separate `docs/14-LOCALISATION.md` will be added when we extend beyond

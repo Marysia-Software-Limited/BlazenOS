@@ -35,9 +35,11 @@ tool-specific operational notes; when they disagree with this file, the
 7. **CPU is the LLM contract.** The Hailo accelerator path
    ([`docs/12-ML-ACCELERATOR.md`](docs/12-ML-ACCELERATOR.md)) is an
    optional strict-improvement layer; every feature must work without it.
-8. **EN + PL are co-equal.** The prototype is bilingual from M1; every
-   user-facing voice surface ships in both. New intents, phrases, and
-   scenarios are incomplete without their PL counterpart. See
+8. **Polish-first; English co-equal.** The prototype is bilingual from M1
+   with Polish as the primary language (default, first-listed); English
+   stays parity-required. Every user-facing voice surface ships in both —
+   new intents, phrases, and scenarios are incomplete without their EN or
+   PL counterpart. See
    [`docs/13-LANGUAGES.md`](docs/13-LANGUAGES.md).
 9. **Python + Rust only for the Pi 5 appliance.** Audio I/O, wake word,
    TTS, watchdog and IPC are Rust; orchestrator, ASR, LLM, bootstrap and

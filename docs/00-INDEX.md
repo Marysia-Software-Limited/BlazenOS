@@ -17,7 +17,7 @@ Read top-to-bottom on first contact. Afterwards, re-read only what changed.
 | 10  | [`10-ROADMAP.md`](10-ROADMAP.md)                  | Milestones M0..M10 with exit criteria. |
 | 11  | [`11-CLAUDE-PLAYBOOK.md`](11-CLAUDE-PLAYBOOK.md)  | Operational guide for Claude working on this repo. |
 | 12  | [`12-ML-ACCELERATOR.md`](12-ML-ACCELERATOR.md)    | Optional Hailo AI HAT+ / Hailo-10H integration for the LLM path. |
-| 13  | [`13-LANGUAGES.md`](13-LANGUAGES.md)              | **Spoken** languages — EN + PL bilingual contract. |
+| 13  | [`13-LANGUAGES.md`](13-LANGUAGES.md)              | **Spoken** languages — PL + EN bilingual contract (Polish-first). |
 | 14  | [`14-RUST-PYTHON-SPLIT.md`](14-RUST-PYTHON-SPLIT.md) | **Implementation** languages — which components are Python, which are Rust, and why. |
 | 15  | [`15-DEV-WORKFLOW.md`](15-DEV-WORKFLOW.md)        | Linux (`paul`) vs macOS hybrid workflow; what runs where. |
 | 16  | [`16-SYNC-PROTOCOL.md`](16-SYNC-PROTOCOL.md)      | **Bidirectional sync** — how paul Claude and macOS Claude exchange changes; what crosses the shared boundary. |

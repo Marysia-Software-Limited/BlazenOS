@@ -64,5 +64,5 @@ handled in Rust by
 this engine owns the conversational + memory + cloud side.
 
 Tests: [`rpi5/tests/unit/test_assistant.py`](../rpi5/tests/unit/test_assistant.py)
-(name EN/PL, time parsing, notes/reminders persistence + firing, and engine
+(name PL/EN, time parsing, notes/reminders persistence + firing, and engine
 routing with a fake Gemini + injected clock).

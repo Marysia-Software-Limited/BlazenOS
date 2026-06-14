@@ -174,7 +174,7 @@ reference profile and `raspi4b` once a week for the supported profile.
 
 ## Bilingual coverage requirements
 
-For EN + PL parity (see [`13-LANGUAGES.md`](13-LANGUAGES.md)):
+For PL + EN parity (see [`13-LANGUAGES.md`](13-LANGUAGES.md)):
 
 - Every fast-path intent test must run in both languages — either as
   separate scenarios or as a parametrised one.

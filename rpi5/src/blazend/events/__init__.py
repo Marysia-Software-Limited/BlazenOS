@@ -76,7 +76,7 @@ class Envelope:
 
 
 def wake_detected(
-    *, source: str, model: str, score: float, language: Literal["en", "pl"]
+    *, source: str, model: str, score: float, language: Literal["pl", "en"]
 ) -> Envelope:
     """Build a `wake.detected` envelope."""
     return Envelope(

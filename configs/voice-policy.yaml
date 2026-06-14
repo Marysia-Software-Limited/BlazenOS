@@ -50,10 +50,10 @@ allow_voice_mutation:
     confirm: never
   languages.pinned:
     confirm: never                              # voice-set per "speak Polish / English"
-    allowed_values: [en, pl, null]
+    allowed_values: [pl, en, null]
   languages.default:
     confirm: single
-    allowed_values: [en, pl]
+    allowed_values: [pl, en]
 
   # ----- Jessica persona + cloud + integrations ---------------------------
 

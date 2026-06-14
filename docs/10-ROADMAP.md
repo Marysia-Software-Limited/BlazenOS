@@ -207,15 +207,15 @@ SSH-able).
 ## M3 — ASR pipeline (bilingual)
 
 - `blazend-asr` runs `faster-whisper` with the **multilingual `small`**
-  model (EN + PL by default — see [`13-LANGUAGES.md`](13-LANGUAGES.md)).
+  model (PL + EN by default — see [`13-LANGUAGES.md`](13-LANGUAGES.md)).
 - VAD-driven utterance segmentation.
 - The wake → ASR loop produces `asr.final` plus a `language` tag for
   each utterance.
 - Tier 3 scenarios `02-basic-commands.yaml` (EN) and
   `07-pl-basic-commands.yaml` (PL) pass.
 
-**Exit criterion:** WER ≤ 8% on the 50-line EN `commands` fixture set
-AND WER ≤ 12% on the 50-line PL `commands` fixture set.
+**Exit criterion:** WER ≤ 12% on the 50-line PL `commands` fixture set
+AND WER ≤ 8% on the 50-line EN `commands` fixture set.
 
 ## M4 — Local LLM (CPU) + bilingual TTS
 
@@ -234,11 +234,11 @@ AND WER ≤ 12% on the 50-line PL `commands` fixture set.
 - The engine selector and IPC contract are in place; the Hailo path is
   stubbed and falls back to CPU automatically when no device is
   present.
-- `blazend-tts` runs Piper with **both** `en_US-lessac-medium` and
-  `pl_PL-darkman-medium` warm; voice is selected per utterance.
+- `blazend-tts` runs Piper with **both** `pl_PL-darkman-medium` and
+  `en_US-lessac-medium` warm; voice is selected per utterance.
 - First end-to-end conversations:
-  - EN: "hey Jessica, what time is it" → spoken English reply.
   - PL: "hej Jessico, która godzina" → spoken Polish reply.
+  - EN: "hey Jessica, what time is it" → spoken English reply.
 
 **Exit criterion:** Scenarios `04-conversation.yaml` (EN) and
 `08-pl-conversation.yaml` (PL) pass with the semantic-similarity
@@ -274,7 +274,7 @@ matcher on the CPU engine.
   target language; non-`en`/`pl` requests are rejected. Tier-0 tests mirror the
   `09-language-switch` turn sequence (`rpi5/tests/unit/test_dispatch.py`). See
   [`13-LANGUAGES.md`](13-LANGUAGES.md) §3.6.
-- Regex/keyword fast-path router with EN + PL triggers for every
+- Regex/keyword fast-path router with PL + EN triggers for every
   intent: `volume up/down/set`, `stop talking`, `repeat`, `go to sleep`,
   `what time is it`, `what's the date`, `reboot`, `shutdown`,
   `enable/disable ssh`, `speak Polish/English`, `apply change` /

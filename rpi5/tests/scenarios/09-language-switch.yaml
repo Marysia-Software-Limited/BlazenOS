@@ -10,7 +10,7 @@ description: |
     - the TTS voice swaps per utterance without audible artefacts.
 tags: [language, switch, mixed]
 preconditions:
-  languages.enabled: [en, pl]
+  languages.enabled: [pl, en]
   languages.default: pl
   languages.pinned: null
 turns:

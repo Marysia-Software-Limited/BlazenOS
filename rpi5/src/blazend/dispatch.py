@@ -24,9 +24,9 @@ from typing import Any
 _DEFAULTS: dict[str, Any] = {"audio.volume": 50}
 _CONFIRMS_NEEDED = {"never": 0, "single": 1, "loud": 1, "double_loud": 2}
 
-# Spoken language tokens (EN + PL trigger captures) → ISO code. Only en/pl are
-# supported per the co-equal-languages contract (docs/13-LANGUAGES.md); the
-# extra tokens resolve so we can answer "I only speak English and Polish".
+# Spoken language tokens (PL + EN trigger captures) → ISO code. Only pl/en are
+# supported (Polish-first, English co-equal — docs/13-LANGUAGES.md); the extra
+# tokens resolve so we can answer "I only speak Polish and English".
 _LANG_TOKENS: dict[str, str] = {
     "polish": "pl", "polski": "pl", "polsku": "pl",
     "english": "en", "angielski": "en", "angielsku": "en",
@@ -79,7 +79,7 @@ class IntentDispatcher:
         self._deny = policy_cfg.get("deny_voice_mutation", [])
         self._settings = settings
         self._pending: dict[str, Any] | None = None
-        allowed = self._allow.get("languages.pinned", {}).get("allowed_values", ["en", "pl"])
+        allowed = self._allow.get("languages.pinned", {}).get("allowed_values", ["pl", "en"])
         self._supported = tuple(c for c in allowed if c)
 
     def pinned_language(self) -> str | None:
@@ -191,7 +191,7 @@ class IntentDispatcher:
                 lang, "denied")
         if code not in self._supported:
             return DispatchResult(
-                _t(lang, "Mówię tylko po polsku i angielsku.", "I only speak English and Polish."),
+                _t(lang, "Mówię tylko po polsku i angielsku.", "I only speak Polish and English."),
                 lang, "denied", data={"requested": code})
         self._settings.set("languages.pinned", code)
         # Confirm in the *target* language so the user hears the switch land.
@@ -237,7 +237,7 @@ class IntentDispatcher:
             return DispatchResult(_t(lang, f"Dziś jest {now:%d.%m.%Y}.", f"Today is {now:%Y-%m-%d}."),
                                   lang, "tool")
         if tool == "languages.list":
-            return DispatchResult(_t(lang, "Mówię po polsku i angielsku.", "I speak English and Polish."),
+            return DispatchResult(_t(lang, "Mówię po polsku i angielsku.", "I speak Polish and English."),
                                   lang, "tool", data={"languages": list(self._supported)})
         return DispatchResult(_t(lang, "Jeszcze tego nie potrafię.", "I can't do that yet."),
                               lang, "tool", data={"tool": tool, "unimplemented": True})

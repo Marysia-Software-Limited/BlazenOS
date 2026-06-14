@@ -54,21 +54,21 @@ models:
     size_mb: 466
     ram_mb: 1200
     pi5_latency_5s_ms: 750
-    languages: [en, pl, de, fr, es, it, pt, ru, ...]
+    languages: [pl, en, de, fr, es, it, pt, ru, ...]
     license: MIT
   medium:                              # multilingual, better PL diacritics
     download_id: Systran/faster-whisper-medium
     size_mb: 1500
     ram_mb: 2700
     pi5_latency_5s_ms: 1600
-    languages: [en, pl, de, fr, es, it, pt, ru, ...]
+    languages: [pl, en, de, fr, es, it, pt, ru, ...]
     license: MIT
   large-v3-turbo:
     download_id: Systran/faster-whisper-large-v3-turbo
     size_mb: 1600
     ram_mb: 3000
     pi5_latency_5s_ms: 1800
-    languages: [en, pl, de, fr, es, it, pt, ru, ...]
+    languages: [pl, en, de, fr, es, it, pt, ru, ...]
     license: MIT
 
 allowed:

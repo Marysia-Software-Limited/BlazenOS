@@ -117,7 +117,7 @@ hostname: blazen
 locale: pl_PL.UTF-8
 timezone: Europe/Warsaw
 languages:                             # see docs/13-LANGUAGES.md
-  enabled: [en, pl]
+  enabled: [pl, en]
   default: pl
   detection:
     min_confidence: 0.6

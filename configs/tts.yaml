@@ -6,8 +6,8 @@ version: 1
 # selects per utterance based on the detected reply language. See
 # docs/13-LANGUAGES.md.
 voice_by_language:
-  en: en_US-lessac-medium
   pl: pl_PL-darkman-medium
+  en: en_US-lessac-medium
 
 # Legacy single-default field — kept so older code paths still work and to
 # pin a single voice when language detection is disabled.
@@ -64,10 +64,10 @@ voices:
     license: MIT
 
 allowed:
-  - en_US-lessac-medium
-  - en_US-amy-medium
   - pl_PL-darkman-medium
   - pl_PL-gosia-medium
+  - en_US-lessac-medium
+  - en_US-amy-medium
   - en_GB-alan-low
 
 # A small per-language pronunciation table — applied before synthesis so

@@ -49,7 +49,7 @@ mic PCM ─▶ AEC/AGC ─▶ ring buffer ─▶ wake word ─▶ VAD ─▶ ASR
 
 - **Library:** [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
   via CTranslate2 INT8 (heavy work is C++; Python is the API shell).
-- **Default model:** `small` (multilingual; EN + PL out of the box). The
+- **Default model:** `small` (multilingual; PL + EN out of the box). The
   EN-only `small.en` is kept as an opt-in for the `lang_mode: en_only`
   build flavour. See [`13-LANGUAGES.md`](13-LANGUAGES.md).
 - **Mode:** streaming — partial transcripts every 200 ms once VAD says

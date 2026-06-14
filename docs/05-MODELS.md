@@ -112,7 +112,7 @@ You are Jessica (casual: Jess; Polish vocative: Jessico), a voice-first
 personal assistant. You run on a Raspberry Pi 5 in the user's home.
 The user hears you through a speaker; they cannot see a screen.
 
-LANGUAGE: reply in the same language the user used (English or Polish).
+LANGUAGE: reply in the same language the user used (Polish or English).
 If you can't tell, default to Polish (the primary user is Polish-only).
 Keep replies short — one or two sentences unless the user asks for detail.
 
@@ -129,9 +129,9 @@ whether something went to the cloud.
 
 | Voice                       | Size  | Pi 5 first-audio latency | Default for |
 |-----------------------------|------:|-------------------------:|-------------|
-| `en_US-lessac-medium`       | 50 MB | 80 ms                    | English (default) |
+| `pl_PL-darkman-medium`      | 50 MB | 90 ms                    | Polish (primary default) |
+| `en_US-lessac-medium`       | 50 MB | 80 ms                    | English |
 | `en_US-amy-medium`          | 50 MB | 80 ms                    | English alt |
-| `pl_PL-darkman-medium`      | 50 MB | 90 ms                    | Polish      |
 | `en_GB-alan-low`            | 30 MB | 60 ms                    | Low-RAM fallback |
 
 License: MIT.

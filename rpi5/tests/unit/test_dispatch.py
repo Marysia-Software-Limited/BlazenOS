@@ -24,7 +24,7 @@ POLICY = {
         "system.power.reboot": {"confirm": "loud"},
         "system.factory_reset": {"confirm": "double_loud"},
         "llm.active_engine": {"confirm": "single", "allowed_values": ["auto", "cpu", "hailo"]},
-        "languages.pinned": {"confirm": "never", "allowed_values": ["en", "pl", None]},
+        "languages.pinned": {"confirm": "never", "allowed_values": ["pl", "en", None]},
     },
     "deny_voice_mutation": ["system.firewall.**"],
 }
@@ -109,7 +109,7 @@ def test_language_switch_pins_and_follows(tmp_path):
 def test_language_switch_rejects_unsupported(tmp_path):
     d = _disp(tmp_path)
     r = d.dispatch("switch_language", {"lang": "german"}, "en")
-    assert r.action == "denied" and "english and polish" in r.speak.lower()
+    assert r.action == "denied" and "polish and english" in r.speak.lower()
     assert d.pinned_language() is None  # pin unchanged
     miss = d.dispatch("switch_language", {"lang": "klingon"}, "en")
     assert miss.action == "denied" and d.pinned_language() is None
@@ -118,8 +118,8 @@ def test_language_switch_rejects_unsupported(tmp_path):
 def test_languages_list_tool(tmp_path):
     d = _disp(tmp_path)
     en = d.dispatch("list_languages", {}, "en")
-    assert en.action == "tool" and "english and polish" in en.speak.lower()
-    assert en.data["languages"] == ["en", "pl"]
+    assert en.action == "tool" and "polish and english" in en.speak.lower()
+    assert en.data["languages"] == ["pl", "en"]
     pl = d.dispatch("list_languages", {}, "pl")
     assert "polsku i angielsku" in pl.speak.lower()
 

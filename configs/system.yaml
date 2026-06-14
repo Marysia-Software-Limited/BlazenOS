@@ -7,9 +7,10 @@ hostname: blazen
 locale: pl_PL.UTF-8
 timezone: Europe/Warsaw
 
-# Bilingual prototype: both languages are co-equal. See docs/13-LANGUAGES.md.
+# Bilingual prototype: Polish is the primary language; English is co-equal
+# (parity still required). See docs/13-LANGUAGES.md.
 languages:
-  enabled: [en, pl]
+  enabled: [pl, en]                          # Polish first (primary), English second
   default: pl                                # used when detection confidence is low
   detection:
     min_confidence: 0.6

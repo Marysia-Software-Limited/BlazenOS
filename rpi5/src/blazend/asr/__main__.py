@@ -12,10 +12,10 @@ from blazend.ipc import Publisher, runtime_dir
 log = logging.getLogger("blazend.asr")
 
 MOCK_UTTERANCES = [
-    ("en", "hey blazen what time is it"),
     ("pl", "która godzina"),
-    ("en", "thanks"),
+    ("en", "hey blazen what time is it"),
     ("pl", "dziękuję"),
+    ("en", "thanks"),
 ]
 
 

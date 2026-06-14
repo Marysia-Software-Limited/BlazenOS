@@ -63,11 +63,13 @@ Whenever the user says "rules changed" or you modify a doc, refresh these.
      Hailo accelerator must degrade gracefully to CPU. The accelerator is
      a strict-improvement path, never a precondition. See
      [`docs/12-ML-ACCELERATOR.md`](docs/12-ML-ACCELERATOR.md).
-  5. **EN and PL are co-equal.** Every user-facing voice surface — wake
-     word, intents, confirmations, replies, error tones, system messages —
-     ships in both languages. A change that lands an English-only
-     intent / phrase / scenario is incomplete until the Polish
-     counterpart exists. See [`docs/13-LANGUAGES.md`](docs/13-LANGUAGES.md).
+  5. **Polish is the primary language; English is co-equal.** Polish leads
+     everywhere (default, first-listed, examples-first), but English remains
+     a parity-required first-class language: every user-facing voice surface —
+     wake word, intents, confirmations, replies, error tones, system messages —
+     ships in both. A change that lands a Polish-only **or** English-only
+     intent / phrase / scenario is incomplete until the counterpart exists.
+     See [`docs/13-LANGUAGES.md`](docs/13-LANGUAGES.md).
   6. **Python and Rust are the two implementation languages for the
      Pi 5 surface.** Hot loops, audio I/O, wake word, TTS, watchdog
      and the IPC wire are **Rust**. Orchestrator, ASR, LLM, bootstrap
@@ -208,9 +210,9 @@ the feature is incomplete.
 - [ ] Any new YAML config has a default in `configs/` AND a doc entry in
       `docs/07-CONFIGURATION.md`.
 - [ ] Any new voice intent has a scenario file in `rpi5/tests/scenarios/`.
-- [ ] **EN + PL parity:** every new intent has both `en:` and `pl:`
-      triggers; every new assistant phrase exists in both languages;
-      every new scenario has a PL counterpart (or a documented reason
-      why bilingual coverage is N/A — e.g., a fault-injection scenario
-      with no voice content).
+- [ ] **PL + EN parity (Polish-first):** every new intent has both `pl:`
+      and `en:` triggers; every new assistant phrase exists in both
+      languages; every new scenario has its PL/EN counterpart (or a
+      documented reason why bilingual coverage is N/A — e.g., a
+      fault-injection scenario with no voice content).
 - [ ] The voice-first sanity check (§7) is satisfied.

@@ -4,7 +4,7 @@
 
 No keyboard, no monitor. The user speaks; Jessica listens, thinks, answers, reads things aloud, drafts replies, takes notes, surfaces the morning briefing, plays podcasts, integrates with Gemini for deep-research questions, and learns the user's voice over time.
 
-The LLM runs on the Pi 5 CPU by default; an optional Raspberry Pi AI HAT+ (Hailo) accelerates it. The product is **bilingual EN + PL from M1** and Jessica responds to **"hey Jessica" / "Jess" / "hej Jessico"**. SSH is on by default for administration (pubkey-only; no credential ships — you provision your own key).
+The LLM runs on the Pi 5 CPU by default; an optional Raspberry Pi AI HAT+ (Hailo) accelerates it. The product is **bilingual PL + EN from M1** — Polish-first, English co-equal — and Jessica responds to **"hej Jessico" / "Jess" / "hey Jessica"**. SSH is on by default for administration (pubkey-only; no credential ships — you provision your own key).
 
 > **Monorepo mobile twins:** native iOS ([`ios/`](ios/), SwiftUI) and
 > Android ([`android/`](android/), Jetpack Compose) live alongside the
@@ -29,9 +29,9 @@ The LLM runs on the Pi 5 CPU by default; an optional Raspberry Pi AI HAT+ (Hailo
 > [`docs/02-HARDWARE.md`](docs/02-HARDWARE.md) and
 > [`docs/12-ML-ACCELERATOR.md`](docs/12-ML-ACCELERATOR.md).
 
-> **Spoken languages:** English and Polish are co-equal first-class
-> targets. Auto-detection per utterance; voice-pinnable. See
-> [`docs/13-LANGUAGES.md`](docs/13-LANGUAGES.md).
+> **Spoken languages:** Polish is the primary language; English is
+> co-equal (parity required). Auto-detection per utterance; voice-pinnable.
+> See [`docs/13-LANGUAGES.md`](docs/13-LANGUAGES.md).
 
 > **Implementation languages:** **Python + Rust**. Audio I/O, wake word,
 > TTS, watchdog and IPC live in Rust; the orchestrator, ASR, LLM,
@@ -81,11 +81,11 @@ AI HAT+ (Tier 4 — patrz [`docs/08-TESTING.md`](docs/08-TESTING.md)).
 | Base OS | Raspberry Pi OS Lite 64-bit (Bookworm) | No GUI. Read-only `/usr` (overlayfs) by default. |
 | Audio HAL | ALSA + PipeWire | USB mic or ReSpeaker HAT. |
 | Wake word | [openWakeWord](https://github.com/dscripka/openWakeWord) | Two models loop in parallel: `hey jessica` (EN) + `hej jessico` (PL). |
-| ASR | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | Multilingual `small` default — EN + PL out of the box. |
+| ASR | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | Multilingual `small` default — PL + EN out of the box. |
 | VAD | [silero-vad](https://github.com/snakers4/silero-vad) | End-of-utterance detection. |
-| LLM (CPU) | [llama.cpp](https://github.com/ggml-org/llama.cpp) | Qwen 2.5 3B Q4 default — multilingual EN/PL. See [docs/05-MODELS.md](docs/05-MODELS.md). |
+| LLM (CPU) | [llama.cpp](https://github.com/ggml-org/llama.cpp) | Qwen 2.5 3B Q4 default — multilingual PL/EN. See [docs/05-MODELS.md](docs/05-MODELS.md). |
 | LLM (accel) | [HailoRT](https://github.com/hailo-ai/hailort) | Optional `.hef` runtime on AI HAT+ — see [docs/12-ML-ACCELERATOR.md](docs/12-ML-ACCELERATOR.md). |
-| TTS | [Piper](https://github.com/rhasspy/piper) | Two voices warm: `en_US-lessac-medium` + `pl_PL-darkman-medium`. <100 ms first audio. |
+| TTS | [Piper](https://github.com/rhasspy/piper) | Two voices warm: `pl_PL-darkman-medium` + `en_US-lessac-medium`. <100 ms first audio. |
 | Orchestrator | `blazend` (Python systemd service) | See [docs/01-ARCHITECTURE.md](docs/01-ARCHITECTURE.md). |
 | Config | YAML under `/etc/blazen/` | Voice-mutable subset + SSH-only subset. Language-tagged intents. |
 | Test rig | QEMU `aarch64` + virtual ALSA | See [docs/09-VM-TESTING.md](docs/09-VM-TESTING.md). |
@@ -185,7 +185,7 @@ cd ios/     && make test          # JessicaCoreTests via swift test
 2. [`docs/02-HARDWARE.md`](docs/02-HARDWARE.md) — exact BOM and tested microphones.
 3. [`docs/04-VOICE-PIPELINE.md`](docs/04-VOICE-PIPELINE.md) — wake → ASR → LLM → TTS flow.
 4. [`docs/12-ML-ACCELERATOR.md`](docs/12-ML-ACCELERATOR.md) — optional Hailo accelerator for LLM.
-5. [`docs/13-LANGUAGES.md`](docs/13-LANGUAGES.md) — EN + PL spoken contract.
+5. [`docs/13-LANGUAGES.md`](docs/13-LANGUAGES.md) — PL + EN spoken contract.
 6. [`docs/14-RUST-PYTHON-SPLIT.md`](docs/14-RUST-PYTHON-SPLIT.md) — implementation language boundary.
 7. [`docs/15-DEV-WORKFLOW.md`](docs/15-DEV-WORKFLOW.md) — paul (Linux) primary rig + monorepo workflow.
 8. [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md) — how Pi5, Android, and iOS share the Rust core in this repo.

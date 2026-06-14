@@ -7,9 +7,9 @@ vocative: **Jessico**.
 
 | Form     | Language | Use                                                  |
 |----------|----------|------------------------------------------------------|
-| Jessica  | en       | Default, formal address.                             |
-| Jess     | en, pl   | Short form. Works as a fast wake from across a room. |
-| Jessico  | pl       | Polish vocative ("hey Jessica" in PL).               |
+| Jessico  | pl       | Polish vocative — the primary address form.          |
+| Jess     | pl, en   | Short form. Works as a fast wake from across a room. |
+| Jessica  | en       | English address (the canonical name).                |
 
 Jessica refers to herself as **Jessica** by default and switches to
 **Jess** when the user repeatedly uses it. She never uses the
@@ -24,8 +24,8 @@ Two simultaneous models loop on the audio ring buffer (per
 
 | Wake model file        | Triggers                              | Lang | Notes |
 |------------------------|---------------------------------------|------|-------|
-| `jessica_en.onnx`      | "hey jessica", "jessica", "jess"      | en   | Trained from synthetic Piper EN + 50 real samples. |
 | `jessica_pl.onnx`      | "hej jessico", "jessico", "jess"      | pl   | Trained from synthetic Piper PL + 50 real samples. |
+| `jessica_en.onnx`      | "hey jessica", "jessica", "jess"      | en   | Trained from synthetic Piper EN + 50 real samples. |
 
 Fallback / coexistence wakes that ship pre-trained:
 
@@ -37,7 +37,7 @@ Fallback / coexistence wakes that ship pre-trained:
 
 The active list (in `configs/wake-word.yaml` for `blazen_os`,
 `assets/wake-word.yaml` for `rachel`) controls which models run.
-Default is `[jessica_en, jessica_pl]`.
+Default is `[jessica_pl, jessica_en]`.
 
 > **Decision (2026-06-11):** Jessica is the default identity from M2
 > onward. The `hey_blazen_*` developer wakes remain in the catalogue
@@ -50,8 +50,8 @@ trigger**, with one of:
 
 | Trigger lang | Confirmation samples                                    |
 |--------------|----------------------------------------------------------|
-| en           | "yes?", "hm?", "I'm listening." (random; user-tunable)  |
-| pl           | "tak?", "słucham?", "co tam?", "no?"                    |
+| pl           | "tak?", "słucham?", "co tam?", "no?" (random; user-tunable) |
+| en           | "yes?", "hm?", "I'm listening."                         |
 
 The acknowledgement is mixed by the audio-out unit at a slightly
 lower gain than the assistant's main TTS so it's perceived as a
