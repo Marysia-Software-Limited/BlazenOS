@@ -89,10 +89,11 @@ extra_qemu_args: []
 serial console lands in `vm-runs/<ts>/serial.log`.
 
 > **The VM image is a *dev* image.** `make vm-image` builds with
-> `--dev`, so `blazen` is a real login user and SSH is enabled at boot
+> `--dev`, so `blazen` carries a baked-in dev key + serial password
 > (see [`06-SSH-BOOTSTRAP.md`](06-SSH-BOOTSTRAP.md) §6). Release images
-> (`make pi-image`) are *not* SSH-able — that is the whole point of the
-> break-glass contract — so they cannot be used for this boot test.
+> (`make pi-image`) are also SSH-on, but pubkey-only/fail-closed with no
+> shipped credential — so the automated boot test, which logs in with the
+> baked dev key, needs the dev flavour.
 
 SSH from the host, using the baked-in dev key:
 

@@ -19,23 +19,23 @@ turns:
       wake_acknowledged: true
       assistant_reply_within_ms: 5000
 
+  # SSH is on by default (docs/06), so recovery escalates the LED/beep
+  # rather than opening the admin channel — the ssh.enabled assertions
+  # that used to gate these steps are gone.
   - inject: starve_audio_in
     duration_ms: 12000
     expect:
       led: red
-      ssh.enabled: true
       assistant_says_contains: "recovery mode"
 
   - inject: restore_audio_in
     expect:
       led: green
-      ssh.enabled: false_after_idle_window
 
   - inject: corrupt_model_file
     target: llm.qwen2.5-3b-instruct-q4_k_m.gguf
     expect:
       assistant_says_contains: "critical error"
-      ssh.enabled: true
       reboot_into_recovery_image: true
 postconditions:
   unit_restart_summary_present: true

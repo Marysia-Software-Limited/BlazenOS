@@ -15,10 +15,14 @@ usage() {
   cat <<USAGE
 Usage: $0 --boot <mount> [--ssid X] [--psk Y] [--country PL] [--ssh-key '...']
 
+SSH is on by default in the image (pubkey-only); the authorized_keys you
+pass here is the operator key that makes the device reachable. Without it
+sshd runs but admits nobody (fail-closed).
+
 Writes:
   <boot>/blazen-firstboot/wpa_supplicant.conf
-  <boot>/blazen-firstboot/authorized_keys
-  <boot>/blazen-firstboot/ssh             (empty — enables sshd one-time)
+  <boot>/blazen-firstboot/authorized_keys (your operator pubkey)
+  <boot>/blazen-firstboot/ssh             (empty — sshd already on; kept for compat)
   <boot>/blazen-firstboot/blazen-bootstrap.yaml
 USAGE
 }
@@ -62,12 +66,12 @@ if [ -n "$SSH_KEY" ]; then
 fi
 
 touch "$OUT/ssh"
-echo "enabled SSH for first boot"
+echo "wrote ssh marker (sshd is already on by default)"
 
 cat > "$OUT/blazen-bootstrap.yaml" <<EOF
 version: 1
 user: $USER
-keep_ssh_on: false
+keep_ssh_on: true
 hostname: blazen
 locale: en_US.UTF-8
 timezone: Europe/Warsaw

@@ -3,7 +3,7 @@ language: en
 description: Loud-confirmation flow for a reboot intent — system stays up.
 tags: [system, confirm, voice-policy, en]
 preconditions:
-  ssh.enabled: false
+  ssh.enabled: false        # deliberately off (default is on) to exercise the enable toggle
 turns:
   - user: "hey Jessica"
     expect:

@@ -10,7 +10,7 @@ Read top-to-bottom on first contact. Afterwards, re-read only what changed.
 | 03  | [`03-SOFTWARE-STACK.md`](03-SOFTWARE-STACK.md)    | Base OS, init system, package pins. |
 | 04  | [`04-VOICE-PIPELINE.md`](04-VOICE-PIPELINE.md)    | Wake → VAD → ASR → NLU → LLM → TTS flow with budgets. |
 | 05  | [`05-MODELS.md`](05-MODELS.md)                    | Concrete ML model choices, sizes, licensing. |
-| 06  | [`06-SSH-BOOTSTRAP.md`](06-SSH-BOOTSTRAP.md)      | Headless first-boot, SSH-as-break-glass policy. |
+| 06  | [`06-SSH-BOOTSTRAP.md`](06-SSH-BOOTSTRAP.md)      | Headless first-boot, SSH access policy (on by default, pubkey-only). |
 | 07  | [`07-CONFIGURATION.md`](07-CONFIGURATION.md)      | YAML config schema, voice-vs-SSH split. |
 | 08  | [`08-TESTING.md`](08-TESTING.md)                  | Five-tier test pyramid, scenarios, CI. |
 | 09  | [`09-VM-TESTING.md`](09-VM-TESTING.md)            | QEMU image, virtual audio, golden audio fixtures. |

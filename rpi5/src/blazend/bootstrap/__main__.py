@@ -1,5 +1,9 @@
 """First-boot bootstrap. Reads /boot/blazen-firstboot/, lays down /etc/blazen/.
 
+SSH is on by default in the image (pubkey-only); the firstboot
+`authorized_keys` is the operator key destined for ~blazen/.ssh/authorized_keys
+so the device becomes reachable. The bootstrap does NOT disable SSH afterwards.
+
 M1 skeleton: logs what it would do. Real logic in M1 hardware bring-up.
 """
 

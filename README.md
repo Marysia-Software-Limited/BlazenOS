@@ -4,7 +4,7 @@
 
 No keyboard, no monitor. The user speaks; Jessica listens, thinks, answers, reads things aloud, drafts replies, takes notes, surfaces the morning briefing, plays podcasts, integrates with Gemini for deep-research questions, and learns the user's voice over time.
 
-The LLM runs on the Pi 5 CPU by default; an optional Raspberry Pi AI HAT+ (Hailo) accelerates it. The product is **bilingual EN + PL from M1** and Jessica responds to **"hey Jessica" / "Jess" / "hej Jessico"**. SSH is reserved for break-glass administration only.
+The LLM runs on the Pi 5 CPU by default; an optional Raspberry Pi AI HAT+ (Hailo) accelerates it. The product is **bilingual EN + PL from M1** and Jessica responds to **"hey Jessica" / "Jess" / "hej Jessico"**. SSH is on by default for administration (pubkey-only; no credential ships — you provision your own key).
 
 > **Monorepo mobile twins:** native iOS ([`ios/`](ios/), SwiftUI) and
 > Android ([`android/`](android/), Jetpack Compose) live alongside the
@@ -54,9 +54,9 @@ niewidomym i słabowidzącym:
    wariant `.hef` na akceleratorze Hailo) decyduje o intencji i
    generuje odpowiedź — bez internetu.
 4. Lokalny silnik TTS (Piper) odpowiada syntezą mowy.
-5. SSH istnieje wyłącznie do awaryjnej rekonfiguracji (np. zmiana sieci
-   Wi-Fi, przywrócenie systemu) — domyślnie wyłączony, włączany głosem
-   lub przez automatyczny tryb recovery.
+5. SSH jest **domyślnie włączony** do administracji (np. zmiana sieci
+   Wi-Fi, przywrócenie systemu) — tylko z kluczem publicznym, bez żadnych
+   wbudowanych haseł: to operator wgrywa własny klucz (fail-closed).
 
 Opcjonalny akcelerator ML (Raspberry Pi AI HAT+, najlepiej **Hailo-10H**)
 przyspiesza konwersację LLM-em: **TTFT spada z ~350 ms (CPU) do ~120 ms

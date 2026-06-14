@@ -53,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
                 "blazend-audio-out":    "running",
             },
             "hailo":  { "present": false },
-            "ssh":    { "enabled": false },
+            "ssh":    { "enabled": true },
             "led":    "green",
         });
         if let Some(parent) = state_path.parent() {

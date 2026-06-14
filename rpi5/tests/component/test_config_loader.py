@@ -22,7 +22,7 @@ def test_load_system(repo_configs: Path):
     assert cfg.get("version") == 1
     assert "pl" in cfg.get("languages.enabled")
     assert "en" in cfg.get("languages.enabled")
-    assert cfg.get("ssh.enabled") is False
+    assert cfg.get("ssh.enabled") is True   # on by default (pubkey-only); see docs/06
     assert cfg.get("telemetry.enabled") is False
 
 

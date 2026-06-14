@@ -71,15 +71,15 @@ power:
   enable_wear_leveling: true
 
 ssh:
-  enabled: false                              # release default
+  enabled: true                               # on by default; pubkey-only — see docs/06
   port: 22
-  allow_only_pubkey: true
-  recovery_mode_window_minutes: 30
+  allow_only_pubkey: true                     # fail-closed: no key provisioned → admits nobody
+  recovery_mode_window_minutes: 30            # recovery escalates LED/beep (SSH is already up)
 
 firewall:
   default_policy_in: deny
   default_policy_out: allow
-  allow_from_lan_ports: [22]                  # only when ssh.enabled
+  allow_from_lan_ports: [22]                  # port 22 open (ssh on by default)
   allow_loopback: true
 
 telemetry:

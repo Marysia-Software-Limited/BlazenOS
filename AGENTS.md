@@ -17,9 +17,10 @@ tool-specific operational notes; when they disagree with this file, the
 2. **On-device ML.** No internet round-trip during ASR, intent routing, LLM
    reasoning, or TTS. Optional online tools (e.g., a weather plugin) are
    gated behind explicit user consent and run as separate processes.
-3. **SSH is break-glass.** Used only when voice fails or for advanced
-   admin (e.g., changing Wi-Fi SSID, recovering the image). Not part of the
-   daily-use surface.
+3. **SSH is on by default** — pubkey-only and fail-closed (no key or
+   password ships; the operator provisions a key). It complements the voice
+   path for advanced admin (e.g., changing Wi-Fi SSID, recovering the image)
+   but is not the daily-use surface. See `docs/06-SSH-BOOTSTRAP.md`.
 4. **Reproducible image builds.** Any image we ship to a real Pi must be
    buildable from this repo's `make vm-image` / `make pi-image` targets,
    with pinned model checksums.

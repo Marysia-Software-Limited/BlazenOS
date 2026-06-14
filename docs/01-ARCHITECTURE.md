@@ -8,7 +8,7 @@
 3. The system survives a degraded ML path (e.g., LLM hangs) by falling back
    to a rule-based intent matcher and an "I'm sorry, I didn't get that"
    reprompt.
-4. SSH is a recovery channel, not the default UX.
+4. SSH is on by default (pubkey-only) as an admin channel, not the default UX.
 
 ## Process map
 
@@ -35,7 +35,7 @@
                       |
                       v
          +--------------------------+
-         |  blazend-ssh-recovery    |   <- only enabled when voice fails
+         |  blazend-ssh-recovery    |   <- recovery escalation (SSH already on)
          +--------------------------+
 
    Legend:  (RS) = Rust,  (PY) = Python.   See docs/14-RUST-PYTHON-SPLIT.md.

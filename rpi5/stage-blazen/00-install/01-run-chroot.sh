@@ -63,47 +63,48 @@ done
 
 # --- User + permissions ---------------------------------------------------
 #
-# Two image flavours (see docs/06-SSH-BOOTSTRAP.md §3 "Dev vs release"):
+# SSH is ON by default in BOTH flavours (see docs/06-SSH-BOOTSTRAP.md). The
+# `blazen` account is a real login user either way; the flavours differ only
+# in the SHIPPED CREDENTIAL:
 #
-#   RELEASE (default) — `blazen` is a nologin system account and SSH is
-#     disabled. This is the break-glass contract: the daily surface is
-#     voice-only and SSH is enabled on demand by the bootstrap/recovery
-#     paths, never as a standing login.
+#   RELEASE (default) — pubkey-only, **fail-closed**: no password is set and
+#     no key is baked in. The operator provisions their own pubkey via
+#     /boot/blazen-firstboot/authorized_keys at flash time (blazend-bootstrap
+#     installs it to ~blazen/.ssh/). With no key, sshd runs but admits nobody.
 #
-#   DEV (marker file /var/lib/blazen-staging/DEV_IMAGE present) — `blazen`
-#     is a real login user (home + bash + passwordless sudo) and SSH is
-#     enabled at boot. This is what `make vm-image` produces so the M1
-#     QEMU boot test (`ssh -p 2222 blazen@localhost true`) can pass and
-#     so developers can drive the appliance before the voice path exists.
+#   DEV (marker file /var/lib/blazen-staging/DEV_IMAGE present) — additionally
+#     bakes the dev pubkey and a known serial-console password (`blazen:blazen`)
+#     so the M1 QEMU boot test (`ssh -p 2222 blazen@localhost true`) can pass.
+#     These never ship in a release image.
+
+# Login `blazen` user with NOPASSWD sudo (the SSH key is the privilege
+# boundary). No password is set here — DEV adds one below.
+if ! id blazen >/dev/null 2>&1; then
+  useradd --create-home --shell /bin/bash --groups audio,plugdev,sudo blazen
+else
+  usermod --shell /bin/bash --append --groups audio,plugdev,sudo blazen
+  [ -d /home/blazen ] || { mkhomedir_helper blazen 2>/dev/null || true; }
+fi
+install -d -m 0755 /etc/sudoers.d
+printf 'blazen ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/010-blazen
+chmod 0440 /etc/sudoers.d/010-blazen
+systemctl enable ssh
 
 if [ -f "$STAGE/DEV_IMAGE" ]; then
-  echo "=== blazend chroot: DEV image (login blazen + ssh enabled) ==="
-  if ! id blazen >/dev/null 2>&1; then
-    useradd --create-home --shell /bin/bash --groups audio,plugdev,sudo blazen
-  else
-    usermod --shell /bin/bash --append --groups audio,plugdev,sudo blazen
-    [ -d /home/blazen ] || { mkhomedir_helper blazen 2>/dev/null || true; }
-  fi
-  # Known dev password for the serial console fallback; SSH should prefer
-  # the baked-in key. Never ships in a release image.
+  echo "=== blazend chroot: DEV image (login blazen + ssh on + dev creds) ==="
+  # Known dev password for the serial console fallback; SSH prefers the
+  # baked-in key. Never ships in a release image.
   echo 'blazen:blazen' | chpasswd
-  install -d -m 0755 /etc/sudoers.d
-  printf 'blazen ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/010-blazen-dev
-  chmod 0440 /etc/sudoers.d/010-blazen-dev
   if [ -f "$STAGE/dev_authorized_keys" ]; then
     install -d -m 0700 /home/blazen/.ssh
     install -m 0600 "$STAGE/dev_authorized_keys" /home/blazen/.ssh/authorized_keys
     chown -R blazen:blazen /home/blazen/.ssh
   fi
-  systemctl enable ssh
 else
-  echo "=== blazend chroot: RELEASE image (nologin blazen + ssh disabled) ==="
-  if ! id blazen >/dev/null 2>&1; then
-    useradd --system --shell /usr/sbin/nologin --home /var/lib/blazen \
-            --groups audio,plugdev blazen
-  fi
-  # SSH off by default (release contract — see docs/06-SSH-BOOTSTRAP.md).
-  systemctl disable ssh || true
+  echo "=== blazend chroot: RELEASE image (login blazen + ssh on, key-only) ==="
+  # Fail-closed: lock the password so only an operator-provisioned pubkey
+  # (via firstboot) can authenticate. No key ships in the image.
+  passwd --lock blazen || true
 fi
 
 mkdir -p /var/lib/blazen /run/blazen

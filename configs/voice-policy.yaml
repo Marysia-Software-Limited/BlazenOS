@@ -41,7 +41,7 @@ allow_voice_mutation:
   system.factory_reset:
     confirm: double_loud
   ssh.enabled:
-    confirm: loud
+    confirm: loud                               # on by default; voice can still toggle it off
   telemetry.enabled:
     confirm: loud
   hailo.enabled:

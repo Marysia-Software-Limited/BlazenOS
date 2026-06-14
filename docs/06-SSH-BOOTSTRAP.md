@@ -1,8 +1,22 @@
-# 06 — SSH bootstrap and break-glass policy
+# 06 — SSH access and bootstrap policy
 
-`blazen_os` is voice-first. SSH exists **only** for situations the voice
-path can't handle: first boot before the user has trained the system to
-their voice, recovery when the voice pipeline is broken, advanced sysadmin.
+`blazen_os` is voice-first, but SSH is a **standing administration channel**
+that is **on by default**. It is **pubkey-only** and ships with **no
+credential** — the operator provisions their own key, so an un-provisioned
+device admits nobody (fail-closed). SSH complements the voice surface for
+first boot, recovery when the voice pipeline is broken, and advanced sysadmin.
+
+> **Decision (2026-06-14):** SSH is **on by default on every image**,
+> including release builds — overturning the prior "break-glass / off by
+> default" contract, at the maintainer's direction. The posture is
+> **operator-key, fail-closed**: `sshd` is always enabled and pubkey-only
+> (`ssh.allow_only_pubkey: true`); the shipped release image sets **no
+> password and bakes no key**, so it is reachable on port 22 but authenticates
+> no one until the operator drops a pubkey via
+> `/boot/blazen-firstboot/authorized_keys` at flash time. We never ship a
+> default key or password (that would be a shared-secret vulnerability across
+> all devices). The `enable_ssh` / `disable_ssh` voice intents are retained
+> (loud confirm), so SSH can still be turned off by voice.
 
 ## 1. First-boot flow (no monitor, no keyboard)
 
@@ -22,15 +36,17 @@ following template files into it:
 On first boot, `blazend-bootstrap.service`:
 
 1. Reads `/boot/blazen-firstboot/`.
-2. Creates the user account, installs the SSH key.
+2. Installs the operator's `authorized_keys` to `~blazen/.ssh/` (SSH is
+   already enabled in the image — this is what makes it reachable).
 3. Connects to WiFi (or waits for Ethernet).
 4. Computes a one-time pairing code and announces it via TTS:
    *"Your pairing code is four-seven-two-nine. Say 'Jessica, my code is
    four-seven-two-nine' when you are ready."*
 5. Once paired, deletes `/boot/blazen-firstboot/` (so the SD card can't be
    yanked and impersonated).
-6. Disables SSH again unless `keep_ssh_on: true` is set in the bootstrap
-   YAML or the user later says `"Jessica, enable ssh"`.
+
+SSH stays on after first boot. `keep_ssh_on` defaults `true`; a user who
+wants it off can say `"Jessica, disable ssh"` (loud confirm).
 
 If the user has no laptop to prepare the boot files, an **AP-mode
 fallback** is available: a fresh image with no `wpa_supplicant.conf`
@@ -66,20 +82,21 @@ documented in [`07-CONFIGURATION.md`](07-CONFIGURATION.md).
 ## 3. SSH lifecycle states
 
 ```
-                   "enable ssh"            "disable ssh"
+                   "disable ssh"            "enable ssh"
    ┌──────────┐  ───────────────▶  ┌──────────┐
-   │ SSH off  │                    │ SSH on   │
-   └──────────┘  ◀───────────────  └──────────┘
-        ▲                              │
-        │   (voice path broken)        │  (idle 30 min)
-        │                              │
-        │   ┌──────────────────┐       │
-        └───│ Recovery mode ON │◀──────┘  triggered by `blazend-health`
-            └──────────────────┘
+   │ SSH on   │                    │ SSH off  │
+   │ (default)│  ◀───────────────  └──────────┘
+   └──────────┘
+        │
+        │   (voice path broken)
+        ▼
+   ┌──────────────────┐
+   │ Recovery mode ON │◀── triggered by `blazend-health`
+   └──────────────────┘
 ```
 
-- **SSH off** is the steady state in release builds.
-- **SSH on** is the steady state in dev builds.
+- **SSH on** is the steady state in **both** flavours (release and dev).
+  It is only ever off if the user explicitly says `"disable ssh"`.
 - **Recovery mode** is automatic: triggered by `blazend-health` when any
   of these is true for >60 s:
   - audio-out has been silent through 3 consecutive scheduled checks;
@@ -87,9 +104,11 @@ documented in [`07-CONFIGURATION.md`](07-CONFIGURATION.md).
   - brain failed to produce a token within 3 consecutive utterances;
   - the orchestrator crashed and didn't restart cleanly.
 
-When recovery mode triggers, the LED goes red, a long beep plays, and
-SSH is enabled on port 22 with a 30-minute window. After that window the
-system attempts a clean restart back to normal mode.
+When recovery mode triggers, the LED goes red and a long beep plays. SSH is
+already up, so recovery's job is to **signal** (LED/beep) and, if the user
+had previously disabled SSH, re-enable it — it does not need to open the
+daily channel. After the recovery window the system attempts a clean restart
+back to normal mode.
 
 ## 4. SSH usage from a developer machine
 
@@ -119,47 +138,52 @@ A small set of admin scripts live in `/usr/lib/blazen/admin/`:
 
 All scripts are idempotent and safe to re-run.
 
-## 5. Why SSH is not "just disable it forever"
+## 5. Why pubkey-only and no shipped credential
 
-A truly voice-first device still needs a hatch for the day:
+SSH is on by default because a voice-first device still needs a hatch for
+the day the voice path can't serve:
 
 - The user's voice is lost (laryngitis, throat surgery — yes, this matters).
 - A model update accidentally breaks ASR for a particular accent.
 - The wake-word model needs retraining and the user can't pair.
 
-Without SSH the only recovery is reflashing the SD card. SSH is the
-cheaper failure mode and we keep it small and audited.
+What keeps "on by default" from being an exposure is the **fail-closed**
+auth model: `allow_only_pubkey: true` (no password auth) and **no key baked
+into the image**. A freshly flashed device is reachable on port 22 but
+authenticates nobody until the operator provisions their own pubkey. We
+never ship a default key or password — that would be one shared secret
+across every device in the field. The daemon stays small and audited.
 
 ## 6. Dev vs release images
 
-The break-glass model above is the **release** contract. During bring-up
-(M1–M7) there is no working voice path yet, so the image we boot in QEMU
-and flash for hardware bring-up needs a standing login. We express this
-as two image **flavours** produced from the same `rpi5/stage-blazen/` overlay:
+Both flavours now ship `blazen` as a **login** user with **SSH enabled** —
+the difference is purely the **shipped credential**. They are produced from
+the same `rpi5/stage-blazen/` overlay:
 
-| Flavour | Built by | `blazen` account | SSH at boot | Use |
-|---------|----------|------------------|-------------|-----|
-| **release** (default) | `make pi-image` | system, `nologin` | disabled | shipped images; daily surface is voice-only |
-| **dev** | `make vm-image`, `make pi-image-dev` | login: home + `/bin/bash` + passwordless `sudo` | enabled | QEMU boot test, on-hardware bring-up, CI |
+| Flavour | Built by | `blazen` account | SSH at boot | Shipped credential |
+|---------|----------|------------------|-------------|--------------------|
+| **release** (default) | `make pi-image` | login: home + `/bin/bash` + NOPASSWD `sudo`, **password locked** | enabled | **none** — pubkey-only; operator key via firstboot |
+| **dev** | `make vm-image`, `make pi-image-dev` | login: home + `/bin/bash` + NOPASSWD `sudo` | enabled | dev pubkey baked + serial password `blazen:blazen` |
 
 The flavour is selected by `scripts/build-image.sh --dev` (or
-`BLAZEN_DEV_IMAGE=1`). Concretely the dev build:
+`BLAZEN_DEV_IMAGE=1`). Both builds set `ENABLE_SSH=1` in the pi-gen config
+and `systemctl enable ssh`. The release chroot path locks the `blazen`
+password (`passwd --lock`) so only an operator-provisioned key authenticates.
+The **dev** build additionally:
 
-- sets `ENABLE_SSH=1` in the pi-gen config;
-- drops a `DEV_IMAGE` marker + the dev public key into the staging
-  payload, which `rpi5/stage-blazen/00-install/01-run-chroot.sh` keys off to
-  create the login `blazen` user, install
-  `~blazen/.ssh/authorized_keys`, set the serial-console fallback
-  password `blazen:blazen`, and `systemctl enable ssh`;
+- drops a `DEV_IMAGE` marker + the dev public key into the staging payload,
+  which `rpi5/stage-blazen/00-install/01-run-chroot.sh` keys off to install
+  `~blazen/.ssh/authorized_keys` and set the serial-console fallback
+  password `blazen:blazen`;
 - bakes a key from `BLAZEN_DEV_SSH_PUBKEY` if set, otherwise generates
   one at `build/dev-ssh/id_ed25519` (gitignored — a private key never
   enters the repo).
 
 The marker and key live only in `/var/lib/blazen-staging/`, which the
-chroot script deletes (`rm -rf "$STAGE"`) at the end of the build, so
-neither ships in the rootfs of either flavour.
+chroot script deletes (`rm -rf "$STAGE"`) at the end of the build, so the
+dev key/password never ship in a release rootfs.
 
 > A dev image is **not** a relaxed release image — it is a different
-> artefact. Release images never carry the dev key, the dev password, or
-> a login `blazen`. The two are produced by different `make` targets so
-> the locked-down default can never be reached by forgetting a flag.
+> artefact. Release images never carry the dev key or the dev password.
+> The two are produced by different `make` targets so the dev credential
+> can never reach a shipped image by forgetting a flag.

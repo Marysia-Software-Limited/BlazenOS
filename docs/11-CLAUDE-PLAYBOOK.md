@@ -91,8 +91,9 @@ vice versa), make it its own blazend-* unit.
 
 ## When you are about to touch SSH or firewall config
 
-This is in the **most restrictive** bucket per `AGENTS.md` §1.3 (SSH is
-break-glass).
+This is in the **most restrictive** bucket per `AGENTS.md` §1.3 (SSH is a
+security-sensitive surface; it is on by default and pubkey-only — never
+ship a default credential).
 
 1. Plan first (`EnterPlanMode`).
 2. Justify in the design doc (`docs/06-SSH-BOOTSTRAP.md` decision block).

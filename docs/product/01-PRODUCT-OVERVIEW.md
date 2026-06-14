@@ -6,7 +6,7 @@ She runs in **two skins**:
 
 | Skin | Where | Project |
 |------|-------|---------|
-| **Appliance** | A Raspberry Pi 5 16 GB on a shelf at home — mic + speaker, no screen. SSH for break-glass admin only. | [`blazen_os`](../../../blazen_os/) |
+| **Appliance** | A Raspberry Pi 5 16 GB on a shelf at home — mic + speaker, no screen. SSH on by default for admin (pubkey-only). | [`blazen_os`](../../../blazen_os/) |
 | **Mobile**    | An iOS or Android phone — voice-first, but the screen is available when useful (e.g., showing the email Jessica just read aloud). | [`rachel`](../../../rachel/) |
 
 ## What Jessica does (feature surface)

@@ -45,7 +45,7 @@ We do not vendor `pi-gen`; pinning is by SHA.
 | `build-essential`        | For wheels needing compilation.         |
 | `cmake`, `ninja-build`   | llama.cpp build.                        |
 | `git`                    | Submodules + recovery utilities.        |
-| `openssh-server`         | Disabled by default, enabled in recovery. |
+| `openssh-server`         | Enabled by default (pubkey-only, no shipped credential). |
 | `ufw`                    | Firewall (deny incoming by default).    |
 | `i2c-tools`, `spi-tools` | HAT bring-up.                           |
 | `dnsmasq`                | Optional AP-mode fallback for setup.    |

@@ -219,7 +219,8 @@ closed** (see "Open" below).
   - `stage-blazen/00-install/01-run-chroot.sh` branches on the marker:
     dev → login `blazen` (home + bash + passwordless sudo + key +
     `blazen:blazen` serial password) and `systemctl enable ssh`;
-    release → unchanged nologin + ssh-off contract.
+    release → (since 2026-06-14) login `blazen` + ssh on too, but
+    pubkey-only/fail-closed: password locked, no key baked in.
   - Key comes from `BLAZEN_DEV_SSH_PUBKEY` or is generated at
     `build/dev-ssh/id_ed25519` (gitignored). Marker + key live only in
     `/var/lib/blazen-staging/`, which the chroot deletes — neither ships.
@@ -417,7 +418,7 @@ checkout, it should:
    has `ready: true`. After that, M1 fully closed and M2 begins.
 3. Once the pi-gen image succeeds (likely needs one more
    substage-layout fix), boot it in QEMU and confirm:
-   - SSH-recovery is off by default.
+   - SSH is on by default (pubkey-only); see docs/06-SSH-BOOTSTRAP.md.
    - `blazend-orchestrator.service` is active.
    - `blazend-fabric.service` is active.
    - `/run/blazen/state.json` exists with `ready: true`.

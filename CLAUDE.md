@@ -33,7 +33,7 @@ Whenever the user says "rules changed" or you modify a doc, refresh these.
   [`crates/blazend-fabric`](crates/blazend-fabric/)). Pi 5 is **16 GB
   reference**, 8 GB supported secondary; optional Hailo accelerator on
   the LLM path. Fully on-device ML across all three surfaces. SSH on
-  the Pi is break-glass only. See
+  the Pi is **on by default** (pubkey-only, no shipped credential). See
   [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md).
 - **Phase:** **M0 scaffolding** — design docs, configs, scripts, and
   test harness skeletons for the Pi 5 surface under `rpi5/`; the mobile
@@ -55,8 +55,10 @@ Whenever the user says "rules changed" or you modify a doc, refresh these.
      If a change forces a keyboard/monitor for daily use, reject it.
   2. ML inference runs **on-device**. No outbound calls to cloud LLMs/ASRs
      during normal operation. (Telemetry off by default; opt-in only.)
-  3. SSH is **break-glass** — guarded by failure of the voice path, not a
-     replacement for it.
+  3. SSH is **on by default** — pubkey-only, fail-closed (no key/password
+     ships; the operator provisions a key). It complements the voice path;
+     it is not the daily-use surface. See
+     [`docs/06-SSH-BOOTSTRAP.md`](docs/06-SSH-BOOTSTRAP.md).
   4. The **CPU path is the contract**. Any feature relying on the optional
      Hailo accelerator must degrade gracefully to CPU. The accelerator is
      a strict-improvement path, never a precondition. See

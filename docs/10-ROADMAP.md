@@ -58,12 +58,15 @@ starts.
   2026-06-11). Output: `vm-images/blazen_os-0.0.1-dev.qcow2` (2.3 GB).
   Loopback-verified contents: Python venv + blazend sources + 6
   aarch64 Rust binaries + 10 systemd units enabled in `blazend.target`.
-- ✓ **Dev/release image split** (`scripts/build-image.sh --dev`): the VM
-  image now ships a login `blazen` user + SSH enabled so the boot test
-  can authenticate, while release images keep the nologin + SSH-off
-  break-glass contract. See [`06-SSH-BOOTSTRAP.md`](06-SSH-BOOTSTRAP.md)
-  §6. (Before this, every QEMU boot test was un-passable — `blazen` was
-  `nologin` and `ssh` was disabled; see footgun below.)
+- ✓ **Dev/release image split** (`scripts/build-image.sh --dev`): both
+  flavours ship a login `blazen` user + SSH enabled (so the boot test can
+  authenticate); they differ only in the shipped credential — dev bakes a
+  key + serial password, release is pubkey-only/fail-closed with the
+  password locked. See [`06-SSH-BOOTSTRAP.md`](06-SSH-BOOTSTRAP.md) §6.
+  (**Updated 2026-06-14:** SSH is now on by default on release images too —
+  previously release kept a nologin user + SSH off. Before *that*, every
+  QEMU boot test was un-passable — `blazen` was `nologin` and `ssh`
+  disabled; see footgun below.)
 - ⧗ `make run-vm` boots the image into a usable Pi-OS Lite shell with
   the `blazen` user reachable via SSH (`-i build/dev-ssh/id_ed25519 -p
   2222`).
@@ -261,6 +264,16 @@ matcher on the CPU engine.
   needs two. Dispatched replies go out as `brain.reply` for TTS. 8 tests
   (`rpi5/tests/unit/test_dispatch.py`), validated against all 52 real
   intents.
+- ✓ **Language switch by voice (2026-06-14):** the dispatcher acts on the
+  `switch_language` / `unpin_language` / `languages.list` intents. A pin
+  (`speak Polish` / `mów po angielsku`) wins over the per-utterance detected
+  language for every reply — an EN command under a PL pin still answers in
+  Polish — until `słuchaj uważnie` / `detect my language` unpins back to
+  auto-detect. The pin persists in the voice-settings overlay and is mirrored
+  into `/run/blazen/state.json` (`languages.pinned`). Confirmation lands in the
+  target language; non-`en`/`pl` requests are rejected. Tier-0 tests mirror the
+  `09-language-switch` turn sequence (`rpi5/tests/unit/test_dispatch.py`). See
+  [`13-LANGUAGES.md`](13-LANGUAGES.md) §3.6.
 - Regex/keyword fast-path router with EN + PL triggers for every
   intent: `volume up/down/set`, `stop talking`, `repeat`, `go to sleep`,
   `what time is it`, `what's the date`, `reboot`, `shutdown`,

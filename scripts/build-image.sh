@@ -25,11 +25,11 @@ Builds the blazen_os SD image. Requires docker on the host.
 Options:
   --format       raw | qcow2 (default: raw)
   --out          output path (.img or .qcow2)
-  --dev          DEV flavour: login 'blazen' user (home + bash + sudo) and
-                 SSH enabled at boot, plus a baked-in dev SSH key. This is
-                 what the QEMU/VM image uses so the M1 boot test can SSH in.
-                 Release images (the default) keep 'blazen' nologin and SSH
-                 off — see docs/06-SSH-BOOTSTRAP.md §3.
+  --dev          DEV flavour: in addition to the default (login 'blazen'
+                 user + SSH on), bakes a dev SSH key and a serial-console
+                 password so the M1 boot test can SSH in. Release images
+                 (the default) are SSH-on but pubkey-only/fail-closed — no
+                 key or password ships. See docs/06-SSH-BOOTSTRAP.md §6.
   --pi-gen-sha   override BLAZEN_PI_GEN_SHA env (defaults to the pinned tag)
 
 Env:
@@ -90,11 +90,11 @@ inject_stage() {
   log "Injecting stage-blazen/ into pi-gen"
   rm -rf "$BUILD_DIR/pi-gen/stage-blazen"
   cp -R "$REPO_ROOT/rpi5/stage-blazen" "$BUILD_DIR/pi-gen/stage-blazen"
-  # Dev images enable the openssh-server unit at the pi-gen level too;
-  # the chroot script makes 'blazen' a login user to match. Release
-  # images keep SSH off (break-glass contract, docs/06-SSH-BOOTSTRAP.md).
-  local enable_ssh=0
-  [ "$DEV_IMAGE" = "1" ] && enable_ssh=1
+  # SSH is on by default in both flavours (docs/06-SSH-BOOTSTRAP.md): enable
+  # the openssh-server unit at the pi-gen level too. The chroot script makes
+  # 'blazen' a login user either way; release is pubkey-only/fail-closed
+  # (no baked key or password), dev additionally bakes the dev key + password.
+  local enable_ssh=1
   cat > "$BUILD_DIR/pi-gen/config" <<EOF
 IMG_NAME=${BLAZEN_IMAGE_NAME:-blazen_os}
 TARGET_HOSTNAME=blazen
