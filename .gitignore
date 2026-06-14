@@ -1,6 +1,7 @@
 # Build / run artifacts
 vm-images/
 build/
+build/pi-gen/        # pi-gen clone + its multi-GB work/ + deploy/ (also covered by build/)
 dist/
 *.qcow2
 *.img
