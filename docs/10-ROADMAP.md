@@ -316,7 +316,11 @@ history survives a `systemctl restart blazend-brain`.
 ## M8 — Real hardware bring-up
 
 - The image flashed to a Pi 5 8 GB boots and pairs.
-- ReSpeaker 2-Mic HAT works end-to-end with AEC enabled.
+- **ReSpeaker 2-Mics Pi HAT V2.0** (the reference interface) works
+  end-to-end: install the `respeaker-2mic-v2_0` device-tree overlay from
+  `seeed-linux-dtoverlays`, confirm the TLV320AIC3104 ALSA capture/playback
+  devices, the 3 APA102 status LEDs, and the GPIO17 button; CPU AEC enabled.
+  See [`02-HARDWARE.md`](02-HARDWARE.md).
 - **Hailo path bring-up:** install HailoRT + drivers, compile the first
   Hailo `.hef` for Qwen2.5-3B (off-device via the Hailo DFC), verify
   engine selector picks Hailo on detection and falls back to CPU on

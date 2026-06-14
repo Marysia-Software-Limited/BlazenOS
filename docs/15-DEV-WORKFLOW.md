@@ -31,9 +31,14 @@ This doc fixes the **canonical workflow** across all three surfaces.
 >   Either flash from the Windows side (Raspberry Pi Imager) or attach the
 >   block device with `wsl --mount --bare \\.\PhysicalDriveN` first, then
 >   `make flash DEVICE=/dev/sdX`.
-> - **USB mic / ReSpeaker HAT passthrough:** use **usbipd-win** on Windows
+> - **USB mic passthrough:** use **usbipd-win** on Windows
 >   (`usbipd attach --wsl --busid <b-p>`) to expose the USB device into
 >   WSL2; only then does ALSA/`cpal` see it.
+> - **ReSpeaker 2-Mics Pi HAT V2.0:** this is a **GPIO/I2S** board on the
+>   40-pin header — it is **not** a USB device and cannot be `usbipd`'d into
+>   WSL2. It needs the `respeaker-2mic-v2_0` overlay on a **physical Pi**
+>   (M8); on WSL2/dev hosts the mic path falls back to a USB mic or
+>   synthetic frames.
 > - **pi-gen image build works** (Docker 29.5.2 inside WSL2; build #14
 >   succeeded here).
 
@@ -173,7 +178,7 @@ A `scripts/sync-to-paul.sh` wrapping the above is in flight; M1.
 | pi-gen image build   | ✓    | ✗ (or colima) | Linux primary |
 | make qemu-smoke      | ✓ (TCG — x86/WSL2) | ✓ (HVF) | both fine |
 | make run-vm          | ⧗ (TCG raspi4b — slow; boot blocked, see ROADMAP M1) | ⧗ (HVF, virt only) | real Pi 5 for full boot |
-| ReSpeaker HAT bring-up | ⧗ (WSL2: needs usbipd-win attach) | ⧗ | physical Pi recommended |
+| ReSpeaker 2-Mics HAT V2.0 bring-up | ✗ (GPIO/I2S — can't usbip into WSL2) | ✗ | physical Pi 5 required (M8) |
 | Real Pi 5 flash      | ⧗ (WSL2: `wsl --mount` or flash from Windows) | ✓ (`/dev/diskN`) | platform-specific cmd |
 
 ## 5. CI shape (M2+)

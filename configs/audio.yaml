@@ -3,9 +3,10 @@
 version: 1
 
 input:
-  device: default                     # ALSA name; resolves to ReSpeaker HAT or USB mic
+  device: default                     # ALSA name; reference HW = ReSpeaker 2-Mics Pi HAT V2.0
+                                      # (TLV320AIC3104, overlay respeaker-2mic-v2_0); USB mic fallback
   sample_rate_hz: 16000
-  channels: 1
+  channels: 1                         # ASR-facing mono; the HAT captures 2 mics, downmixed upstream
   frame_ms: 20
   ring_buffer_seconds: 3
   pre_roll_ms: 500

@@ -50,26 +50,50 @@ the full integration, model preparation pipeline, and budget tables.
 
 ## Audio I/O
 
+> **Decision (2026-06-15):** The **reference audio interface** is the
+> **Seeed ReSpeaker 2-Mics Pi HAT V2.0** (Seeed SKU 107100001). It is the
+> primary target for mic in, speaker out, and status LEDs; everything else
+> below is a fallback for dev hosts and stress testing. V2.0 (not V1) is
+> required for **Raspberry Pi 5 support** — it swaps the V1 WM8960 codec for
+> the **TI TLV320AIC3104**.
+
 ### Microphone (priority order)
 
-1. **ReSpeaker 2-Mics Pi HAT** — recommended for M1. Two on-board mics,
-   3.5 mm jack, RGB LED ring (useful for status without a screen).
+1. **ReSpeaker 2-Mics Pi HAT V2.0 — the reference interface.** Snaps onto
+   the Pi 5 40-pin header (no soldering). Key facts that drive our config:
+   - **Codec:** TI **TLV320AIC3104** over **I2S** (+ I2C control). Capture
+     is **2-channel** (the two analog mics); we downmix to mono 16 kHz for
+     ASR. Sample-rate range 8–96 kHz.
+   - **Status LEDs:** **3× APA102 RGB** on **SPI** — this is the real
+     surface the LED simulator (`blazend/led.py`) drives on hardware.
+   - **Button:** on-board user button on **GPIO17** (optional physical
+     wake / push-to-talk).
+   - **Out:** on-board **3.5 mm jack** + JST mono speaker connector.
+   - **Device-tree overlay:** `respeaker-2mic-v2_0.dtbo`, built from
+     [`seeed-linux-dtoverlays`](https://github.com/Seeed-Studio/seeed-linux-dtoverlays)
+     (set `dtoverlay=respeaker-2mic-v2_0` in `config.txt`). This is the M8
+     bring-up step that exposes the ALSA capture/playback devices.
+   - We use the board as a **plain 2-mic codec + LEDs + button** — not
+     Seeed's bundled VAD/DOA/KWS SDK; our pipeline owns those stages.
 2. **ReSpeaker 4-Mic Linear Array** — better beamforming for noisy rooms;
    used for the M9 acoustic-stress tests.
 3. **Any USB mic with ALSA support** — e.g., Jabra Speak 510, Anker
-   PowerConf S3, Blue Snowball. Easier to source but no LED ring.
+   PowerConf S3, Blue Snowball. Easier to source but no status LEDs.
 
 ### Speaker
 
 - For dev: any 3.5 mm or USB speaker.
-- For demos: ReSpeaker HAT 3.5 mm out → small powered speaker.
+- On the reference build: the HAT's **3.5 mm jack** (or JST mono connector)
+  → a small powered speaker.
 
-### Why a HAT with a mic array
+### Why this HAT
 
-End-of-utterance detection is more reliable when echo cancellation and
-beamforming run upstream of VAD. We rely on the HAT's DSP only for M9+;
-M1..M8 use the array as a plain stereo input and let `silero-vad` and a
-simple AEC filter handle it on the CPU.
+The 2-Mics Pi HAT V2.0 is a **plain stereo codec** (no on-board beamforming
+DSP — that is the 4-Mic Array's job). End-of-utterance detection, echo
+cancellation, and noise suppression all run **on the CPU** (`silero-vad` +
+WebRTC APM) across M1..M8; the 4-Mic array is only introduced for the M9
+acoustic-stress work. The HAT earns its place by giving us two phase-aligned
+mics, the 3 status LEDs, and a button in one solder-free board.
 
 ## Status feedback without a screen
 
@@ -82,7 +106,7 @@ Because there is no monitor, the system communicates state out-of-band:
 | LED blue    | Wake detected, capturing utterance.           |
 | LED magenta | Processing (ASR/LLM).                         |
 | LED yellow  | Reprompt — please repeat.                     |
-| LED red     | Error — SSH recovery enabled.                 |
+| LED red     | Error — recovery mode (SSH already on).       |
 | Short beep  | Wake confirmed (configurable; default off).   |
 | Long beep   | Falling into SSH recovery mode.               |
 | Voice tone  | Optional persona tone marking state changes.  |
@@ -91,9 +115,10 @@ The LED protocol is defined in [`07-CONFIGURATION.md`](07-CONFIGURATION.md).
 The orchestrator runs an **LED simulator** that derives the colour from the
 live event stream and writes it to `/run/blazen/led.json`
 (off→asleep, green→listening, blue→capturing, magenta→processing,
-yellow→reprompt, red→error) — see `blazend/led.py`. On real hardware a GPIO
-driver consumes the identical colour contract; in the VM / on the dev host
-`led.json` is the status surface (and what Tier-3 scenarios assert on).
+yellow→reprompt, red→error) — see `blazend/led.py`. On real hardware an
+**APA102 SPI driver** paints the same colour across the HAT's 3 on-board RGB
+LEDs (identical colour contract); in the VM / on the dev host `led.json` is
+the status surface (and what Tier-3 scenarios assert on).
 
 ## Power
 
@@ -117,14 +142,15 @@ driver consumes the identical colour contract; in the VM / on the dev host
 
 | Pin/Bus | Use                                              |
 |---------|--------------------------------------------------|
-| BCM2    | I2C SDA (HAT EEPROM, optional UPS)               |
+| BCM2    | I2C SDA (TLV320AIC3104 codec control, HAT EEPROM, optional UPS) |
 | BCM3    | I2C SCL                                          |
-| BCM18   | I2S BCLK (ReSpeaker HAT)                         |
+| BCM18   | I2S BCLK (ReSpeaker 2-Mics HAT V2.0)             |
 | BCM19   | I2S LRCK                                         |
-| BCM20   | I2S DIN                                          |
-| BCM21   | I2S DOUT                                         |
-| BCM12   | Status LED (fallback when no HAT LED ring)       |
-| BCM26   | Wake button (optional physical wake fallback)    |
+| BCM20   | I2S DIN (mic capture)                            |
+| BCM21   | I2S DOUT (speaker playback)                      |
+| BCM10   | SPI MOSI — 3× APA102 status LEDs (HAT)           |
+| BCM11   | SPI SCLK — APA102 clock                          |
+| BCM17   | HAT user button (optional physical wake / PTT)   |
 | PCIe FFC | Pi 5 single PCIe Gen 3 ×1 — used by the optional Hailo AI HAT+ / AI Kit. Mutually exclusive with NVMe HAT. |
 
 If both an NVMe SSD HAT and an AI HAT+ are desired, route through a

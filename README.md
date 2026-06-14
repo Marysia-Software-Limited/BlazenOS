@@ -79,7 +79,7 @@ AI HAT+ (Tier 4 — patrz [`docs/08-TESTING.md`](docs/08-TESTING.md)).
 | Layer | Component | Notes |
 |---|---|---|
 | Base OS | Raspberry Pi OS Lite 64-bit (Bookworm) | No GUI. Read-only `/usr` (overlayfs) by default. |
-| Audio HAL | ALSA + PipeWire | USB mic or ReSpeaker HAT. |
+| Audio HAL | ALSA + PipeWire | Reference: ReSpeaker 2-Mics Pi HAT V2.0; USB mic fallback. |
 | Wake word | [openWakeWord](https://github.com/dscripka/openWakeWord) | Two models loop in parallel: `hey jessica` (EN) + `hej jessico` (PL). |
 | ASR | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | Multilingual `small` default — PL + EN out of the box. |
 | VAD | [silero-vad](https://github.com/snakers4/silero-vad) | End-of-utterance detection. |
