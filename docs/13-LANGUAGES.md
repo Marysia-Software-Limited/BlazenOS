@@ -154,7 +154,18 @@ free at synthesis time.
 | *"detect my language"* / *"słuchaj uważnie"* | Unpin; auto-detect resumes.                      |
 | *"Jessica, what language can you speak?"* / *"Jessico, jakie znasz języki?"* | List supported languages.            |
 
-Pinned state is in `/run/blazen/state.json` (`language.pinned: "pl" | "en" | null`).
+Pinned state is in `/run/blazen/state.json` (`languages.pinned: "pl" | "en" | null`).
+
+**Implemented (M5):** the orchestrator's `IntentDispatcher`
+([`blazend/dispatch.py`](../rpi5/src/blazend/dispatch.py)) acts on the
+`switch_language` / `unpin_language` / `languages.list` fast-path intents.
+A pin wins over the per-utterance detected language for every reply (the
+*effective language*), so an English command spoken under a Polish pin still
+gets a Polish answer. `switch_language` confirms in the **target** language —
+*"Od teraz mówię po polsku."* / *"From now on I'll speak English."* — and
+rejects anything outside the co-equal `en`/`pl` set. The pin is persisted in
+the voice-settings overlay (`languages.pinned`) and mirrored into
+`/run/blazen/state.json`.
 
 ---
 
@@ -249,8 +260,10 @@ For the bilingual prototype:
 - **M3** (ASR): default model becomes `small` (multilingual), not `small.en`.
 - **M4** (LLM + TTS): bilingual system prompt and dual Piper voices land in
   the first conversational milestone.
-- **M5** (intents): every fast-path intent ships with PL triggers.
-- **M6** (voice config): adds the language-pin/unpin commands and the
+- **M5** (intents): every fast-path intent ships with PL triggers; the
+  language pin/unpin commands (`speak Polish` / `słuchaj uważnie`) are
+  dispatched and the reply language follows the pin (§3.6).
+- **M6** (voice config): adds the WiFi/model voice-mutation flows and the
   custom-PL-wake-word training script. The pivot from "EN only with PL
   on demand" to "EN + PL co-default" makes this milestone smaller, not
   larger.

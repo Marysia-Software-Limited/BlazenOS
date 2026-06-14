@@ -136,6 +136,8 @@ class Orchestrator:
                     "intent": env.data.get("intent"),
                     "result": reply.data.get("action"),
                 }
+            # Keep the language pin authoritative in state (scenario 09).
+            patch["languages"] = {"pinned": self._dispatcher.pinned_language()}
         if self._led.observe(env.topic, env.data):
             self._led.write()
             patch["led"] = self._led.color

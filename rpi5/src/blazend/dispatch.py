@@ -24,6 +24,18 @@ from typing import Any
 _DEFAULTS: dict[str, Any] = {"audio.volume": 50}
 _CONFIRMS_NEEDED = {"never": 0, "single": 1, "loud": 1, "double_loud": 2}
 
+# Spoken language tokens (EN + PL trigger captures) → ISO code. Only en/pl are
+# supported per the co-equal-languages contract (docs/13-LANGUAGES.md); the
+# extra tokens resolve so we can answer "I only speak English and Polish".
+_LANG_TOKENS: dict[str, str] = {
+    "polish": "pl", "polski": "pl", "polsku": "pl",
+    "english": "en", "angielski": "en", "angielsku": "en",
+    "german": "de", "niemiecki": "de", "niemiecku": "de",
+    "french": "fr", "francuski": "fr", "francusku": "fr",
+    "spanish": "es", "hiszpański": "es", "hiszpańsku": "es",
+    "hiszpanski": "es", "hiszpansku": "es",
+}
+
 
 def _t(lang: str, pl: str, en: str) -> str:
     return pl if lang == "pl" else en
@@ -67,25 +79,42 @@ class IntentDispatcher:
         self._deny = policy_cfg.get("deny_voice_mutation", [])
         self._settings = settings
         self._pending: dict[str, Any] | None = None
+        allowed = self._allow.get("languages.pinned", {}).get("allowed_values", ["en", "pl"])
+        self._supported = tuple(c for c in allowed if c)
+
+    def pinned_language(self) -> str | None:
+        """Currently pinned reply language (None = auto-detect)."""
+        return self._settings.get("languages.pinned")
+
+    def _effective_lang(self, detected: str) -> str:
+        """Pinned language wins over the per-utterance detected one."""
+        return self.pinned_language() or detected
 
     def dispatch(self, name: str, params: dict[str, Any], language: str = "pl") -> DispatchResult:
         spec = self._intents.get(name)
         if spec is None:
-            return DispatchResult(language=language, action="noop")
+            return DispatchResult(language=self._effective_lang(language), action="noop")
+        # The reply language follows a pin if one is set; switch_language is the
+        # one intent that drives its own (target) language instead.
+        lang = self._effective_lang(language)
         action = spec.get("action")
         if action == "mutate":
-            return self._mutate(spec["mutate"], params, language)
+            return self._mutate(spec["mutate"], params, lang)
         if action == "confirm_loud":
-            return self._confirm(language)
+            return self._confirm(lang)
         if action == "cancel_pending":
-            return self._cancel(language)
+            return self._cancel(lang)
+        if action == "switch_language":
+            return self._switch_language(params, lang)
+        if action == "unpin_language":
+            return self._unpin_language(lang)
         if action == "tool_call":
-            return self._tool(spec.get("tool", ""), params, language)
+            return self._tool(spec.get("tool", ""), params, lang)
         if action in ("tts_interrupt", "orchestrator_sleep", "orchestrator_resume"):
             sig = {"tts_interrupt": "tts_interrupt", "orchestrator_sleep": "sleep",
                    "orchestrator_resume": "resume"}[action]
-            return DispatchResult(language=language, action="signal", signal=sig)
-        return DispatchResult(language=language, action="noop", data={"intent": name})
+            return DispatchResult(language=lang, action="signal", signal=sig)
+        return DispatchResult(language=lang, action="noop", data={"intent": name})
 
     # -- mutate + confirmation ---------------------------------------------
     def _denied(self, key: str) -> bool:
@@ -152,6 +181,29 @@ class IntentDispatcher:
         self._pending = None
         return DispatchResult(_t(lang, "Anulowane.", "Cancelled."), lang, "cancelled")
 
+    # -- language pin ------------------------------------------------------
+    def _switch_language(self, params: dict, lang: str) -> DispatchResult:
+        token = str(params.get("lang", "")).strip().lower()
+        code = _LANG_TOKENS.get(token)
+        if code is None:
+            return DispatchResult(
+                _t(lang, "Nie zrozumiałam, na jaki język.", "I didn't catch which language."),
+                lang, "denied")
+        if code not in self._supported:
+            return DispatchResult(
+                _t(lang, "Mówię tylko po polsku i angielsku.", "I only speak English and Polish."),
+                lang, "denied", data={"requested": code})
+        self._settings.set("languages.pinned", code)
+        # Confirm in the *target* language so the user hears the switch land.
+        speak = _t(code, "Od teraz mówię po polsku.", "From now on I'll speak English.")
+        return DispatchResult(speak, code, "applied", data={"key": "languages.pinned", "value": code})
+
+    def _unpin_language(self, lang: str) -> DispatchResult:
+        self._settings.set("languages.pinned", None)
+        return DispatchResult(
+            _t(lang, "Słucham automatycznie.", "I'll auto-detect the language now."),
+            lang, "applied", data={"key": "languages.pinned", "value": None})
+
     def _apply(self, key: str, value: Any, lang: str, *, confirmed: bool = False) -> DispatchResult:
         self._settings.set(key, value)
         signal = None
@@ -184,5 +236,8 @@ class IntentDispatcher:
         if tool == "clock.date":
             return DispatchResult(_t(lang, f"Dziś jest {now:%d.%m.%Y}.", f"Today is {now:%Y-%m-%d}."),
                                   lang, "tool")
+        if tool == "languages.list":
+            return DispatchResult(_t(lang, "Mówię po polsku i angielsku.", "I speak English and Polish."),
+                                  lang, "tool", data={"languages": list(self._supported)})
         return DispatchResult(_t(lang, "Jeszcze tego nie potrafię.", "I can't do that yet."),
                               lang, "tool", data={"tool": tool, "unimplemented": True})

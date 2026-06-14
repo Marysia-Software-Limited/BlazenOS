@@ -14,6 +14,9 @@ INTENTS = {"intents": [
     {"name": "cancel_change", "action": "cancel_pending"},
     {"name": "stop_talking", "action": "tts_interrupt"},
     {"name": "what_time", "action": "tool_call", "tool": "clock.time"},
+    {"name": "switch_language", "action": "switch_language"},
+    {"name": "detect_language", "action": "unpin_language"},
+    {"name": "list_languages", "action": "tool_call", "tool": "languages.list"},
 ]}
 POLICY = {
     "allow_voice_mutation": {
@@ -21,6 +24,7 @@ POLICY = {
         "system.power.reboot": {"confirm": "loud"},
         "system.factory_reset": {"confirm": "double_loud"},
         "llm.active_engine": {"confirm": "single", "allowed_values": ["auto", "cpu", "hailo"]},
+        "languages.pinned": {"confirm": "never", "allowed_values": ["en", "pl", None]},
     },
     "deny_voice_mutation": ["system.firewall.**"],
 }
@@ -76,6 +80,62 @@ def test_signals_and_tools(tmp_path):
 def test_settings_persist(tmp_path):
     _disp(tmp_path).dispatch("volume_up", {}, "pl")  # 50 → 60
     assert _disp(tmp_path).dispatch("volume_up", {}, "pl").data["value"] == 70  # 60 → 70
+
+
+def test_language_switch_pins_and_follows(tmp_path):
+    """Scenario 09 in miniature: pin PL via an EN command, then replies follow
+    the pin even for EN utterances, until unpinned back to auto-detect."""
+    d = _disp(tmp_path)
+    assert d.pinned_language() is None
+
+    # "speak polish" — detected EN, but the confirmation lands in Polish.
+    r = d.dispatch("switch_language", {"lang": "polish"}, "en")
+    assert r.action == "applied" and r.language == "pl"
+    assert "od teraz mówię po polsku" in r.speak.lower()
+    assert d.pinned_language() == "pl"
+
+    # A PL utterance under the PL pin → PL reply.
+    assert d.dispatch("what_time", {}, "pl").language == "pl"
+    # An EN utterance under the PL pin → still a PL reply (pin wins).
+    en_under_pin = d.dispatch("what_time", {}, "en")
+    assert en_under_pin.language == "pl" and en_under_pin.speak.startswith("Jest")
+
+    # Unpin → auto-detect resumes, so an EN utterance now replies in EN.
+    u = d.dispatch("detect_language", {}, "pl")
+    assert u.action == "applied" and d.pinned_language() is None
+    assert d.dispatch("what_time", {}, "en").language == "en"
+
+
+def test_language_switch_rejects_unsupported(tmp_path):
+    d = _disp(tmp_path)
+    r = d.dispatch("switch_language", {"lang": "german"}, "en")
+    assert r.action == "denied" and "english and polish" in r.speak.lower()
+    assert d.pinned_language() is None  # pin unchanged
+    miss = d.dispatch("switch_language", {"lang": "klingon"}, "en")
+    assert miss.action == "denied" and d.pinned_language() is None
+
+
+def test_languages_list_tool(tmp_path):
+    d = _disp(tmp_path)
+    en = d.dispatch("list_languages", {}, "en")
+    assert en.action == "tool" and "english and polish" in en.speak.lower()
+    assert en.data["languages"] == ["en", "pl"]
+    pl = d.dispatch("list_languages", {}, "pl")
+    assert "polsku i angielsku" in pl.speak.lower()
+
+
+def test_orchestrator_mirrors_language_pin(tmp_path):
+    from blazend.events import Envelope
+    from blazend.orchestrator.supervisor import Orchestrator
+
+    disp = _disp(tmp_path)
+    orch = Orchestrator(runtime_dir_=tmp_path, dispatcher=disp)
+    reply = orch._dispatch_intent(
+        Envelope(topic="nlu.intent", source="blazend-nlu",
+                 data={"intent": "switch_language", "language": "en", "params": {"lang": "polish"}})
+    )
+    assert reply is not None and reply.data["language"] == "pl"
+    assert disp.pinned_language() == "pl"
 
 
 def test_orchestrator_dispatches_nlu_intent(tmp_path):
