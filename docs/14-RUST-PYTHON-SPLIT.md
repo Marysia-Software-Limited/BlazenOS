@@ -90,16 +90,23 @@ Bulk audio is too heavy for the JSON socket, so PCM rides a **shared-memory
 ring buffer** while the socket carries only markers. `blazend-audio-in` (Rust)
 is the single producer; `blazend-asr` (Python) is a reader.
 
-- **File:** `runtime_dir()/audio-ring.shm`, mmap'd by both sides.
-- **Layout** (little-endian; producer `rpi5/crates/blazend-audio-in/src/ring.rs`,
-  reader `rpi5/src/blazend/audio/__init__.py` — they must agree byte-for-byte):
+- **Ring implementation:** `rpi5/crates/blazend-audioring/` (Rust
+  `RingWriter`/`RingReader` + `LinearResampler`) and its byte-identical Python
+  twin `rpi5/src/blazend/audio/__init__.py`.
+- **Layout** (little-endian, both sides must agree):
   `magic "BZAR" | version | sample_rate_hz | channels | capacity_frames | _pad
-  | write_pos:u64 (atomic) | i16[capacity_frames]`. Mono 16 kHz.
-- **Sync:** `write_pos` is a monotonic total-frames counter; a reader takes the
-  window `[write_pos − pre_roll, write_pos]` modulo capacity. The IPC
-  `vad.start`/`vad.end` events bracket an utterance; the ASR snapshots
-  `write_pos` at each and transcribes that slice. No PCM ever crosses the JSON
-  boundary — only the metadata does.
+  | write_pos:u64 (atomic) | i16[capacity_frames]`. Mono.
+- **Two rings, same format:**
+  - **Input** — `audio-ring.shm` (16 kHz): producer `blazend-audio-in` (Rust),
+    reader `blazend-asr` (Python). `vad.start`/`vad.end` bracket an utterance;
+    the ASR snapshots `write_pos` at each and transcribes
+    `[write_pos − pre_roll, write_pos]`.
+  - **Output** — `tts-ring.shm` (22050 Hz): producer `blazend-tts` (Rust, Piper),
+    reader `blazend-audio-out` (Rust). `tts.frame {voice, samples}` tells
+    audio-out to read the last `samples` frames, resample to the device rate,
+    and play.
+- **Sync:** `write_pos` is a monotonic total-frames counter; readers index it
+  modulo capacity. No PCM ever crosses the JSON boundary — only the metadata.
 
 ---
 

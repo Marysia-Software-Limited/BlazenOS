@@ -6,12 +6,12 @@ version: 1
 # selects per utterance based on the detected reply language. See
 # docs/13-LANGUAGES.md.
 voice_by_language:
-  pl: pl_PL-darkman-medium
-  en: en_US-lessac-medium
+  pl: pl_PL-gosia-medium                # Jessica — Polish young-woman voice
+  en: en_US-lessac-medium               # English — female
 
 # Legacy single-default field — kept so older code paths still work and to
 # pin a single voice when language detection is disabled.
-active_voice: pl_PL-darkman-medium     # voice-mutable
+active_voice: pl_PL-gosia-medium       # voice-mutable
 
 backend: piper                          # only one for now
 sample_rate_hz: 22050
@@ -26,8 +26,8 @@ voices:
     config_file: en_US-lessac-medium.onnx.json
     download_url: https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
     config_url: https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
-    sha256: "<TBD>"
-    size_mb: 50
+    sha256: "5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f"
+    size_mb: 61
     language: en
     license: MIT
   en_US-amy-medium:
@@ -51,8 +51,8 @@ voices:
     config_file: pl_PL-gosia-medium.onnx.json
     download_url: https://huggingface.co/rhasspy/piper-voices/resolve/main/pl/pl_PL/gosia/medium/pl_PL-gosia-medium.onnx
     config_url: https://huggingface.co/rhasspy/piper-voices/resolve/main/pl/pl_PL/gosia/medium/pl_PL-gosia-medium.onnx.json
-    sha256: "<TBD>"
-    size_mb: 50
+    sha256: "38f66464240ed74f186e6b7dc13c6e3b22e023426299f25c2b3cc9dfa9373fbc"
+    size_mb: 61
     language: pl
     license: MIT
   en_GB-alan-low:

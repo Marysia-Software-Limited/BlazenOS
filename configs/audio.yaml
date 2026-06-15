@@ -27,8 +27,10 @@ input:
     min_speech_ms: 150                # minimum speech before vad.start
 
 output:
-  device: default
-  sample_rate_hz: 22050
+  device: vc4hdmi0                    # TEMPORARY: HDMI, no speaker on the ReSpeaker
+                                      # HAT yet. Name-matched substring; falls back
+                                      # to any working HDMI port. Input stays the HAT.
+  sample_rate_hz: 22050               # Piper medium voices' native rate
   channels: 1
   ducking_db: -12                     # when wake fires, duck the rest by 12 dB
 

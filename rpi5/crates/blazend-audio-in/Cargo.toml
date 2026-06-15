@@ -21,4 +21,4 @@ tracing-subscriber = { workspace = true }
 clap               = { workspace = true }
 cpal               = { workspace = true }
 crossbeam-channel  = { workspace = true }
-memmap2            = { workspace = true }
+blazend-audioring  = { path = "../blazend-audioring" }

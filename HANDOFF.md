@@ -146,10 +146,37 @@ RMS is gain-sensitive, so `open_rms`/`close_rms` (in `audio.yaml` / `--open-rms`
 need tuning to the operator's voice+room — I can't speak to set them. Use
 `scripts/hat-voice-check.py` (bypasses VAD) for the live "speak Polish" check.
 
-**Not done (out of scope):** wake-gating (always-listening for now; no
-openWakeWord models on disk), `asr.partial` streaming, an in-VM e2e ASR
-scenario (needs audio injection), image build, TTS models. ASR latency
-(`small` int8 ~4× real-time on CPU) is an M2 perf follow-up.
+**Output pipeline BUILT (M4) — Jessica speaks Polish over HDMI.** The output
+half (`blazend-tts`, `blazend-audio-out`) was all stubs; now the full loop runs:
+brain.reply → Piper TTS → shared-memory TTS ring → cpal playback → HDMI.
+- **Engine = Piper** (user choice). Installed `piper-tts`; downloaded Jessica's
+  voice **`pl_PL-gosia-medium`** (Polish young woman — replaces the male
+  `darkman` as the PL default in `tts.yaml`) + `en_US-lessac-medium` (EN), shas
+  recorded.
+- **Routing (user instruction):** input always = ReSpeaker HAT
+  (`blazend-audio-in --device wm8960`); output temporarily = HDMI
+  (`blazend-audio-out --device vc4hdmi0`, falls back to any working HDMI port —
+  no speaker on the HAT yet). `configs/audio.yaml output.device` set.
+- **New shared crate** `blazend-audioring` (Rust `RingWriter`/`RingReader` +
+  `LinearResampler`) — `blazend-audio-in`'s ring extracted so audio-in (producer),
+  tts (producer of `tts-ring.shm`) and audio-out (reader) share one impl.
+- **`blazend-tts`** (Rust): subscribes `brain.reply` (brain + orchestrator
+  sockets), runs `piper --output-raw` for the language's voice → `tts-ring.shm`,
+  publishes `tts.frame`. **`blazend-audio-out`** (Rust): cpal output on HDMI
+  (prefers F32/I16 — HDMI's default I8 was rejected), reads the ring on
+  `tts.frame`, resamples 22050→48000, plays. Added `language`/`text` to the Rust
+  `Event::BrainReply` (schema already had them). `dev-run.sh` gained
+  **`BLAZEN_REAL_TTS=1`** (independent of `BLAZEN_REAL_AUDIO`).
+- **Verified on hardware:** `BLAZEN_REAL_TTS=1 dev-run` → mock ASR "która
+  godzina" → NLU `what_time` → brain.reply **"Jest 17:02."** → TTS synthesised
+  (gosia, pl, 46848 samples) → audio-out played (resampled to 101980 @ 48 kHz)
+  on `vc4hdmi1`, **0 panics**. (Audibility needs an HDMI sink connected.)
+- **Start all:** `BLAZEN_REAL_AUDIO=1 BLAZEN_REAL_TTS=1 scripts/dev-run.sh`.
+
+**Not done (out of scope):** wake-gating (always-listening; no openWakeWord
+models), `asr.partial` / streaming TTS, in-VM e2e scenarios, image build. ASR
+latency (`small` ~4× real-time) + TTS latency are perf follow-ups; `piper-rs`
+(pure-Rust) is the eventual replacement for the Piper subprocess.
 
 ---
 

@@ -80,6 +80,9 @@ trap cleanup EXIT INT TERM
 # BLAZEN_REAL_AUDIO=1 runs the real voice path (cpal mic capture + shared-memory
 # ring + VAD in blazend-audio-in, faster-whisper in blazend-asr). Needs a mic
 # (e.g. the ReSpeaker HAT) + the ASR model. Default stays --mock for laptops/CI.
+# Input side: BLAZEN_REAL_AUDIO=1 runs the real voice path (cpal mic capture +
+# ring + VAD in blazend-audio-in, faster-whisper in blazend-asr). Needs a mic
+# (ReSpeaker HAT) + the ASR model. Default stays --mock for laptops/CI.
 AUDIO_IN_ARGS="--mock"
 ASR_ARGS="--mock"
 if [ "${BLAZEN_REAL_AUDIO:-0}" = "1" ]; then
@@ -92,10 +95,23 @@ if [ "${BLAZEN_REAL_AUDIO:-0}" = "1" ]; then
   log "BLAZEN_REAL_AUDIO=1 → real capture (device=${BLAZEN_AUDIO_DEVICE:-wm8960}) + faster-whisper (${BLAZEN_ASR_MODEL})"
 fi
 
+# Output side: BLAZEN_REAL_TTS=1 runs real Piper synthesis + cpal playback.
+# Output goes to HDMI (vc4hdmi0) for now — no speaker on the ReSpeaker HAT.
+# Independent of the input side so the output path is testable with mock ASR.
+TTS_ARGS="--mock"
+AUDIO_OUT_ARGS="--mock"
+if [ "${BLAZEN_REAL_TTS:-0}" = "1" ]; then
+  TTS_ARGS="--piper $VENV/bin/piper \
+    --voice-pl $REPO_ROOT/models/tts/pl_PL-gosia-medium.onnx \
+    --voice-en $REPO_ROOT/models/tts/en_US-lessac-medium.onnx"
+  AUDIO_OUT_ARGS="--device ${BLAZEN_OUTPUT_DEVICE:-vc4hdmi0}"
+  log "BLAZEN_REAL_TTS=1 → Piper (Jessica/gosia) → HDMI output (${BLAZEN_OUTPUT_DEVICE:-vc4hdmi0})"
+fi
+
 launch_rust blazend-audio-in   $AUDIO_IN_ARGS
-launch_rust blazend-audio-out  --mock
+launch_rust blazend-audio-out  $AUDIO_OUT_ARGS
 launch_rust blazend-wake       --mock --mock-period-s 15
-launch_rust blazend-tts        --mock
+launch_rust blazend-tts        $TTS_ARGS
 launch_rust blazend-health
 launch_py   blazend.asr        $ASR_ARGS
 launch_rust blazend-nlu                              # routes asr.final → nlu.intent via jessica-core

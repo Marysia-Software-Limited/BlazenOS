@@ -159,6 +159,12 @@ pub enum Event {
         chunk: String,
         /// `true` when this is the final chunk in the reply.
         final_: bool,
+        /// Reply language tag (`"en"` | `"pl"`) — TTS picks the voice from it.
+        #[serde(default)]
+        language: Option<String>,
+        /// Full reply text (when not streamed chunk-by-chunk).
+        #[serde(default)]
+        text: Option<String>,
     },
 
     /// TTS chunk written to audio-out.

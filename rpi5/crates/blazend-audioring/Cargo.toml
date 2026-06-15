@@ -1,0 +1,15 @@
+[package]
+name = "blazend-audioring"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shared-memory audio ring buffer + resampler for blazen_os audio units."
+
+[lib]
+name = "blazend_audioring"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow  = { workspace = true }
+memmap2 = { workspace = true }

@@ -26,6 +26,7 @@ runtime = [
   "soundfile>=0.12",
   "faster-whisper>=1.0",
   "llama-cpp-python>=0.3",
+  "piper-tts>=1.2",
 ]
 
 [build-system]

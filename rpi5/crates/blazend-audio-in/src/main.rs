@@ -10,17 +10,16 @@
 //! or no HAT) it emits `mic.absent` and falls back to synthetic frames so the
 //! rest of the stack still has a heartbeat.
 
-mod ring;
 mod vad;
 
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
+use blazend_audioring::{LinearResampler, RingWriter};
 use blazend_ipc::{runtime_dir, Event, EventEnvelope, Publisher};
 use clap::Parser;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SampleFormat;
-use ring::RingWriter;
 use vad::{EnergyVad, VadEvent};
 
 /// ASR-facing capture rate; the ring always stores mono 16 kHz i16.
@@ -66,42 +65,6 @@ struct Args {
 
 fn ring_path() -> std::path::PathBuf {
     runtime_dir().join("audio-ring.shm")
-}
-
-/// Streaming linear resampler (mono f32). Carries state across cpal buffers.
-struct LinearResampler {
-    step: f64, // input samples advanced per output sample
-    pos: f64,
-    prev: f32,
-    primed: bool,
-}
-
-impl LinearResampler {
-    fn new(in_rate: u32, out_rate: u32) -> Self {
-        Self {
-            step: in_rate as f64 / out_rate as f64,
-            pos: 0.0,
-            prev: 0.0,
-            primed: false,
-        }
-    }
-
-    fn process(&mut self, input: &[f32], out: &mut Vec<f32>) {
-        for &cur in input {
-            if !self.primed {
-                self.prev = cur;
-                self.primed = true;
-                continue;
-            }
-            while self.pos < 1.0 {
-                let y = self.prev + (cur - self.prev) * self.pos as f32;
-                out.push(y);
-                self.pos += self.step;
-            }
-            self.pos -= 1.0;
-            self.prev = cur;
-        }
-    }
 }
 
 fn downmix_to_mono_f32(interleaved: &[f32], channels: usize, out: &mut Vec<f32>) {
