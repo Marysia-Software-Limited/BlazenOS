@@ -4,6 +4,155 @@ Created **2026-06-11** during the macOS → paul session transition.
 
 ---
 
+## Session log — 2026-06-15 (jessica — REAL Pi 5) — first on-hardware bring-up
+
+First time the repo has been checked out and tested on **actual Pi 5
+hardware** (not paul/WSL2 TCG-QEMU, not the Mac). New host: **`jessica`**
+— Raspberry Pi 5 Model B Rev 1.0, **8 GB** (supported-secondary, not the
+16 GB reference), Debian 13 trixie, kernel `6.12.75+rpt-rpi-2712`,
+Python 3.13.5, cargo/rustc 1.96.0. The checkout arrived via rsync (carrying
+paul's build artefacts), **not** `git clone`, which is what surfaced the
+issues below. Git tree clean at `235fb0a`.
+
+**Result: full Tier 0+1 pyramid GREEN natively on aarch64.**
+`make test-fast` exit 0 — **97 Python + 27 Rust core + 11 Rust appliance =
+135 tests**. `make audit` exit 0 (model SHAs still `<TBD>`, expected — no
+weights downloaded). Counts grew since the 2026-06-11 baseline (64 py / 27
+rust) because of the M5 work now on `main` (fail-modes/health, NLU lang-switch).
+
+**What had to be done to make it run here (host provisioning, not repo bugs):**
+
+1. **Stale x86-64 `.venv`** — the rsync'd `.venv/bin/python3` was an
+   x86-64 ELF (built on paul, Python 3.14.5); it `Exec format error`'d on
+   aarch64. `make venv` will **not** self-heal this — the target file
+   exists so make skips it. Fix: `rm -rf .venv && python3 -m venv .venv`
+   then `pip install -e ".[dev]"`. pydantic-core/numpy resolved as
+   prebuilt aarch64 wheels (no source compile). `.venv` is gitignored so
+   this never touches git.
+2. **Stale x86-64 Cargo `target/`** — both `crates/target` and
+   `rpi5/crates/target` held paul's x86-64 `.rlib`s. Removed both; cargo
+   rebuilt clean for the aarch64 host.
+3. **`libasound2-dev` missing** — `cpal` (blazend-audio-in/out) needs it.
+   It **is** already in `scripts/install-deps.sh`, so the real gap is that
+   this host was rsync-provisioned and `make install-deps` was never run
+   here. A concurrent first-boot `apt-get` (build-essential/clang/postgis)
+   had also left dpkg interrupted — `sudo dpkg --configure -a` then
+   `apt-get install -y libasound2-dev`.
+
+   → **Next time you put the repo on a fresh Pi, `git clone` it (don't
+   rsync paul's tree) and run `make install-deps` first.** That avoids all
+   three of the above.
+
+**Note on the two cross-language component tests** — they only `pytest.skip`
+when the Rust binaries are absent (the guard paths
+`rpi5/crates/target/{debug,release}` are correct for the post-split layout).
+After `cd rpi5/crates && cargo build --workspace`, both run and pass — the
+final 97/97 includes them. No code change needed.
+
+**Live stack validated on hardware.** Ran `scripts/dev-run.sh` (all 8 units,
+mock mode — no HAT needed) on the Pi: full Polish round-trip end-to-end —
+wake (`hey_blazen_pl`, score 0.75) → ASR `'która godzina'` → NLU matched
+`what_time/pl` (52 intents loaded) → command dispatched, `state.json`
+`ready: true`, LED state machine driving `magenta/processing`, orchestrator
+connected to all 8 peers, **zero errors/panics** across every unit log. The
+cross-language (Rust + Python) IPC pipeline works natively on aarch64.
+
+**Hygiene pass + new `make lint` gate (user-requested "full pass + enforce").**
+The lint/format/type checks were not run in any gate, so debt had accumulated
+on `main` (surfaced once the fresh aarch64 venv pulled newer ruff 0.15 /
+mypy 2.1 and a floating-`stable` rustfmt 1.9). Cleaned it all and wired a gate
+so it can't recur:
+- `cargo fmt` both workspaces (14 `.rs` files); both now `fmt --check`-clean.
+- `ruff --fix` across `rpi5` (src + tests) + `scripts` — clean.
+- **21 mypy-strict errors fixed surgically** (bare `dict`→`dict[str, Any]`,
+  `Returning Any` via typed locals, missing param annotations, an `int(None)`
+  guard in `dispatch._resolve_value`, a `None` guard in
+  `supervisor._dispatch_intent`). Added `types-PyYAML` to the `dev` extra.
+- `clippy -D warnings` both workspaces — removed a dead `CoreError` import in
+  `jessica-core/src/intent.rs`.
+- **New `make lint`** (ruff + mypy + rustfmt `--check` + clippy, both
+  workspaces) is now a **prerequisite of `make test-fast`**, so format/type
+  drift fails the gate before tests run. Documented in `AGENTS.md` §3 and
+  `CLAUDE.md` §4 + §8. `make test-fast` green end-to-end (lint + 97 Python +
+  27 core + 11 appliance Rust).
+
+**ReSpeaker 2-Mics Pi HAT enabled + Polish voice recognition proven
+(2026-06-15, later).** The HAT (WM8960 codec — the reference interface, commit
+`333ae22`) was physically connected but **not enabled in software** (GPIO
+`i2c-1` off, no overlay), which is why an earlier check saw only HDMI + two
+incidental USB audio devices (Sony INZONE H3, Logitech webcam). Brought it up
+and persisted it:
+- **Confirmed alive:** enabled `i2c_arm` at runtime → WM8960 answers at I2C
+  **`0x1a`** (shows `UU` once driver-bound).
+- **Enabled the card:** `dtoverlay wm8960-soundcard` (mainline overlay is
+  present; the seeed-voicecard DKMS driver is *not* needed on kernel 6.12) →
+  registers as ALSA **card `wm8960soundcard`** with capture **and** playback.
+  Loaded at runtime (no reboot, session survived).
+- **Persisted** in `/boot/firmware/config.txt` (backup at
+  `config.txt.bak-blazen`): uncommented `dtparam=i2c_arm=on` + `=i2s=on`,
+  appended `dtoverlay=wm8960-soundcard`. Mixer routing for the two mics
+  (`Input Mixer Boost` on, `Input Boost Mixer LINPUT1/RINPUT1`=2, output
+  bypass off to avoid feedback, Capture PGA ~60%) saved via `alsactl store`
+  (restored on boot by `alsa-restore.service`). Quiet-room capture now sits at
+  RMS ~750 / peak ~7–9k — clean headroom for speech.
+- **No speaker attached** to the HAT (2-Mics HAT has none onboard) — an
+  acoustic speaker→mic loopback reads ambient only, so a fully autonomous
+  end-to-end voice test isn't possible without an external speaker.
+
+**Voice recognition + Polish — works on the Pi 5 CPU.** Installed
+`faster-whisper 1.2.1` (+ ctranslate2 4.8.0, aarch64 wheels) and the `small`
+multilingual model (`Systran/faster-whisper-small`, the documented Polish
+default in `configs/asr.yaml`). Proof: a synthesized Polish phrase (espeak-ng
+`pl`) → Whisper → `lang=pl p=1.00`, correct Polish text + diacritics (last word
+mangled only because espeak's robotic TTS is hard to recognise — a human voice
+is far cleaner). New diagnostic **`scripts/hat-voice-check.py`** records from the
+HAT mic and transcribes (`--lang pl --model small`, `--loop`); run it and speak
+to see live Polish recognition. On-device throughout; nothing leaves the Pi.
+Latency note: `small` int8 on CPU is ~4× real-time — fine for a check, an M2
+perf concern for the live path.
+
+**Real ASR pipeline BUILT + wired (M2), Polish-first.** The former empty stub
+(`if not mock: await asyncio.Event().wait()`) is replaced by the full
+architecturally-pure path (plan in `~/.claude/plans/quizzical-exploring-cosmos.md`,
+user-approved). New code:
+- **Rust `blazend-audio-in`** (`ring.rs`, `vad.rs`, rewritten `main.rs`):
+  real `cpal` capture → downmix→16 kHz → **shared-memory ring**
+  (`runtime_dir()/audio-ring.shm`, self-describing `BZAR` header) + an energy
+  **VAD** publishing `vad.start`/`vad.end`, plus a ~1 s heartbeat (so
+  `blazend-health` doesn't flag mic starvation). Picks a real input device by
+  name (`--device wm8960`) — fixes the "ALSA default has no capture slave" trap
+  — and selects a codec-clockable rate (16 kHz; cpal's guessed 44100 yielded a
+  silent stream on the WM8960). Keeps `--mock`.
+- **Python `blazend.audio`** (`RingReader`/`RingWriter`) mirrors the ring byte
+  layout; **`blazend.asr.engine.Transcriber`** wraps faster-whisper (lazy
+  import) with **Polish-first** coercion (detect → `{pl,en}`, tie-break `pl`) +
+  confidence from `avg_logprob`; **`blazend.asr.__main__`** real path subscribes
+  to the VAD markers, reads the utterance slice from the ring, transcribes
+  off-thread, publishes `asr.final` → `blazend-nlu`.
+- Config: `configs/audio.yaml` gained an `input.vad:` block (and the codec
+  comment was corrected WM8960/`wm8960-soundcard`, not TLV320AIC3104).
+  `scripts/dev-run.sh` runs the real path under `BLAZEN_REAL_AUDIO=1`
+  (`--device wm8960`, `BLAZEN_ASR_MODEL=small` for the 8 GB Pi).
+- Tests: Rust ring/VAD unit tests (5); Python ring roundtrip + engine PL/EN
+  parity with a fake backend (9). `make test-fast` green (**106 Python + 27
+  core + 16 appliance Rust**); `make lint` clean (ruff/mypy/fmt/clippy).
+
+**Verified on this Pi 5 + HAT:** real capture fills the ring (18.5 s continuous,
+`write_pos` advancing); Python reads it; **ring→reader→engine on a synthesized
+Polish phrase** → `lang=pl`, correct Polish text; full `BLAZEN_REAL_AUDIO=1`
+stack runs clean (audio-in on `wm8960soundcard`, asr `small` subscribed, **0
+panics/POLLERR**). The one thing left is **live calibration**: the cpal capture
+RMS is gain-sensitive, so `open_rms`/`close_rms` (in `audio.yaml` / `--open-rms`)
+need tuning to the operator's voice+room — I can't speak to set them. Use
+`scripts/hat-voice-check.py` (bypasses VAD) for the live "speak Polish" check.
+
+**Not done (out of scope):** wake-gating (always-listening for now; no
+openWakeWord models on disk), `asr.partial` streaming, an in-VM e2e ASR
+scenario (needs audio injection), image build, TTS models. ASR latency
+(`small` int8 ~4× real-time on CPU) is an M2 perf follow-up.
+
+---
+
 ## Session log — 2026-06-11 (paul) — monorepo consolidated on origin
 
 The full monorepo now lives on `origin/main` and `make test-fast` is green
