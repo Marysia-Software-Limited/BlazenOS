@@ -32,6 +32,28 @@ At runtime each component resolves config in this order, last-wins:
 
 Any change reloads only the affected component via `systemctl reload`.
 
+## Audio capture + VAD (`audio.yaml`)
+
+`input:` describes the mic path consumed by `blazend-audio-in` → the
+shared-memory ring → `blazend-asr` (see `docs/14` §3a):
+
+- `device` — ALSA name hint; reference HW is the **ReSpeaker 2-Mics Pi HAT**
+  (WM8960 codec, overlay `wm8960-soundcard`, ALSA card `wm8960soundcard`).
+- `sample_rate_hz: 16000`, `channels: 1`, `frame_ms`, `ring_buffer_seconds`,
+  `pre_roll_ms` — ring + framing geometry.
+- `input.vad:` — energy VAD thresholds (linear i16 RMS), mirrored by the
+  `blazend-audio-in` CLI flags:
+  - `open_rms` / `close_rms` — speech-start / silence thresholds.
+  - `hangover_ms` — trailing silence before `vad.end`.
+  - `min_speech_ms` — minimum speech before `vad.start` (rejects clicks).
+  Defaults suit the HAT (ambient RMS ~750), but capture gain is hardware/mixer
+  dependent — **calibrate `open_rms`/`close_rms` to the install** by watching
+  the ring RMS while speaking.
+
+Related env (image build / dev only): `BLAZEN_REAL_AUDIO=1` enables the real
+voice path in `scripts/dev-run.sh`; `BLAZEN_AUDIO_DEVICE` overrides the device
+hint; `BLAZEN_ASR_MODEL` overrides `asr.yaml active` (8 GB Pi → `small`).
+
 ## Voice-policy file
 
 `voice-policy.yaml` is the **single source of truth** for what the user

@@ -77,12 +77,27 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-launch_rust blazend-audio-in   --mock
+# BLAZEN_REAL_AUDIO=1 runs the real voice path (cpal mic capture + shared-memory
+# ring + VAD in blazend-audio-in, faster-whisper in blazend-asr). Needs a mic
+# (e.g. the ReSpeaker HAT) + the ASR model. Default stays --mock for laptops/CI.
+AUDIO_IN_ARGS="--mock"
+ASR_ARGS="--mock"
+if [ "${BLAZEN_REAL_AUDIO:-0}" = "1" ]; then
+  # Target the ReSpeaker HAT by name (BLAZEN_AUDIO_DEVICE overrides) so capture
+  # doesn't land on an incidental USB device. Default ASR model is `small`
+  # (the Pi 5 8 GB reference; medium needs 16 GB headroom).
+  AUDIO_IN_ARGS="--device ${BLAZEN_AUDIO_DEVICE:-wm8960}"
+  ASR_ARGS=""
+  export BLAZEN_ASR_MODEL="${BLAZEN_ASR_MODEL:-small}"
+  log "BLAZEN_REAL_AUDIO=1 → real capture (device=${BLAZEN_AUDIO_DEVICE:-wm8960}) + faster-whisper (${BLAZEN_ASR_MODEL})"
+fi
+
+launch_rust blazend-audio-in   $AUDIO_IN_ARGS
 launch_rust blazend-audio-out  --mock
 launch_rust blazend-wake       --mock --mock-period-s 15
 launch_rust blazend-tts        --mock
 launch_rust blazend-health
-launch_py   blazend.asr        --mock
+launch_py   blazend.asr        $ASR_ARGS
 launch_rust blazend-nlu                              # routes asr.final → nlu.intent via jessica-core
 launch_py   blazend.brain                            # real engine: memory/reminders + Gemini chat/news
 

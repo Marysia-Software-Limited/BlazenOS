@@ -3,13 +3,23 @@
 version: 1
 
 input:
-  device: default                     # ALSA name; reference HW = ReSpeaker 2-Mics Pi HAT V2.0
-                                      # (TLV320AIC3104, overlay respeaker-2mic-v2_0); USB mic fallback
+  device: default                     # ALSA name; reference HW = ReSpeaker 2-Mics Pi HAT
+                                      # (WM8960 codec @ i2c 0x1a, overlay wm8960-soundcard,
+                                      # ALSA card "wm8960soundcard"); USB mic fallback
   sample_rate_hz: 16000
   channels: 1                         # ASR-facing mono; the HAT captures 2 mics, downmixed upstream
   frame_ms: 20
   ring_buffer_seconds: 3
   pre_roll_ms: 500
+
+  # Energy VAD in blazend-audio-in brackets utterances for the ASR. Linear i16
+  # RMS thresholds; defaults tuned to the ReSpeaker HAT (ambient RMS ~750).
+  # These mirror the blazend-audio-in CLI flags (--open-rms etc.).
+  vad:
+    open_rms: 1800                    # speech starts above this
+    close_rms: 1100                   # silence below this
+    hangover_ms: 300                  # trailing silence before vad.end
+    min_speech_ms: 150                # minimum speech before vad.start
 
 output:
   device: default

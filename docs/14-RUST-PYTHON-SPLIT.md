@@ -84,6 +84,23 @@ Cross-language safety is enforced by the wire format, not by FFI.
 Net effect: a Rust component cannot send a message the Python side
 silently mishandles. The schema rejects it.
 
+### 3a. Audio PCM travels out-of-band (shared-memory ring)
+
+Bulk audio is too heavy for the JSON socket, so PCM rides a **shared-memory
+ring buffer** while the socket carries only markers. `blazend-audio-in` (Rust)
+is the single producer; `blazend-asr` (Python) is a reader.
+
+- **File:** `runtime_dir()/audio-ring.shm`, mmap'd by both sides.
+- **Layout** (little-endian; producer `rpi5/crates/blazend-audio-in/src/ring.rs`,
+  reader `rpi5/src/blazend/audio/__init__.py` — they must agree byte-for-byte):
+  `magic "BZAR" | version | sample_rate_hz | channels | capacity_frames | _pad
+  | write_pos:u64 (atomic) | i16[capacity_frames]`. Mono 16 kHz.
+- **Sync:** `write_pos` is a monotonic total-frames counter; a reader takes the
+  window `[write_pos − pre_roll, write_pos]` modulo capacity. The IPC
+  `vad.start`/`vad.end` events bracket an utterance; the ASR snapshots
+  `write_pos` at each and transcribes that slice. No PCM ever crosses the JSON
+  boundary — only the metadata does.
+
 ---
 
 ## 4. Repository layout

@@ -37,6 +37,7 @@ crossbeam-channel = "0.5"
 # Audio.
 cpal         = "0.15"
 rodio        = "0.19"
+memmap2      = "0.9"
 
 # ML / ONNX (wake + VAD). Added in M2 once the loader stabilises.
 # ort = { version = "...", default-features = false, features = ["load-dynamic"] }
