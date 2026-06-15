@@ -50,6 +50,12 @@ struct Args {
     /// VAD close threshold (linear i16 RMS) — silence below this.
     #[arg(long, default_value_t = 1100.0)]
     close_rms: f32,
+    /// VAD open multiplier over the learned ambient noise floor.
+    #[arg(long, default_value_t = 2.5)]
+    open_mult: f32,
+    /// VAD close multiplier over the learned ambient noise floor.
+    #[arg(long, default_value_t = 1.6)]
+    close_mult: f32,
     /// Trailing silence before an utterance ends (ms).
     #[arg(long, default_value_t = 300)]
     hangover_ms: u32,
@@ -228,6 +234,8 @@ async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
     let mut vad = EnergyVad::new(
         args.open_rms,
         args.close_rms,
+        args.open_mult,
+        args.close_mult,
         args.hangover_ms,
         args.min_speech_ms,
         args.frame_ms,
@@ -286,6 +294,7 @@ async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
         let pos = ring.write_pos();
         if pos - last_heartbeat_pos >= TARGET_RATE as u64 {
             last_heartbeat_pos = pos;
+            tracing::debug!(noise_floor = vad.noise_floor(), "heartbeat");
             publisher
                 .publish(EventEnvelope::new(
                     "blazend-audio-in",

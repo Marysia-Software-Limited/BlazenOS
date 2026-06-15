@@ -41,14 +41,16 @@ shared-memory ring → `blazend-asr` (see `docs/14` §3a):
   (WM8960 codec, overlay `wm8960-soundcard`, ALSA card `wm8960soundcard`).
 - `sample_rate_hz: 16000`, `channels: 1`, `frame_ms`, `ring_buffer_seconds`,
   `pre_roll_ms` — ring + framing geometry.
-- `input.vad:` — energy VAD thresholds (linear i16 RMS), mirrored by the
-  `blazend-audio-in` CLI flags:
-  - `open_rms` / `close_rms` — speech-start / silence thresholds.
+- `input.vad:` — **self-calibrating** energy VAD (linear i16 RMS), mirrored by
+  the `blazend-audio-in` CLI flags. It learns the ambient noise floor and scales
+  the thresholds off it, so it works without per-install tuning:
+  - `open_rms` / `close_rms` — *absolute floors* (safety net).
+  - `open_mult` / `close_mult` — headroom over the learned ambient;
+    `effective_open = max(open_rms, noise_floor × open_mult)`.
   - `hangover_ms` — trailing silence before `vad.end`.
   - `min_speech_ms` — minimum speech before `vad.start` (rejects clicks).
-  Defaults suit the HAT (ambient RMS ~750), but capture gain is hardware/mixer
-  dependent — **calibrate `open_rms`/`close_rms` to the install** by watching
-  the ring RMS while speaking.
+  Only raise the floors if a very loud, steady room still triggers; normally the
+  multipliers adapt on their own (watch `noise_floor` in audio-in debug logs).
 
 Related env (image build / dev only): `BLAZEN_REAL_AUDIO=1` enables the real
 voice path in `scripts/dev-run.sh`; `BLAZEN_AUDIO_DEVICE` overrides the device

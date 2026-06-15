@@ -12,12 +12,17 @@ input:
   ring_buffer_seconds: 3
   pre_roll_ms: 500
 
-  # Energy VAD in blazend-audio-in brackets utterances for the ASR. Linear i16
-  # RMS thresholds; defaults tuned to the ReSpeaker HAT (ambient RMS ~750).
-  # These mirror the blazend-audio-in CLI flags (--open-rms etc.).
+  # Energy VAD in blazend-audio-in brackets utterances for the ASR. It is
+  # self-calibrating: it learns the ambient noise floor and scales the
+  # thresholds off it — `effective_open = max(open_rms, noise_floor*open_mult)`.
+  # `*_rms` are absolute floors (safety net); `*_mult` add headroom above
+  # whatever the room actually is, so it works without per-install tuning.
+  # Mirror the blazend-audio-in CLI flags (--open-rms, --open-mult, …).
   vad:
-    open_rms: 1800                    # speech starts above this
-    close_rms: 1100                   # silence below this
+    open_rms: 1800                    # absolute floor for speech-start
+    close_rms: 1100                   # absolute floor for silence
+    open_mult: 2.5                    # speech-start = ambient × this (min open_rms)
+    close_mult: 1.6                   # silence = ambient × this (min close_rms)
     hangover_ms: 300                  # trailing silence before vad.end
     min_speech_ms: 150                # minimum speech before vad.start
 
