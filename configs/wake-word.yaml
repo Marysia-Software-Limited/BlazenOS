@@ -9,30 +9,36 @@ version: 1
 active:                                       # voice-mutable from `allowed` only
   - jessica_pl
   - jessica_en
-threshold: 0.6
-cooldown_ms: 200
+threshold: 0.5                                # wake fires above this (validated)
+cooldown_ms: 500
 score_window_ms: 1000
 
-# Models shipped or downloadable. Add new entries here; `make models` will
-# download missing ones and verify SHA.
+# The Jessica wake is one **bilingual** model trained locally (openWakeWord
+# melspectrogram+embedding front-end + a classifier head fit on Piper-synthesised
+# clips); `jessica_pl` and `jessica_en` both point at that single file. The wake
+# PHRASE is the distinctive two-word form "hej Jessico" / "hey Jessica" — bare
+# "Jessica" rhymes with Polish names (Marysia/Kasia) so it is deliberately NOT
+# the wake. Regenerate: `.venv/bin/python scripts/train-wake.py`
+# (→ models/wake/jessica.onnx). Runtime pipeline: melspectrogram.onnx →
+# embedding_model.onnx → jessica.onnx (the first two ship with openwakeword).
 models:
   jessica_en:
     backend: openwakeword
-    file: jessica_en.onnx
-    download_url: https://blazen-os-assets/wake/jessica_en-v1.onnx
-    sha256: "<TBD>"
-    size_mb: 4
+    file: wake/jessica.onnx                   # under models/; gitignored, regen via train-wake.py
+    trained_by: scripts/train-wake.py
+    sha256: "1b458c093a21e54aaa0212eae9324bf9ca6433dff8eed10e22855679a84e726e"
+    size_mb: 1
     language: en
-    phrases: ["hey jessica", "jessica", "jess"]
+    phrases: ["hey jessica"]
     license: Apache-2.0
   jessica_pl:
     backend: openwakeword
-    file: jessica_pl.onnx
-    download_url: https://blazen-os-assets/wake/jessica_pl-v1.onnx
-    sha256: "<TBD>"
-    size_mb: 4
+    file: wake/jessica.onnx                   # same unified bilingual model
+    trained_by: scripts/train-wake.py
+    sha256: "1b458c093a21e54aaa0212eae9324bf9ca6433dff8eed10e22855679a84e726e"
+    size_mb: 1
     language: pl
-    phrases: ["hej jessico", "jessico", "jess"]
+    phrases: ["hej jessico"]
     license: Apache-2.0
   hey_blazen_en:
     backend: openwakeword

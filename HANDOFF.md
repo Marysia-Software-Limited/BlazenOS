@@ -173,10 +173,33 @@ brain.reply → Piper TTS → shared-memory TTS ring → cpal playback → HDMI.
   on `vc4hdmi1`, **0 panics**. (Audibility needs an HDMI sink connected.)
 - **Start all:** `BLAZEN_REAL_AUDIO=1 BLAZEN_REAL_TTS=1 scripts/dev-run.sh`.
 
-**Not done (out of scope):** wake-gating (always-listening; no openWakeWord
-models), `asr.partial` / streaming TTS, in-VM e2e scenarios, image build. ASR
-latency (`small` ~4× real-time) + TTS latency are perf follow-ups; `piper-rs`
-(pure-Rust) is the eventual replacement for the Piper subprocess.
+**Wake word — Phase 1 (model trained) DONE; runtime is M3 follow-up.** User
+chose to train a real openWakeWord "Jessica" model (over transcript-gating).
+- **`scripts/train-wake.py`** trains it on the Pi: openWakeWord's
+  melspectrogram + speech-embedding ONNX front-end (ships with the
+  `openwakeword` pip pkg) + a small classifier head fit on **Piper-synthesised**
+  positives/negatives. Deps are the `wake-training` extra (openwakeword, torch,
+  onnx — build-time only). → `models/wake/jessica.onnx` (input (1,16,96), the
+  openWakeWord classifier format; gitignored, regen via the script; sha pinned
+  in `wake-word.yaml`).
+- **Key finding (user's call):** bare "Jessica" can't be separated from rhyming
+  Polish names (Marysia/Kasia false-accept ~0.99) with synthetic data. The wake
+  PHRASE is therefore the distinctive two-word **"hej Jessico" / "hey Jessica"**.
+  With that framing, streaming validation is clean: wake phrases (incl.
+  "hej Jessico <command>") **0.999–1.000**; Marysia / Kasia / "hej Marysia" /
+  commands / other names **0.000**. (One benign residual: EN bare "Jessica"
+  ~0.91 — wakes on her own name.) `configs/wake-word.yaml` now points
+  `jessica_pl`/`jessica_en` at the one bilingual model, `threshold: 0.5`.
+- **Still M3 (not built):** the **Rust `blazend-wake`** runtime (ort, 3-stage
+  melspec→embedding→jessica over the input ring → `wake.detected`) and the
+  **orchestrator wake-gating** (only dispatch within a window after wake). Until
+  then the stack stays always-listening. Plan:
+  `~/.claude/plans/quizzical-exploring-cosmos.md` Phases 2–4.
+
+**Not done (out of scope):** `asr.partial` / streaming TTS, in-VM e2e scenarios,
+image build. ASR latency (`small` ~4× real-time) + TTS latency are perf
+follow-ups; `piper-rs` (pure-Rust) is the eventual replacement for the Piper
+subprocess.
 
 ---
 

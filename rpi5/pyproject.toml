@@ -28,6 +28,14 @@ runtime = [
   "llama-cpp-python>=0.3",
   "piper-tts>=1.2",
 ]
+wake-training = [
+  # Build-time only: `scripts/train-wake.py` trains the Jessica wake model
+  # (openWakeWord features + a Piper-synthesised dataset). Not a runtime dep —
+  # the appliance ships only the resulting ONNX, run by the Rust wake unit.
+  "openwakeword>=0.4",
+  "torch>=2.0",
+  "onnx>=1.14",
+]
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
