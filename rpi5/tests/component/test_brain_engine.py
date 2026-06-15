@@ -7,7 +7,6 @@ asserts that an `nlu.miss` produces the matching `brain.reply`.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
 
 import pytest
 

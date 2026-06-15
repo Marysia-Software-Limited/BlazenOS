@@ -18,6 +18,7 @@ import argparse
 import asyncio
 import logging
 from datetime import datetime
+from pathlib import Path
 
 from blazend.assistant.engine import Assistant, Reply
 from blazend.events import Envelope, system_event
@@ -40,7 +41,7 @@ def _reply_envelope(reply: Reply) -> Envelope:
     )
 
 
-async def _connect_nlu(rt) -> Subscriber:
+async def _connect_nlu(rt: Path) -> Subscriber:
     """Connect to the NLU publisher (nlu.miss / nlu.intent), retrying."""
     sock = rt / "nlu.sock"
     while True:
@@ -61,11 +62,13 @@ async def _reminder_ticker(engine: Assistant, pub: Publisher, stop: asyncio.Even
             await pub.publish(_reply_envelope(reply))
         try:
             await asyncio.wait_for(stop.wait(), timeout=1.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
 
-async def serve(engine: Assistant, *, runtime_dir_=None, stop: asyncio.Event | None = None) -> None:
+async def serve(
+    engine: Assistant, *, runtime_dir_: Path | None = None, stop: asyncio.Event | None = None
+) -> None:
     """Run the brain: asr.final → engine → brain.reply, plus reminder ticks."""
     rt = runtime_dir_ or runtime_dir()
     stop = stop or asyncio.Event()

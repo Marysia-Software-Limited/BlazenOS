@@ -14,11 +14,10 @@ from __future__ import annotations
 import argparse
 import sys
 import threading
-import time
 from datetime import datetime
 from pathlib import Path
 
-from blazend.assistant.engine import Assistant
+from blazend.assistant.engine import Assistant, Reply
 from blazend.assistant.gemini import GeminiClient
 from blazend.assistant.memory import MemoryStore
 
@@ -43,7 +42,7 @@ def _banner(a: Assistant) -> str:
     )
 
 
-def _say(reply) -> None:
+def _say(reply: Reply) -> None:
     if reply.text:
         print(f"  Jessica: {reply.text}")
 

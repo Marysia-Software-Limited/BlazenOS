@@ -65,7 +65,7 @@ class Envelope:
         }
 
     @classmethod
-    def from_wire(cls, raw: dict[str, Any]) -> "Envelope":
+    def from_wire(cls, raw: dict[str, Any]) -> Envelope:
         """Parse a wire-format dict into an :class:`Envelope`."""
         return cls(
             topic=raw["topic"],

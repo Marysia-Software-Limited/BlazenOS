@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use blazend_ipc::{Event, EventEnvelope, Publisher, runtime_dir};
+use blazend_ipc::{runtime_dir, Event, EventEnvelope, Publisher};
 use clap::Parser;
 
 #[derive(Parser, Debug)]
@@ -18,8 +18,7 @@ struct Args {
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
     let _ = Args::parse();
@@ -29,7 +28,10 @@ async fn main() -> anyhow::Result<()> {
         .publish(EventEnvelope::new(
             "blazend-audio-out",
             0,
-            Event::SystemEvent { kind: "ready".into(), detail: None },
+            Event::SystemEvent {
+                kind: "ready".into(),
+                detail: None,
+            },
         ))
         .await?;
     loop {

@@ -73,7 +73,9 @@ class DispatchResult:
 class IntentDispatcher:
     """Acts on fast-path intents, holding the pending-confirmation state."""
 
-    def __init__(self, intents_cfg: dict, policy_cfg: dict, settings: SettingsStore):
+    def __init__(
+        self, intents_cfg: dict[str, Any], policy_cfg: dict[str, Any], settings: SettingsStore
+    ):
         self._intents = {i["name"]: i for i in intents_cfg.get("intents", [])}
         self._allow = policy_cfg.get("allow_voice_mutation", {})
         self._deny = policy_cfg.get("deny_voice_mutation", [])
@@ -84,7 +86,8 @@ class IntentDispatcher:
 
     def pinned_language(self) -> str | None:
         """Currently pinned reply language (None = auto-detect)."""
-        return self._settings.get("languages.pinned")
+        pinned = self._settings.get("languages.pinned")
+        return None if pinned is None else str(pinned)
 
     def _effective_lang(self, detected: str) -> str:
         """Pinned language wins over the per-utterance detected one."""
@@ -123,11 +126,13 @@ class IntentDispatcher:
                 return True
         return key not in self._allow
 
-    def _resolve_value(self, mut: dict, params: dict) -> Any:
+    def _resolve_value(self, mut: dict[str, Any], params: dict[str, Any]) -> Any:
         if "value" in mut:
             return mut["value"]
         if "value_from_group" in mut:
             raw = params.get(mut["value_from_group"])
+            if raw is None:
+                return None
             try:
                 return int(raw)
             except (TypeError, ValueError):
@@ -140,7 +145,7 @@ class IntentDispatcher:
             return val
         return None
 
-    def _mutate(self, mut: dict, params: dict, lang: str) -> DispatchResult:
+    def _mutate(self, mut: dict[str, Any], params: dict[str, Any], lang: str) -> DispatchResult:
         key = mut["key"]
         if self._denied(key):
             return DispatchResult(_t(lang, "Tego nie mogę zmienić głosem.",
@@ -182,7 +187,7 @@ class IntentDispatcher:
         return DispatchResult(_t(lang, "Anulowane.", "Cancelled."), lang, "cancelled")
 
     # -- language pin ------------------------------------------------------
-    def _switch_language(self, params: dict, lang: str) -> DispatchResult:
+    def _switch_language(self, params: dict[str, Any], lang: str) -> DispatchResult:
         token = str(params.get("lang", "")).strip().lower()
         code = _LANG_TOKENS.get(token)
         if code is None:
@@ -229,7 +234,9 @@ class IntentDispatcher:
         return _t(lang, f"Ustawione: {key} = {value}.", f"Set {key} = {value}.")
 
     # -- tools -------------------------------------------------------------
-    def _tool(self, tool: str, params: dict, lang: str, *, now: datetime | None = None) -> DispatchResult:
+    def _tool(
+        self, tool: str, params: dict[str, Any], lang: str, *, now: datetime | None = None
+    ) -> DispatchResult:
         now = now or datetime.now()
         if tool == "clock.time":
             return DispatchResult(_t(lang, f"Jest {now:%H:%M}.", f"It's {now:%H:%M}."), lang, "tool")

@@ -13,6 +13,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 
 def data_dir() -> Path:
@@ -48,8 +49,8 @@ class Reminder:
 
 @dataclass
 class _Db:
-    notes: list[dict] = field(default_factory=list)
-    reminders: list[dict] = field(default_factory=list)
+    notes: list[dict[str, Any]] = field(default_factory=list)
+    reminders: list[dict[str, Any]] = field(default_factory=list)
     seq: int = 0
 
 

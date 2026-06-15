@@ -60,7 +60,7 @@ class Orchestrator:
     def _load_default_lang() -> str:
         """System default reply language (Polish-first); falls back to pl."""
         try:
-            return load_config("system").data.get("languages", {}).get("default", "pl")
+            return str(load_config("system").data.get("languages", {}).get("default", "pl"))
         except Exception:  # noqa: BLE001
             return "pl"
 
@@ -174,6 +174,8 @@ class Orchestrator:
 
     def _dispatch_intent(self, env: Envelope) -> Envelope | None:
         """Act on a fast-path `nlu.intent`; return the spoken reply (if any)."""
+        if self._dispatcher is None:
+            return None
         result = self._dispatcher.dispatch(
             env.data.get("intent", ""),
             env.data.get("params", {}),

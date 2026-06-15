@@ -37,7 +37,8 @@ def _http_transport(url: str, body: dict[str, Any]) -> dict[str, Any]:
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 (fixed host)
-            return json.loads(resp.read().decode("utf-8"))
+            result: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
+            return result
     except urllib.error.HTTPError as e:  # pragma: no cover - network path
         raise GeminiError(f"Gemini HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:200]}") from e
     except urllib.error.URLError as e:  # pragma: no cover - network path
@@ -63,7 +64,13 @@ class GeminiClient:
         """True when a Gemini call can actually be made (key present)."""
         return bool(self.api_key)
 
-    def _generate(self, contents: list[dict], *, tools: list[dict] | None = None, system: str | None = None) -> str:
+    def _generate(
+        self,
+        contents: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        system: str | None = None,
+    ) -> str:
         if not self.available:
             raise GeminiError("GEMINI_API_KEY is not set")
         body: dict[str, Any] = {"contents": contents}

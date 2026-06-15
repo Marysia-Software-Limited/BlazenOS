@@ -46,13 +46,7 @@ pub extern "system" fn Java_os_blazen_jessica_core_JessicaCoreNative_nativeLoadI
     let Ok(bytes) = env.convert_byte_array(&yaml) else {
         return JESSICA_ERR_BAD_INPUT;
     };
-    unsafe {
-        jessica_ffi_load_intents(
-            handle as *mut JessicaHandle,
-            bytes.as_ptr(),
-            bytes.len(),
-        )
-    }
+    unsafe { jessica_ffi_load_intents(handle as *mut JessicaHandle, bytes.as_ptr(), bytes.len()) }
 }
 
 /// `nativeMatchIntent(handle: Long, transcript: String, language: String): String?`.
@@ -86,7 +80,11 @@ pub extern "system" fn Java_os_blazen_jessica_core_JessicaCoreNative_nativeMatch
     }
     let cstr = unsafe { std::ffi::CStr::from_ptr(ptr) };
     let result = match cstr.to_str() {
-        Ok(s) => env.new_string(s).ok().map(|j| j.into_raw()).unwrap_or(std::ptr::null_mut()),
+        Ok(s) => env
+            .new_string(s)
+            .ok()
+            .map(|j| j.into_raw())
+            .unwrap_or(std::ptr::null_mut()),
         Err(_) => std::ptr::null_mut(),
     };
     // Free the Rust-side string now that we've copied it across the boundary.
@@ -105,9 +103,7 @@ pub extern "system" fn Java_os_blazen_jessica_core_JessicaCoreNative_nativeMerge
     let Ok(bytes) = env.convert_byte_array(&fact_json) else {
         return JESSICA_ERR_BAD_INPUT;
     };
-    unsafe {
-        jessica_ffi_merge_fact(handle as *mut JessicaHandle, bytes.as_ptr(), bytes.len())
-    }
+    unsafe { jessica_ffi_merge_fact(handle as *mut JessicaHandle, bytes.as_ptr(), bytes.len()) }
 }
 
 /// `nativeFactCount(handle: Long): Long`.
@@ -117,8 +113,10 @@ pub extern "system" fn Java_os_blazen_jessica_core_JessicaCoreNative_nativeFactC
     _class: JClass,
     handle: jlong,
 ) -> jlong {
-    with_handle(handle as *mut JessicaHandle, |state| Ok(state.log.len() as i64))
-        .unwrap_or(-1)
+    with_handle(handle as *mut JessicaHandle, |state| {
+        Ok(state.log.len() as i64)
+    })
+    .unwrap_or(-1)
 }
 
 /// `nativeIntentCount(handle: Long): Long`.
@@ -129,7 +127,10 @@ pub extern "system" fn Java_os_blazen_jessica_core_JessicaCoreNative_nativeInten
     handle: jlong,
 ) -> jlong {
     with_handle(handle as *mut JessicaHandle, |state| {
-        Ok(state.router.as_ref().map_or(0, jessica_core::IntentRouter::len) as i64)
+        Ok(state
+            .router
+            .as_ref()
+            .map_or(0, jessica_core::IntentRouter::len) as i64)
     })
     .unwrap_or(-1)
 }

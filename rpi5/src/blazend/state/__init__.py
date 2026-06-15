@@ -43,7 +43,8 @@ class StateWriter:
     async def snapshot(self) -> dict[str, Any]:
         """Return a deep copy of the current state."""
         async with self._lock:
-            return json.loads(json.dumps(self._state))
+            snapshot: dict[str, Any] = json.loads(json.dumps(self._state))
+            return snapshot
 
     async def _flush_locked(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)

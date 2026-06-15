@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use blazend_ipc::{Event, EventEnvelope, Publisher, runtime_dir};
+use blazend_ipc::{runtime_dir, Event, EventEnvelope, Publisher};
 use clap::Parser;
 
 #[derive(Parser, Debug)]
@@ -26,8 +26,7 @@ struct Args {
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
     let args = Args::parse();
@@ -43,7 +42,12 @@ async fn main() -> anyhow::Result<()> {
     let mut ts_ms: u64 = 0;
     let mut idx: usize = 0;
     loop {
-        tokio::time::sleep(Duration::from_secs(if args.mock { args.mock_period_s } else { 60 })).await;
+        tokio::time::sleep(Duration::from_secs(if args.mock {
+            args.mock_period_s
+        } else {
+            60
+        }))
+        .await;
         ts_ms += args.mock_period_s.saturating_mul(1000);
         if args.mock && !models.is_empty() {
             let model = models[idx % models.len()].clone();
@@ -52,7 +56,11 @@ async fn main() -> anyhow::Result<()> {
                 .publish(EventEnvelope::new(
                     "blazend-wake",
                     ts_ms,
-                    Event::WakeDetected { model, score: 0.75, language },
+                    Event::WakeDetected {
+                        model,
+                        score: 0.75,
+                        language,
+                    },
                 ))
                 .await?;
             idx += 1;

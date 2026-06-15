@@ -10,6 +10,7 @@ import json
 import os
 import struct
 from pathlib import Path
+from typing import Any
 
 from blazend.events import Envelope
 
@@ -29,7 +30,7 @@ def runtime_dir() -> Path:
     return Path(f"/tmp/blazen-{os.getuid()}")
 
 
-async def _read_frame(reader: asyncio.StreamReader) -> dict | None:
+async def _read_frame(reader: asyncio.StreamReader) -> dict[str, Any] | None:
     header = await reader.readexactly(4) if not reader.at_eof() else b""
     if not header:
         return None
@@ -39,10 +40,11 @@ async def _read_frame(reader: asyncio.StreamReader) -> dict | None:
     if length > MAX_FRAME_BYTES:
         raise ValueError(f"frame too large: {length} bytes")
     payload = await reader.readexactly(length)
-    return json.loads(payload.decode("utf-8"))
+    frame: dict[str, Any] = json.loads(payload.decode("utf-8"))
+    return frame
 
 
-async def _write_frame(writer: asyncio.StreamWriter, obj: dict) -> None:
+async def _write_frame(writer: asyncio.StreamWriter, obj: dict[str, Any]) -> None:
     payload = json.dumps(obj, ensure_ascii=False).encode("utf-8")
     if len(payload) > MAX_FRAME_BYTES:
         raise ValueError(f"frame too large: {len(payload)} bytes")
@@ -63,7 +65,7 @@ class Subscriber:
         """Open the connection."""
         self._reader, self._writer = await asyncio.open_unix_connection(str(self._socket_path))
 
-    def __aiter__(self) -> "Subscriber":
+    def __aiter__(self) -> Subscriber:
         return self
 
     async def __anext__(self) -> Envelope:

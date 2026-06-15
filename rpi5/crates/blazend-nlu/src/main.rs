@@ -15,7 +15,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use blazend_ipc::{Event, EventEnvelope, Publisher, Subscriber, runtime_dir};
+use blazend_ipc::{runtime_dir, Event, EventEnvelope, Publisher, Subscriber};
 use clap::Parser;
 use jessica_core::IntentRouter;
 
@@ -89,7 +89,10 @@ async fn run(asr_sock: PathBuf, nlu_sock: PathBuf, router: IntentRouter) -> anyh
                         .publish(EventEnvelope::new(
                             "blazend-nlu",
                             env.ts_ms,
-                            Event::NluMiss { language, transcript: text },
+                            Event::NluMiss {
+                                language,
+                                transcript: text,
+                            },
                         ))
                         .await?;
                 }
@@ -103,8 +106,7 @@ async fn run(asr_sock: PathBuf, nlu_sock: PathBuf, router: IntentRouter) -> anyh
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
     let args = Args::parse();
@@ -147,7 +149,12 @@ intents:
         let r = router();
         let ev = route(&r, "en", "what time is it").expect("EN match");
         match ev {
-            Event::NluIntent { intent, language, transcript, .. } => {
+            Event::NluIntent {
+                intent,
+                language,
+                transcript,
+                ..
+            } => {
                 assert_eq!(intent, "time_query");
                 assert_eq!(language, "en");
                 assert_eq!(transcript, "what time is it");
@@ -161,7 +168,12 @@ intents:
         let r = router();
         let ev = route(&r, "pl", "ustaw głośność na 30").expect("PL match");
         match ev {
-            Event::NluIntent { intent, language, params, .. } => {
+            Event::NluIntent {
+                intent,
+                language,
+                params,
+                ..
+            } => {
                 assert_eq!(intent, "volume_set");
                 assert_eq!(language, "pl");
                 assert_eq!(params.get("value").map(String::as_str), Some("30"));
@@ -224,7 +236,9 @@ intents:
             .unwrap();
         assert_eq!(env.source, "blazend-nlu");
         match env.event {
-            Event::NluIntent { intent, language, .. } => {
+            Event::NluIntent {
+                intent, language, ..
+            } => {
                 assert_eq!(intent, "time_query");
                 assert_eq!(language, "en");
             }
@@ -278,7 +292,10 @@ intents:
             .unwrap()
             .unwrap();
         match env.event {
-            Event::NluMiss { language, transcript } => {
+            Event::NluMiss {
+                language,
+                transcript,
+            } => {
                 assert_eq!(language, "pl");
                 assert_eq!(transcript, "opowiedz mi bajkę o smoku");
             }

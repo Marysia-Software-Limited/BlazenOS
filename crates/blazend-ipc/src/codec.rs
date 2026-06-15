@@ -1,7 +1,7 @@
 //! Length-prefixed JSON framing for the IPC wire format.
 
 use bytes::{BufMut, BytesMut};
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::{IpcError, Result};
@@ -77,7 +77,10 @@ mod tests {
     #[tokio::test]
     async fn round_trip() {
         let (mut a, mut b) = duplex(64 * 1024);
-        let value = Ping { n: 7, msg: "hi".into() };
+        let value = Ping {
+            n: 7,
+            msg: "hi".into(),
+        };
         FrameCodec::write_one(&mut a, &value).await.unwrap();
         drop(a);
         let frame = FrameCodec::read_one(&mut b).await.unwrap().unwrap();

@@ -14,7 +14,7 @@ pub mod socket;
 
 pub use codec::{Frame, FrameCodec};
 pub use events::{Event, EventEnvelope, Topic};
-pub use socket::{Publisher, Subscriber, runtime_dir};
+pub use socket::{runtime_dir, Publisher, Subscriber};
 
 /// IPC protocol version. Bump on breaking schema changes.
 pub const PROTOCOL_VERSION: u32 = 1;

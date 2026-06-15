@@ -18,6 +18,7 @@ dev = [
   "mypy>=1.10",
   "rich>=13.7",
   "datamodel-code-generator>=0.25",
+  "types-PyYAML>=6.0",
 ]
 runtime = [
   # On-Pi runtime extras; installed by the image build, not for dev.
@@ -53,3 +54,10 @@ strict = true
 files = ["src/blazend"]
 explicit_package_bases = true
 mypy_path = "src"
+
+# faster-whisper is an optional runtime dep (the `runtime` extra) with no type
+# stubs; it's imported lazily in blazend.asr.engine. Don't fail the strict gate
+# on its absence/untyped surface.
+[[tool.mypy.overrides]]
+module = ["faster_whisper.*"]
+ignore_missing_imports = true

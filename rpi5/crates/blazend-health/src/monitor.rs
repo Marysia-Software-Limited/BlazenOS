@@ -86,7 +86,12 @@ pub struct Thresholds {
 impl Default for Thresholds {
     fn default() -> Self {
         // Mirrors configs/system.yaml: voice_recovery_thresholds.
-        Self { audio_in_silent: 3, audio_out_silent: 3, brain_no_token: 3, recovery_cooldown_s: 60 }
+        Self {
+            audio_in_silent: 3,
+            audio_out_silent: 3,
+            brain_no_token: 3,
+            recovery_cooldown_s: 60,
+        }
     }
 }
 
@@ -103,7 +108,12 @@ impl RecoveryMonitor {
     /// `units` is the set of peers to watch (e.g. the seven `blazend-*` units).
     pub fn new(th: Thresholds, units: Vec<String>) -> Self {
         let misses = units.iter().map(|u| (u.clone(), 0)).collect();
-        Self { th, units, misses, recovery_since_s: None }
+        Self {
+            th,
+            units,
+            misses,
+            recovery_since_s: None,
+        }
     }
 
     fn threshold_for(&self, unit: &str) -> u32 {
@@ -134,22 +144,34 @@ impl RecoveryMonitor {
         // 1. Critical wins outright — reboot into the recovery image.
         if let Some(unit) = critical {
             self.recovery_since_s = None;
-            return Verdict { level: Level::Critical, unit: unit.to_string(), action: Action::RecoveryImage };
+            return Verdict {
+                level: Level::Critical,
+                unit: unit.to_string(),
+                action: Action::RecoveryImage,
+            };
         }
 
         // 2. Mic starvation → recovery mode (the voice path is dead).
-        let audio_in_dead = self.misses.get("blazend-audio-in").copied().unwrap_or(0)
-            >= self.th.audio_in_silent;
+        let audio_in_dead =
+            self.misses.get("blazend-audio-in").copied().unwrap_or(0) >= self.th.audio_in_silent;
         if audio_in_dead {
             self.recovery_since_s.get_or_insert(now_s);
-            return Verdict { level: Level::Recovery, unit: "blazend-audio-in".into(), action: Action::RecoveryMode };
+            return Verdict {
+                level: Level::Recovery,
+                unit: "blazend-audio-in".into(),
+                action: Action::RecoveryMode,
+            };
         }
 
         // 3. Hold recovery through the cooldown even if the mic came back, so we
         //    don't flap the LED/announcement on a brief blip.
         if let Some(since) = self.recovery_since_s {
             if now_s.saturating_sub(since) < self.th.recovery_cooldown_s {
-                return Verdict { level: Level::Recovery, unit: "blazend-audio-in".into(), action: Action::RecoveryMode };
+                return Verdict {
+                    level: Level::Recovery,
+                    unit: "blazend-audio-in".into(),
+                    action: Action::RecoveryMode,
+                };
             }
             self.recovery_since_s = None;
         }
@@ -157,11 +179,19 @@ impl RecoveryMonitor {
         // 4. Any other unit quiet past its threshold → degraded, restart it.
         for unit in &self.units {
             if self.misses.get(unit).copied().unwrap_or(0) >= self.threshold_for(unit) {
-                return Verdict { level: Level::Degraded, unit: unit.clone(), action: Action::Restart };
+                return Verdict {
+                    level: Level::Degraded,
+                    unit: unit.clone(),
+                    action: Action::Restart,
+                };
             }
         }
 
-        Verdict { level: Level::Ok, unit: "system".into(), action: Action::None }
+        Verdict {
+            level: Level::Ok,
+            unit: "system".into(),
+            action: Action::None,
+        }
     }
 }
 
@@ -170,8 +200,15 @@ mod tests {
     use super::*;
 
     fn units() -> Vec<String> {
-        ["blazend-audio-in", "blazend-brain", "blazend-tts", "blazend-audio-out"]
-            .iter().map(|s| s.to_string()).collect()
+        [
+            "blazend-audio-in",
+            "blazend-brain",
+            "blazend-tts",
+            "blazend-audio-out",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
     }
 
     fn all_seen() -> HashSet<String> {
@@ -194,8 +231,14 @@ mod tests {
     fn brain_silent_past_threshold_is_degraded_restart() {
         let mut m = RecoveryMonitor::new(Thresholds::default(), units());
         // 2 misses: still ok (threshold is 3).
-        assert_eq!(m.tick(&seen_except("blazend-brain"), None, 0).level, Level::Ok);
-        assert_eq!(m.tick(&seen_except("blazend-brain"), None, 5).level, Level::Ok);
+        assert_eq!(
+            m.tick(&seen_except("blazend-brain"), None, 0).level,
+            Level::Ok
+        );
+        assert_eq!(
+            m.tick(&seen_except("blazend-brain"), None, 5).level,
+            Level::Ok
+        );
         let v = m.tick(&seen_except("blazend-brain"), None, 10);
         assert_eq!(v.level, Level::Degraded);
         assert_eq!(v.unit, "blazend-brain");
@@ -205,8 +248,13 @@ mod tests {
     #[test]
     fn brain_recovers_after_heartbeat() {
         let mut m = RecoveryMonitor::new(Thresholds::default(), units());
-        for t in 0..3 { m.tick(&seen_except("blazend-brain"), None, t * 5); }
-        assert_eq!(m.tick(&seen_except("blazend-brain"), None, 15).level, Level::Degraded);
+        for t in 0..3 {
+            m.tick(&seen_except("blazend-brain"), None, t * 5);
+        }
+        assert_eq!(
+            m.tick(&seen_except("blazend-brain"), None, 15).level,
+            Level::Degraded
+        );
         // A heartbeat resets the counter → back to ok.
         assert_eq!(m.tick(&all_seen(), None, 20).level, Level::Ok);
     }
@@ -214,7 +262,9 @@ mod tests {
     #[test]
     fn mic_starvation_is_recovery() {
         let mut m = RecoveryMonitor::new(Thresholds::default(), units());
-        for t in 0..2 { m.tick(&seen_except("blazend-audio-in"), None, t * 5); }
+        for t in 0..2 {
+            m.tick(&seen_except("blazend-audio-in"), None, t * 5);
+        }
         let v = m.tick(&seen_except("blazend-audio-in"), None, 10);
         assert_eq!(v.level, Level::Recovery);
         assert_eq!(v.unit, "blazend-audio-in");
@@ -224,8 +274,13 @@ mod tests {
     #[test]
     fn recovery_holds_through_cooldown_then_clears() {
         let mut m = RecoveryMonitor::new(Thresholds::default(), units());
-        for t in 0..3 { m.tick(&seen_except("blazend-audio-in"), None, t * 5); }
-        assert_eq!(m.tick(&seen_except("blazend-audio-in"), None, 15).level, Level::Recovery);
+        for t in 0..3 {
+            m.tick(&seen_except("blazend-audio-in"), None, t * 5);
+        }
+        assert_eq!(
+            m.tick(&seen_except("blazend-audio-in"), None, 15).level,
+            Level::Recovery
+        );
         // Mic returns, but within the 60 s cooldown we still report recovery.
         assert_eq!(m.tick(&all_seen(), None, 30).level, Level::Recovery);
         // After the cooldown elapses with the mic healthy → ok.

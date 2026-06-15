@@ -136,10 +136,14 @@ pub unsafe extern "C" fn jessica_ffi_free_string(ptr: *mut c_char) {
 /// returned buffer and MUST free it via [`jessica_ffi_free_string`].
 #[unsafe(no_mangle)]
 pub extern "C" fn jessica_ffi_version() -> *mut c_char {
-    let v = format!("jessica-ffi {} (mobile-core {})",
+    let v = format!(
+        "jessica-ffi {} (mobile-core {})",
         env!("CARGO_PKG_VERSION"),
-        env!("CARGO_PKG_VERSION"));
-    CString::new(v).expect("static string is nul-free").into_raw()
+        env!("CARGO_PKG_VERSION")
+    );
+    CString::new(v)
+        .expect("static string is nul-free")
+        .into_raw()
 }
 
 // ---------------------------------------------------------------------------
@@ -369,8 +373,9 @@ intents:
             let h = jessica_ffi_new();
             let t = b"anything";
             let l = b"pl";
-            assert!(jessica_ffi_match_intent(h, t.as_ptr(), t.len(), l.as_ptr(), l.len())
-                .is_null());
+            assert!(
+                jessica_ffi_match_intent(h, t.as_ptr(), t.len(), l.as_ptr(), l.len()).is_null()
+            );
             jessica_ffi_free(h);
         }
     }

@@ -43,6 +43,8 @@ REPO_ROOT      := $(shell pwd)
 VENV           := $(REPO_ROOT)/.venv
 PY             := $(VENV)/bin/python
 PIP            := $(VENV)/bin/pip
+RUFF           := $(VENV)/bin/ruff
+MYPY           := $(VENV)/bin/mypy
 QEMU           := qemu-system-aarch64
 CARGO          := cargo
 # Prefer `~/.cargo/bin/cross` (rustup install location) over a bare name,
@@ -199,7 +201,7 @@ run-vm: ## Boot the qcow2 image in QEMU with virtual audio
 test: test-fast test-vm ## Full pyramid (Tier 0..3)
 
 .PHONY: test-fast
-test-fast: venv ## Tier 0 (unit) + Tier 1 (component, mocked) — Python AND Rust (core + appliance)
+test-fast: venv lint ## Tier 0 (unit) + Tier 1 (component, mocked) — Python AND Rust (core + appliance)
 	cd rpi5 && $(PY) -m pytest tests/unit tests/component -x --tb=short
 	cd crates && $(CARGO) test --workspace --quiet
 	cd rpi5/crates && $(CARGO) test --workspace --quiet
@@ -221,6 +223,19 @@ audio-fixtures: venv ## Synthesise all WAV inputs from scenario YAMLs (via Piper
 	$(PY) rpi5/tests/tools/synth-audio.py --scenarios rpi5/tests/scenarios --out rpi5/tests/fixtures/audio
 
 # -------- safety / hygiene --------
+
+# Static hygiene gate, enforced as a prerequisite of `test-fast` so formatting /
+# lint / type drift can't accumulate (it did once: 14 fmt files + 21 mypy errors
+# slipped in before this gate existed). Python: ruff + mypy(strict, src/blazend).
+# Rust: rustfmt --check + clippy -D warnings, both workspaces.
+.PHONY: lint
+lint: venv ## Static hygiene: ruff + mypy (Python), fmt --check + clippy (Rust, both workspaces)
+	$(RUFF) check rpi5 scripts
+	cd rpi5 && $(MYPY)
+	cd crates && $(CARGO) fmt --check
+	cd rpi5/crates && $(CARGO) fmt --check
+	cd crates && $(CARGO) clippy --workspace --all-targets -- -D warnings
+	cd rpi5/crates && $(CARGO) clippy --workspace --all-targets -- -D warnings
 
 .PHONY: audit
 audit: venv ## Lint configs, scan deps, dry-run firewall rules

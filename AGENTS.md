@@ -82,7 +82,10 @@ tool-specific operational notes; when they disagree with this file, the
 ## 3. The maintenance scenario ("let do maintenance" / "test-fix loop")
 
 1. Finish the requested implementation first.
-2. `make test-fast` (Tier 0 + 1 — unit + component with mocks).
+2. `make test-fast` (Tier 0 + 1 — unit + component with mocks). This now runs
+   `make lint` first (ruff + mypy-strict on Python, rustfmt --check + clippy
+   `-D warnings` on both Rust workspaces); a hygiene failure fails the gate
+   before any test runs. Run `make lint` alone for a fast format/type check.
 3. `make test-vm` (Tier 2 + 3 — pipeline + scenarios in QEMU).
 4. Security/safety pass — `make audit` (deps + image config lint).
 5. Code cleanup pass — remove dead code, simplify, keep style consistent.

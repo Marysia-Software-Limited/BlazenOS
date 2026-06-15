@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
 
-use crate::{FrameCodec, Result, codec::Frame, events::EventEnvelope};
+use crate::{codec::Frame, events::EventEnvelope, FrameCodec, Result};
 
 /// Default runtime directory for IPC sockets (`/run/blazen/` in production,
 /// `$XDG_RUNTIME_DIR/blazen/` or `/tmp/blazen-<uid>/` in dev-host mode).
@@ -110,7 +110,9 @@ impl Subscriber {
     /// Read the next envelope. `Ok(None)` means clean EOF.
     pub async fn next(&mut self) -> Result<Option<EventEnvelope>> {
         let frame = FrameCodec::read_one(&mut self.stream).await?;
-        let Some(Frame { payload }) = frame else { return Ok(None) };
+        let Some(Frame { payload }) = frame else {
+            return Ok(None);
+        };
         Ok(Some(serde_json::from_slice(&payload)?))
     }
 }
@@ -135,7 +137,10 @@ mod tests {
             .publish(EventEnvelope::new(
                 "test",
                 42,
-                Event::SystemEvent { kind: "ready".into(), detail: None },
+                Event::SystemEvent {
+                    kind: "ready".into(),
+                    detail: None,
+                },
             ))
             .await
             .unwrap();

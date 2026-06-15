@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::{CoreError, Result};
+use crate::Result;
 
 /// Match outcome.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,7 +105,9 @@ impl IntentRouter {
         let langs = lang_order(language);
         for intent in &self.intents {
             for lang in &langs {
-                let Some(list) = intent.triggers.get(*lang) else { continue };
+                let Some(list) = intent.triggers.get(*lang) else {
+                    continue;
+                };
                 for re in list {
                     if let Some(captures) = re.captures(t) {
                         let mut params = HashMap::new();
@@ -203,7 +205,9 @@ intents:
     #[test]
     fn captures_value_group() {
         let r = IntentRouter::from_yaml(YAML).unwrap();
-        let m = r.match_intent("ustaw głośność na 70 procent", "pl").unwrap();
+        let m = r
+            .match_intent("ustaw głośność na 70 procent", "pl")
+            .unwrap();
         assert_eq!(m.name, "volume_set");
         assert_eq!(m.params.get("value").map(String::as_str), Some("70"));
     }
@@ -211,7 +215,9 @@ intents:
     #[test]
     fn matches_fabric_pair_pl() {
         let r = IntentRouter::from_yaml(YAML).unwrap();
-        let m = r.match_intent("Jessico, sparuj nowe urządzenie", "pl").unwrap();
+        let m = r
+            .match_intent("Jessico, sparuj nowe urządzenie", "pl")
+            .unwrap();
         assert_eq!(m.name, "fabric_pair");
         assert_eq!(m.action, "tool_call");
         assert_eq!(m.tool.as_deref(), Some("fabric.start_pairing"));

@@ -95,8 +95,12 @@ artifacts across the repo.
 
 ## 4. Default Maintenance Workflow ("let do maintenance")
 
-1. `make test-fast` — runs Tier 0 (unit) + Tier 1 (component integration with
-   mocked audio/LLM). Should be <60 s on a developer laptop.
+1. `make test-fast` — runs `make lint` (ruff + mypy-strict on Python,
+   rustfmt `--check` + clippy `-D warnings` on both Rust workspaces) and then
+   Tier 0 (unit) + Tier 1 (component integration with mocked audio/LLM).
+   Should be <60 s on a developer laptop. A lint failure fails the gate before
+   any test runs — fix the format/type drift, don't bypass it. `make lint`
+   alone is the fast hygiene-only check.
 2. `make test-vm` — runs Tier 2-3 in QEMU (boots image, plays synthetic
    audio, asserts on transcripts and TTS output). 5-15 min depending on
    model sizes.
@@ -202,7 +206,8 @@ the feature is incomplete.
 
 ## 8. Verification Checklist (before declaring task done)
 
-- [ ] `make test-fast` is green.
+- [ ] `make test-fast` is green (this includes `make lint` — ruff + mypy +
+      rustfmt `--check` + clippy; keep it clean rather than bypassing it).
 - [ ] `make test-vm` is green for the affected scenarios.
 - [ ] Updated docs match new behaviour (1:1 with `configs/` changes).
 - [ ] No model weights or build artefacts staged for commit.
