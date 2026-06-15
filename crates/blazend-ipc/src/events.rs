@@ -60,6 +60,8 @@ pub enum Topic {
     TtsFrame,
     /// System-level lifecycle event.
     SystemEvent,
+    /// Watchdog health / recovery verdict.
+    HealthStatus,
     /// Error event.
     Error,
 }
@@ -79,6 +81,7 @@ impl Topic {
             Topic::BrainReply => "brain.reply",
             Topic::TtsFrame => "tts.frame",
             Topic::SystemEvent => "system.event",
+            Topic::HealthStatus => "health.status",
             Topic::Error => "error",
         }
     }
@@ -174,6 +177,20 @@ pub enum Event {
         kind: String,
         /// Optional human-readable detail.
         detail: Option<String>,
+    },
+
+    /// Watchdog verdict from `blazend-health`. The orchestrator turns this
+    /// into the LED colour + a spoken recovery announcement.
+    #[serde(rename = "health.status")]
+    HealthStatus {
+        /// Severity: `"ok"` | `"degraded"` | `"recovery"` | `"critical"`.
+        level: String,
+        /// The unit the verdict is about (e.g. `"blazend-brain"`), or `"system"`.
+        unit: String,
+        /// Human-readable detail.
+        detail: String,
+        /// Recommended action: `"none"` | `"restart"` | `"recovery_mode"` | `"recovery_image"`.
+        action: String,
     },
 
     /// Error event reported by any unit.

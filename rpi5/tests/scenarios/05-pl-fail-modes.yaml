@@ -1,0 +1,40 @@
+id: 05-pl-fail-modes
+language: pl              # Polish counterpart of 05-fail-modes (PL-first default)
+description: |
+  Polish fault-injection counterpart. Same faults as 05-fail-modes; with the
+  default language Polish, blazend-health's `health.status` verdict drives the
+  LED + a Polish recovery cue. See docs/04-VOICE-PIPELINE.md §"Failure
+  handling per stage".
+tags: [resilience, watchdog, recovery, pl]
+preconditions:
+  languages.default: pl  # the prototype default — Polish-first
+turns:
+  - inject: kill_unit
+    target: blazend-brain
+    expect:
+      assistant_says_contains: "zacięło"
+      led: yellow
+      blazend-brain.restarts_in_60s_min: 1
+
+  - user: "jesteś tam"
+    expect:
+      wake_acknowledged: true
+      assistant_reply_within_ms: 5000
+
+  - inject: starve_audio_in
+    duration_ms: 12000
+    expect:
+      led: red
+      assistant_says_contains: "tryb awaryjny"
+
+  - inject: restore_audio_in
+    expect:
+      led: green
+
+  - inject: corrupt_model_file
+    target: llm.qwen2.5-3b-instruct-q4_k_m.gguf
+    expect:
+      assistant_says_contains: "błąd krytyczny"
+      reboot_into_recovery_image: true
+postconditions:
+  unit_restart_summary_present: true

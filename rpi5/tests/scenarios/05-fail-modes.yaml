@@ -1,11 +1,13 @@
 id: 05-fail-modes
 language: en              # turns use English; fault injection is language-agnostic
 description: |
-  Fault-injection scenarios. Each sub-case kills or starves one component
-  and asserts that the user-facing recovery behaviour (per
-  docs/04-VOICE-PIPELINE.md §"Failure handling per stage") happens.
-tags: [resilience, watchdog, ssh-recovery]
-preconditions: {}
+  Fault-injection scenarios. Each sub-case kills or starves one component;
+  blazend-health emits a `health.status` verdict and the orchestrator drives
+  the LED + a spoken recovery cue (per docs/04-VOICE-PIPELINE.md §"Failure
+  handling per stage"). Polish counterpart: 05-pl-fail-modes.yaml.
+tags: [resilience, watchdog, recovery, en]
+preconditions:
+  languages.default: en  # force English recovery cues (default is Polish)
 turns:
   - inject: kill_unit
     target: blazend-brain

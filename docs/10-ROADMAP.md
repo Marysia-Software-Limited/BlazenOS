@@ -288,9 +288,23 @@ matcher on the CPU engine.
   unmatched utterance only to the conversational brain — no double-reply.
   New Rust event + schema + topic registries; nlu IPC test covers the miss
   path; brain component test drives `nlu.miss`.
+- ✓ **Fail-modes recovery (2026-06-15):** `blazend-health` gained a
+  unit-tested `RecoveryMonitor` (threshold logic over
+  `voice_recovery_thresholds`) that derives an `ok`/`degraded`/`recovery`/
+  `critical` level and publishes a new **`health.status`** event (schema +
+  gen-events + Rust/Python registries). The orchestrator turns it into the
+  LED colour + a bilingual **Polish-first** spoken cue (`blazend/recovery.py`)
+  and writes recovery state to `state.json`; `led.py` maps the levels
+  (degraded→yellow, recovery/critical→red). Scenarios `05-fail-modes` (EN) +
+  `05-pl-fail-modes` (PL) updated to the new contract. Live fault-injection
+  (kill/starve/corrupt) + the live peer-liveness `seen` feed stay
+  hardware/VM-gated (M8 hook).
 
 **Exit criterion:** Scenarios `03-system-control.yaml`,
-`05-fail-modes.yaml`, and `09-language-switch.yaml` pass.
+`05-fail-modes.yaml`, and `09-language-switch.yaml` pass. Their command /
+language / recovery **logic** is now covered at the unit + component tier;
+the live Tier-3 runs remain blocked on the M1 boot blocker / no-audio host
+and validate on real Pi 5 (M8).
 
 ## M6 — Voice-controlled configuration
 

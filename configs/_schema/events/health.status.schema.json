@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://blazen.os/events/health.status",
+  "title": "health.status",
+  "type": "object",
+  "required": ["v", "ts_ms", "source", "topic", "data"],
+  "properties": {
+    "v": { "type": "integer", "const": 1 },
+    "ts_ms": { "type": "integer", "minimum": 0 },
+    "source": { "type": "string", "minLength": 1 },
+    "topic": { "type": "string", "const": "health.status" },
+    "data": {
+      "type": "object",
+      "required": ["level", "unit", "detail", "action"],
+      "properties": {
+        "level": { "type": "string", "enum": ["ok", "degraded", "recovery", "critical"] },
+        "unit": { "type": "string" },
+        "detail": { "type": "string" },
+        "action": { "type": "string", "enum": ["none", "restart", "recovery_mode", "recovery_image"] }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

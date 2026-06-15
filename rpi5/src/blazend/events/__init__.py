@@ -27,6 +27,7 @@ TOPIC_NLU_MISS = "nlu.miss"
 TOPIC_BRAIN_REPLY = "brain.reply"
 TOPIC_TTS_FRAME = "tts.frame"
 TOPIC_SYSTEM_EVENT = "system.event"
+TOPIC_HEALTH_STATUS = "health.status"
 TOPIC_ERROR = "error"
 
 ALL_TOPICS: tuple[str, ...] = (
@@ -34,7 +35,7 @@ ALL_TOPICS: tuple[str, ...] = (
     TOPIC_VAD_START, TOPIC_VAD_END,
     TOPIC_ASR_PARTIAL, TOPIC_ASR_FINAL,
     TOPIC_NLU_INTENT, TOPIC_NLU_MISS, TOPIC_BRAIN_REPLY,
-    TOPIC_TTS_FRAME, TOPIC_SYSTEM_EVENT,
+    TOPIC_TTS_FRAME, TOPIC_SYSTEM_EVENT, TOPIC_HEALTH_STATUS,
     TOPIC_ERROR,
 )
 
@@ -104,12 +105,24 @@ def error_event(
     return Envelope(topic=TOPIC_ERROR, source=source, data=payload)
 
 
+def health_status(
+    *, source: str, level: str, unit: str, detail: str = "", action: str = "none"
+) -> Envelope:
+    """Build a `health.status` envelope (watchdog verdict)."""
+    return Envelope(
+        topic=TOPIC_HEALTH_STATUS,
+        source=source,
+        data={"level": level, "unit": unit, "detail": detail, "action": action},
+    )
+
+
 __all__ = [
     "PROTOCOL_VERSION",
     "ALL_TOPICS",
     "Envelope",
     "asdict",
     "error_event",
+    "health_status",
     "system_event",
     "wake_detected",
     "TOPIC_AUDIO_FRAME",
@@ -123,5 +136,6 @@ __all__ = [
     "TOPIC_BRAIN_REPLY",
     "TOPIC_TTS_FRAME",
     "TOPIC_SYSTEM_EVENT",
+    "TOPIC_HEALTH_STATUS",
     "TOPIC_ERROR",
 ]

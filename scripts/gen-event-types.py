@@ -42,6 +42,7 @@ EXPECTED_TOPICS: set[str] = {
     "brain.reply",
     "tts.frame",
     "system.event",
+    "health.status",
     "error",
     # Fabric topics — multi-device Jessica. See docs/product/11-FABRIC.md.
     "fabric.peer_online",

@@ -20,6 +20,7 @@ from blazend.dispatch import IntentDispatcher, SettingsStore
 from blazend.events import Envelope, system_event
 from blazend.ipc import Publisher, Subscriber, runtime_dir
 from blazend.led import LedSimulator
+from blazend.recovery import for_level as recovery_for_level
 from blazend.state import StateWriter
 
 log = logging.getLogger("blazend.orchestrator")
@@ -51,8 +52,22 @@ class Orchestrator:
         self._led = LedSimulator(self._runtime_dir / "led.json")
         self._publisher = Publisher(self._runtime_dir / "orchestrator.sock")
         self._dispatcher = dispatcher if dispatcher is not None else self._build_dispatcher()
+        self._default_lang = self._load_default_lang()
         self._stop = asyncio.Event()
         self._subscribers: list[tuple[str, Subscriber]] = []
+
+    @staticmethod
+    def _load_default_lang() -> str:
+        """System default reply language (Polish-first); falls back to pl."""
+        try:
+            return load_config("system").data.get("languages", {}).get("default", "pl")
+        except Exception:  # noqa: BLE001
+            return "pl"
+
+    def _recovery_lang(self) -> str:
+        """Effective language for a fault cue: a voice pin, else the default."""
+        pinned = self._dispatcher.pinned_language() if self._dispatcher else None
+        return pinned or self._default_lang
 
     def _build_dispatcher(self) -> IntentDispatcher | None:
         """Load intents + voice-policy for fast-path command dispatch.
@@ -138,6 +153,17 @@ class Orchestrator:
                 }
             # Keep the language pin authoritative in state (scenario 09).
             patch["languages"] = {"pinned": self._dispatcher.pinned_language()}
+        if env.topic == "health.status":
+            # Mirror the level into state on every verdict (the orchestrator is
+            # the dominant state writer); recovery details only on a fault.
+            patch["health"] = {
+                "level": env.data.get("level", "ok"),
+                "unit": env.data.get("unit", "system"),
+                "action": env.data.get("action", "none"),
+            }
+            recovery = await self._announce_recovery(env)
+            if recovery is not None:
+                patch["recovery"] = recovery
         if self._led.observe(env.topic, env.data):
             self._led.write()
             patch["led"] = self._led.color
@@ -170,6 +196,33 @@ class Orchestrator:
                 "action": f"command.{result.action}",
             },
         )
+
+    async def _announce_recovery(self, env: Envelope) -> dict[str, Any] | None:
+        """Speak a recovery cue for a `health.status` verdict; return the
+        recovery state for `state.json`. ``None`` for the healthy (`ok`) case."""
+        level = env.data.get("level", "ok")
+        if level == "ok":
+            return None
+        lang = self._recovery_lang()
+        ann = recovery_for_level(level, lang)
+        if ann.speak:
+            await self._publisher.publish(Envelope(
+                topic="brain.reply",
+                source="blazend-orchestrator",
+                data={
+                    "language": lang,
+                    "text": ann.speak,
+                    "chunk": ann.speak,
+                    "final_": True,
+                    "action": f"recovery.{level}",
+                },
+            ))
+        return {
+            "level": level,
+            "unit": env.data.get("unit", "system"),
+            "action": env.data.get("action", "none"),
+            "recovery_image": ann.recovery_image,
+        }
 
 
 __all__ = ["Orchestrator"]

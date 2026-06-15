@@ -18,8 +18,8 @@ OFF = "off"          # asleep / not listening
 GREEN = "green"      # listening for the wake word
 BLUE = "blue"        # wake detected, capturing the utterance
 MAGENTA = "magenta"  # processing (VAD / ASR / NLU / LLM / TTS)
-YELLOW = "yellow"    # reprompt — please repeat
-RED = "red"          # error — SSH recovery enabled
+YELLOW = "yellow"    # reprompt / degraded — please repeat
+RED = "red"          # error / recovery mode (SSH already on)
 
 MEANING = {
     OFF: "asleep",
@@ -36,6 +36,15 @@ def color_for(topic: str, data: dict[str, Any] | None = None) -> str | None:
     data = data or {}
     if topic == "error":
         return RED
+    if topic == "health.status":
+        level = data.get("level")
+        if level == "degraded":
+            return YELLOW
+        if level in ("recovery", "critical"):
+            return RED
+        if level == "ok":
+            return GREEN
+        return None
     if topic in ("wake.detected", "vad.start"):
         return BLUE
     if topic in ("vad.end", "asr.partial", "asr.final", "nlu.intent", "tts.frame"):

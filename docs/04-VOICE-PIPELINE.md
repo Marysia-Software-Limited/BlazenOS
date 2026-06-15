@@ -146,16 +146,29 @@ quick reference:
 
 ## Failure handling per stage
 
+`blazend-health` (the watchdog) tracks per-unit liveness against
+`configs/system.yaml: voice_recovery_thresholds` and emits a **`health.status`**
+verdict — `ok` / `degraded` / `recovery` / `critical`. The orchestrator turns
+the verdict into the LED colour + a bilingual (Polish-first) spoken cue
+(`blazend/recovery.py`); SSH is already on, so `recovery`/`critical` escalate
+the LED + announcement rather than opening the admin channel.
+
+| Level | Trigger | LED | Spoken cue (PL / EN) | Action |
+|-------|---------|-----|----------------------|--------|
+| `degraded` | a non-essential unit (e.g. brain) silent past threshold | yellow | "Coś się zacięło…" / "I'm stuck…" | restart the unit |
+| `recovery` | audio-in starved (mic dead) past threshold | red | "Tryb awaryjny." / "Recovery mode." | hold through cooldown |
+| `critical` | unrecoverable (e.g. corrupt model) | red | "Błąd krytyczny." / "Critical error." | reboot into recovery image |
+
 | Stage | If it fails                                       |
 |-------|---------------------------------------------------|
-| Audio-in | Watchdog restarts; LED yellow; SSH recovery after 3 restarts in 60 s. |
-| Wake  | Use button on GPIO26 if configured.               |
+| Audio-in | Watchdog → `recovery` (mic dead); LED red; spoken "recovery mode". |
+| Wake  | Use the HAT user button on GPIO17 if configured.  |
 | VAD   | Fall back to fixed 4 s capture window.            |
 | ASR   | Reprompt; second failure switches to `tiny` model. |
 | NLU   | Pass through to brain; brain replies "I'm not sure I understood." |
-| Brain | Watchdog kills; orchestrator says "I'm stuck, try again." |
-| TTS   | Switch to second voice; if still silent, play "error" earcon and enable SSH recovery. |
-| Audio-out | Reboot the unit; LED red. |
+| Brain | Watchdog → `degraded`; orchestrator says "I'm stuck…"; restart. |
+| TTS   | Switch to second voice; if still silent, play "error" earcon. |
+| Audio-out | Watchdog restarts the unit; LED red. |
 
 ## Hot-path optimisations
 
