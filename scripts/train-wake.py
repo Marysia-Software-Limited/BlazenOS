@@ -179,6 +179,16 @@ def main() -> int:
           f"false_accept={far:.0%} false_reject={frr:.0%}", flush=True)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
+    # Stage the openWakeWord front-end ONNX next to the classifier so the Rust
+    # wake unit (blazend-wake) has the full melspec→embedding→classifier chain.
+    import shutil
+
+    import openwakeword
+
+    res = Path(openwakeword.__file__).parent / "resources" / "models"
+    for fname in ("melspectrogram.onnx", "embedding_model.onnx"):
+        shutil.copy(res / fname, OUT.parent / fname)
+
     net.eval()
     dummy = torch.zeros(1, 16, 96)
     torch.onnx.export(net, dummy, str(OUT), input_names=["x"], output_names=["score"],

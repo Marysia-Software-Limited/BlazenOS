@@ -108,7 +108,8 @@ def test_cross_language_state_propagation():
 
         snap = json.loads(state_path.read_text())
         assert snap["ready"] is True
-        assert snap["wake_word"]["last_fired"] in ("hey_blazen_en", "hey_blazen_pl")
+        # blazend-wake --mock defaults to the active "jessica" model.
+        assert snap["wake_word"]["last_fired"] in ("jessica", "hey_blazen_en", "hey_blazen_pl")
         assert snap["wake_word"]["last_language"] in ("en", "pl")
         assert "wake" in snap["units"]
         assert "health" in snap["units"]

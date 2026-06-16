@@ -108,9 +108,18 @@ if [ "${BLAZEN_REAL_TTS:-0}" = "1" ]; then
   log "BLAZEN_REAL_TTS=1 → Piper (Jessica/gosia) → HDMI output (${BLAZEN_OUTPUT_DEVICE:-vc4hdmi0})"
 fi
 
+# Wake: real "Hej Jessico" openWakeWord detection needs the live input ring, so
+# it tracks BLAZEN_REAL_AUDIO. The onnxruntime .so is loaded dynamically.
+WAKE_ARGS="--mock --mock-period-s 15"
+if [ "${BLAZEN_REAL_AUDIO:-0}" = "1" ]; then
+  WAKE_ARGS=""
+  export ORT_DYLIB_PATH="${ORT_DYLIB_PATH:-$(find "$VENV" -name 'libonnxruntime.so.1*' 2>/dev/null | head -1)}"
+  log "wake: real openWakeWord (Hej Jessico) via $ORT_DYLIB_PATH"
+fi
+
 launch_rust blazend-audio-in   $AUDIO_IN_ARGS
 launch_rust blazend-audio-out  $AUDIO_OUT_ARGS
-launch_rust blazend-wake       --mock --mock-period-s 15
+launch_rust blazend-wake       $WAKE_ARGS
 launch_rust blazend-tts        $TTS_ARGS
 launch_rust blazend-health
 launch_py   blazend.asr        $ASR_ARGS
