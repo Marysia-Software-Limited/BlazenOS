@@ -13,6 +13,12 @@ threshold: 0.5                                # wake fires above this (validated
 cooldown_ms: 500
 score_window_ms: 1000
 
+# Wake gating: Jessica only acts on speech heard within `conversation_window_s`
+# after a "Hej Jessico" (each acted-on utterance re-opens the window for
+# follow-ups). require_wake=false makes her always-listening (dev/testing).
+require_wake: true
+conversation_window_s: 20
+
 # The Jessica wake is one **bilingual** model trained locally (openWakeWord
 # melspectrogram+embedding front-end + a classifier head fit on Piper-synthesised
 # clips); `jessica_pl` and `jessica_en` both point at that single file. The wake

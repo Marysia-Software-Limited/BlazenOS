@@ -53,8 +53,23 @@ class Orchestrator:
         self._publisher = Publisher(self._runtime_dir / "orchestrator.sock")
         self._dispatcher = dispatcher if dispatcher is not None else self._build_dispatcher()
         self._default_lang = self._load_default_lang()
+        self._require_wake, self._wake_window_s = self._load_wake_gating()
+        self._awake_until = 0.0  # loop-clock deadline; speech acts only before it
         self._stop = asyncio.Event()
         self._subscribers: list[tuple[str, Subscriber]] = []
+
+    @staticmethod
+    def _load_wake_gating() -> tuple[bool, float]:
+        """Whether commands require a recent wake, and the window length."""
+        try:
+            cfg = load_config("wake-word").data
+            return bool(cfg.get("require_wake", True)), float(cfg.get("conversation_window_s", 20))
+        except Exception:  # noqa: BLE001
+            return True, 20.0
+
+    def _awake(self) -> bool:
+        """True if Jessica is within the conversation window (or gating off)."""
+        return not self._require_wake or asyncio.get_running_loop().time() < self._awake_until
 
     @staticmethod
     def _load_default_lang() -> str:
@@ -138,21 +153,31 @@ class Orchestrator:
             patch["ready"] = True
             patch["units"][peer]["status"] = "running"
         if env.topic == "wake.detected":
+            self._awake_until = asyncio.get_running_loop().time() + self._wake_window_s
             patch["wake_word"] = {
                 "last_fired": env.data.get("model"),
                 "last_language": env.data.get("language"),
                 "last_score": env.data.get("score"),
             }
+            patch["awake"] = True
         if env.topic == "nlu.intent" and self._dispatcher is not None:
-            reply = self._dispatch_intent(env)
-            if reply is not None:
-                await self._publisher.publish(reply)
-                patch["last_command"] = {
-                    "intent": env.data.get("intent"),
-                    "result": reply.data.get("action"),
-                }
-            # Keep the language pin authoritative in state (scenario 09).
-            patch["languages"] = {"pinned": self._dispatcher.pinned_language()}
+            if not self._awake():
+                # Heard a command but not addressed ("Hej Jessico" not said) —
+                # acknowledge in state, but stay silent.
+                log.info("asleep — ignoring %s", env.data.get("intent"))
+                patch["awake"] = False
+            else:
+                reply = self._dispatch_intent(env)
+                # Acting on a command keeps the conversation open for follow-ups.
+                self._awake_until = asyncio.get_running_loop().time() + self._wake_window_s
+                if reply is not None:
+                    await self._publisher.publish(reply)
+                    patch["last_command"] = {
+                        "intent": env.data.get("intent"),
+                        "result": reply.data.get("action"),
+                    }
+                # Keep the language pin authoritative in state (scenario 09).
+                patch["languages"] = {"pinned": self._dispatcher.pinned_language()}
         if env.topic == "health.status":
             # Mirror the level into state on every verdict (the orchestrator is
             # the dominant state writer); recovery details only on a fault.

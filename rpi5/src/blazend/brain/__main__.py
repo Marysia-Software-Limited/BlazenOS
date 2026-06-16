@@ -21,6 +21,7 @@ from datetime import datetime
 from pathlib import Path
 
 from blazend.assistant.engine import Assistant, Reply
+from blazend.config import load
 from blazend.events import Envelope, system_event
 from blazend.ipc import Publisher, Subscriber, runtime_dir
 
@@ -135,7 +136,14 @@ async def run(mock: bool) -> None:
         log.info("brain online (mock) at %s", pub._socket_path)  # noqa: SLF001
         await _mock_loop(pub)
         return
-    await serve(Assistant(always_awake=True))
+    # Wake gating: when require_wake is set, the engine only answers utterances
+    # that contain the wake word ("Jessica" / "Hej Jessico") and stays awake for
+    # follow-ups (engine.route → wake.is_wake). always_awake disables that.
+    try:
+        require_wake = bool(load("wake-word").get("require_wake", True))
+    except Exception:  # noqa: BLE001
+        require_wake = True
+    await serve(Assistant(always_awake=not require_wake))
 
 
 def main() -> None:

@@ -190,11 +190,23 @@ chose to train a real openWakeWord "Jessica" model (over transcript-gating).
   commands / other names **0.000**. (One benign residual: EN bare "Jessica"
   ~0.91 — wakes on her own name.) `configs/wake-word.yaml` now points
   `jessica_pl`/`jessica_en` at the one bilingual model, `threshold: 0.5`.
-- **Still M3 (not built):** the **Rust `blazend-wake`** runtime (ort, 3-stage
-  melspec→embedding→jessica over the input ring → `wake.detected`) and the
-  **orchestrator wake-gating** (only dispatch within a window after wake). Until
-  then the stack stays always-listening. Plan:
-  `~/.claude/plans/quizzical-exploring-cosmos.md` Phases 2–4.
+- **Phase 2 (Rust runtime) DONE:** `blazend-wake` runs the 3-stage
+  melspec→embedding→jessica ONNX pipeline via `ort` 2.0.0-rc.10 (load-dynamic;
+  `ORT_DYLIB_PATH` → the venv's onnxruntime .so) over the input ring, publishing
+  `wake.detected` above threshold. **Byte-parity with Python verified on the Pi**
+  ("Hej Jessico" 1.0000, "Marysia" 0.0000). `--score-raw` debug mode + the
+  `owww.rs` module. dev-run runs it real under `BLAZEN_REAL_AUDIO=1`.
+- **Phase 3 (gating) DONE:** two complementary gates, config-driven by
+  `wake-word.yaml require_wake`/`conversation_window_s` (default true / 20 s):
+  the **orchestrator** only dispatches `nlu.intent` within the window a
+  `wake.detected` opens (re-opened by each acted-on command; `test_wake_gating`);
+  the **brain** runs `Assistant(always_awake=not require_wake)` so the engine's
+  existing transcript gate (`wake.is_wake` → strip "Jessica" → handle; else
+  "Śpię") covers chat. Gemini command intents already require the "Jessica"
+  prefix. So Jessica now only acts when addressed.
+- **Follow-ups:** the engine's awake state is sticky (no timeout — only the
+  orchestrator window expires); no earcon on wake yet; live mic→wake→ASR→reply
+  not yet run end-to-end (each leg verified separately).
 
 **Not done (out of scope):** `asr.partial` / streaming TTS, in-VM e2e scenarios,
 image build. ASR latency (`small` ~4× real-time) + TTS latency are perf
