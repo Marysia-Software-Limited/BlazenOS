@@ -1,0 +1,30 @@
+id: 12-pl-alarms
+language: pl
+description: Budziki, wydarzenia i przypomnienia — ustawianie, lista, wypowiedzenie po czasie.
+tags: [reminders, alarms, events, pl]
+synth_voice: pl_PL-gosia-medium
+preconditions:
+  audio.volume: 50
+turns:
+  - user: "hej Jessico"
+    expect:
+      wake_acknowledged: true
+      detected_language: pl
+
+  - user: "ustaw alarm za dziesięć minut"
+    expect:
+      assistant_says_any: ["budzik", "alarm"]
+      assistant_language: pl
+
+  - user: "przypomnij mi za godzinę, że muszę otworzyć pokój"
+    expect:
+      assistant_says_contains: "otworzyć pokój"
+      assistant_language: pl
+
+  - user: "co mam zaplanowane"
+    expect:
+      assistant_says_any: ["budzik", "otworzyć pokój"]
+      assistant_language: pl
+
+postconditions:
+  no_unit_restarts: true

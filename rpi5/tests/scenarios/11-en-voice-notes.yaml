@@ -1,0 +1,24 @@
+id: 11-en-voice-notes
+language: en
+description: Record a voice note and play stored notes back.
+tags: [voice-notes, en]
+synth_voice: en_US-lessac-medium
+preconditions:
+  audio.volume: 50
+turns:
+  - user: "hey Jessica"
+    expect:
+      wake_acknowledged: true
+      detected_language: en
+
+  - user: "record a voice note"
+    expect:
+      assistant_says_any: ["press", "button", "Go ahead"]
+      assistant_language: en
+
+  - user: "play my voice notes"
+    expect:
+      assistant_language: en
+
+postconditions:
+  no_unit_restarts: true

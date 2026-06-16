@@ -1,0 +1,24 @@
+id: 11-pl-voice-notes
+language: pl
+description: Nagrywanie notatki głosowej i odtwarzanie zapisanych notatek.
+tags: [voice-notes, pl]
+synth_voice: pl_PL-gosia-medium
+preconditions:
+  audio.volume: 50
+turns:
+  - user: "hej Jessico"
+    expect:
+      wake_acknowledged: true
+      detected_language: pl
+
+  - user: "nagraj notatkę głosową"
+    expect:
+      assistant_says_any: ["Słucham", "przycisk", "nagraj"]
+      assistant_language: pl
+
+  - user: "odtwórz notatki"
+    expect:
+      assistant_language: pl
+
+postconditions:
+  no_unit_restarts: true

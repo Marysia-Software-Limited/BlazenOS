@@ -90,6 +90,11 @@ if [ "${BLAZEN_REAL_AUDIO:-0}" = "1" ]; then
   # doesn't land on an incidental USB device. Default ASR model is `small`
   # (the Pi 5 8 GB reference; medium needs 16 GB headroom).
   AUDIO_IN_ARGS="--device ${BLAZEN_AUDIO_DEVICE:-wm8960}"
+  # VAD energy thresholds (linear i16 RMS). The 1800/1100 defaults suit a
+  # close-talking mic; low-sensitivity HAT mics in a quiet room need a lower
+  # floor or speech never crosses the open gate. Override per-rig.
+  [ -n "${BLAZEN_VAD_OPEN:-}" ]  && AUDIO_IN_ARGS="$AUDIO_IN_ARGS --open-rms ${BLAZEN_VAD_OPEN}"
+  [ -n "${BLAZEN_VAD_CLOSE:-}" ] && AUDIO_IN_ARGS="$AUDIO_IN_ARGS --close-rms ${BLAZEN_VAD_CLOSE}"
   ASR_ARGS=""
   export BLAZEN_ASR_MODEL="${BLAZEN_ASR_MODEL:-small}"
   log "BLAZEN_REAL_AUDIO=1 → real capture (device=${BLAZEN_AUDIO_DEVICE:-wm8960}) + faster-whisper (${BLAZEN_ASR_MODEL})"

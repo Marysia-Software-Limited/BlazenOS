@@ -1,0 +1,25 @@
+id: 10-pl-name
+language: pl
+description: Jessica uczy się imienia użytkownika i je przypomina (fast-path, bez LLM).
+tags: [profile, name, pl]
+synth_voice: pl_PL-gosia-medium
+preconditions:
+  audio.volume: 50
+turns:
+  - user: "hej Jessico"
+    expect:
+      wake_acknowledged: true
+      detected_language: pl
+
+  - user: "mam na imię Paweł"
+    expect:
+      assistant_says_contains: "Paweł"
+      assistant_language: pl
+
+  - user: "jak mam na imię"
+    expect:
+      assistant_says_contains: "Paweł"
+      assistant_language: pl
+
+postconditions:
+  no_unit_restarts: true

@@ -37,20 +37,35 @@ class Note:
 
 @dataclass
 class Reminder:
-    """A time-bound reminder."""
+    """A time-bound reminder (also covers alarms and events via ``category``)."""
 
     id: str
     text: str
     due: str  # ISO timestamp
     created: str  # ISO timestamp
     fired: bool = False
+    category: str = "reminder"  # reminder | alarm | event
     kind: str = "reminder_created"
+
+
+@dataclass
+class VoiceNote:
+    """A recorded audio memo (the wav lives next to memory.json)."""
+
+    id: str
+    audio_path: str
+    created: str  # ISO timestamp
+    duration_s: float = 0.0
+    transcript: str = ""
+    kind: str = "voice_note_created"
 
 
 @dataclass
 class _Db:
     notes: list[dict[str, Any]] = field(default_factory=list)
     reminders: list[dict[str, Any]] = field(default_factory=list)
+    voice_notes: list[dict[str, Any]] = field(default_factory=list)
+    profile: dict[str, Any] = field(default_factory=dict)
     seq: int = 0
 
 
@@ -68,6 +83,8 @@ class MemoryStore:
             return _Db(
                 notes=raw.get("notes", []),
                 reminders=raw.get("reminders", []),
+                voice_notes=raw.get("voice_notes", []),
+                profile=raw.get("profile", {}),
                 seq=raw.get("seq", 0),
             )
         return _Db()
@@ -99,13 +116,53 @@ class MemoryStore:
         q = query.casefold()
         return [n for n in notes if q in n.text.casefold()]
 
+    # -- profile (user facts: name, …) -------------------------------------
+    def set_profile(self, key: str, value: str, *, now: datetime) -> None:
+        """Store a user fact (e.g. ``name``). Last write wins; persisted."""
+        self._db.profile[key] = {"value": value.strip(), "set": now.isoformat(), "kind": "profile_set"}
+        self._save()
+
+    def get_profile(self, key: str, default: str | None = None) -> str | None:
+        """Read a stored user fact, or ``default`` if unset."""
+        entry = self._db.profile.get(key)
+        if isinstance(entry, dict):
+            return str(entry.get("value", default)) if entry.get("value") is not None else default
+        return default
+
+    # -- voice notes -------------------------------------------------------
+    def voice_notes_dir(self) -> Path:
+        """Directory holding recorded voice-note wavs (next to memory.json)."""
+        d = self.path.parent / "voice_notes"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def add_voice_note(
+        self, audio_path: Path | str, *, now: datetime, duration_s: float = 0.0, transcript: str = ""
+    ) -> VoiceNote:
+        vn = VoiceNote(
+            id=self._next_id("vn"),
+            audio_path=str(audio_path),
+            created=now.isoformat(),
+            duration_s=round(float(duration_s), 1),
+            transcript=transcript.strip(),
+        )
+        self._db.voice_notes.append(asdict(vn))
+        self._save()
+        return vn
+
+    def voice_notes(self) -> list[VoiceNote]:
+        return [VoiceNote(**v) for v in self._db.voice_notes]
+
     # -- reminders ---------------------------------------------------------
-    def add_reminder(self, text: str, *, due: datetime, now: datetime) -> Reminder:
+    def add_reminder(
+        self, text: str, *, due: datetime, now: datetime, category: str = "reminder"
+    ) -> Reminder:
         rem = Reminder(
             id=self._next_id("rem"),
             text=text.strip(),
             due=due.isoformat(),
             created=now.isoformat(),
+            category=category,
         )
         self._db.reminders.append(asdict(rem))
         self._save()

@@ -1,0 +1,30 @@
+id: 12-en-alarms
+language: en
+description: Alarms, events and reminders — set, list, and speak when due.
+tags: [reminders, alarms, events, en]
+synth_voice: en_US-lessac-medium
+preconditions:
+  audio.volume: 50
+turns:
+  - user: "hey Jessica"
+    expect:
+      wake_acknowledged: true
+      detected_language: en
+
+  - user: "set an alarm in ten minutes"
+    expect:
+      assistant_says_any: ["alarm"]
+      assistant_language: en
+
+  - user: "remind me to take my pills in two hours"
+    expect:
+      assistant_says_contains: "take my pills"
+      assistant_language: en
+
+  - user: "what reminders do I have"
+    expect:
+      assistant_says_any: ["alarm", "take my pills"]
+      assistant_language: en
+
+postconditions:
+  no_unit_restarts: true

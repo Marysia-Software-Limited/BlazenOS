@@ -11,7 +11,9 @@ from datetime import datetime, timedelta
 from blazend.assistant import wake
 from blazend.assistant.engine import Assistant, detect_lang
 from blazend.assistant.gemini import GeminiClient
+from blazend.assistant.localllm import LocalLlm
 from blazend.assistant.memory import MemoryStore
+from blazend.assistant.openai import OpenAiClient
 from blazend.assistant.timeparse import parse_when
 
 NOW = datetime(2026, 6, 12, 14, 0, 0)
@@ -131,3 +133,198 @@ def test_engine_chat_with_key(tmp_path):
     a.awake = True
     r = a.route("jak się masz?", now=NOW)
     assert r.action == "chat" and "dziękuję" in r.text
+
+
+# --- local LLM (first) + OpenAI (second layer) -----------------------------
+class _FakeLlm:
+    """LlmBackend Protocol stand-in for the on-device model."""
+
+    def __init__(self, reply: str) -> None:
+        self.reply = reply
+        self.last_system: str | None = None
+
+    def generate(self, *, system: str, user: str) -> str:
+        self.last_system = system
+        return self.reply
+
+
+def _openai(reply):
+    def transport(_url, _headers, _body):
+        return {"choices": [{"message": {"content": reply}}]}
+    return OpenAiClient(api_key="test-key", transport=transport)
+
+
+def test_engine_chat_prefers_local_llm(tmp_path):
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"),
+        gemini=GeminiClient(api_key=""),
+        llm=LocalLlm(backend=_FakeLlm("Mam się świetnie.")),
+        openai=_openai("z OpenAI"),
+    )
+    a.awake = True
+    r = a.route("jak się masz?", now=NOW)
+    assert r.action == "chat" and r.data.get("engine") == "local"
+    assert "świetnie" in r.text
+
+
+def test_engine_chat_falls_back_to_openai(tmp_path):
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"),
+        gemini=GeminiClient(api_key=""),
+        llm=None,
+        openai=_openai("Cześć z OpenAI."),
+    )
+    a.awake = True
+    r = a.route("opowiedz dowcip", now=NOW)
+    assert r.action == "chat" and r.data.get("engine") == "openai"
+    assert "OpenAI" in r.text
+
+
+def test_engine_chat_canned_when_nothing(tmp_path):
+    a = _assistant(tmp_path)  # no key, no llm, no openai
+    a.awake = True
+    r = a.route("jak się masz?", now=NOW)
+    assert r.action == "chat" and r.data.get("needs_key")
+
+
+def test_engine_news_still_needs_gemini_with_local_llm(tmp_path):
+    # The local LLM / OpenAI must NOT satisfy a web-grounded news lookup.
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"),
+        gemini=GeminiClient(api_key=""),
+        llm=LocalLlm(backend=_FakeLlm("local")),
+        openai=_openai("openai"),
+    )
+    a.awake = True
+    r = a.route("co w wiadomościach?", now=NOW)
+    assert r.action == "news" and r.data.get("needs_key")
+
+
+# --- user's name (S2) ------------------------------------------------------
+def test_engine_set_and_get_name_pl(tmp_path):
+    a = _assistant(tmp_path)
+    a.awake = True
+    r = a.route("mam na imię Paweł", now=NOW)
+    assert r.action == "profile" and r.data.get("name") == "Paweł" and "Paweł" in r.text
+    g = a.route("jak mam na imię?", now=NOW)
+    assert g.action == "profile" and "Paweł" in g.text
+
+
+def test_engine_set_name_en_persists_across_instances(tmp_path):
+    path = tmp_path / "mem.json"
+    a = Assistant(memory=MemoryStore(path), gemini=GeminiClient(api_key=""))
+    a.awake = True
+    a.route("my name is Alex", now=NOW)
+    a2 = Assistant(memory=MemoryStore(path), gemini=GeminiClient(api_key=""))
+    a2.awake = True
+    g = a2.route("what's my name?", now=NOW)
+    assert g.action == "profile" and "Alex" in g.text
+
+
+def test_engine_get_name_unknown(tmp_path):
+    a = _assistant(tmp_path)
+    a.awake = True
+    r = a.route("jak mam na imię?", now=NOW)
+    assert r.action == "profile" and r.data.get("name") is None
+
+
+def test_engine_greets_by_name_on_wake(tmp_path):
+    a = _assistant(tmp_path)
+    a.awake = True
+    a.route("mów do mnie Ola", now=NOW)
+    r = a.route("Jessica", now=NOW)
+    assert r.action == "wake" and "Ola" in r.text
+
+
+def test_engine_chat_injects_name_into_system_prompt(tmp_path):
+    fake = _FakeLlm("ok")
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"),
+        gemini=GeminiClient(api_key=""),
+        llm=LocalLlm(backend=fake),
+    )
+    a.awake = True
+    a.route("mam na imię Zofia", now=NOW)
+    a.route("opowiedz coś o kawie", now=NOW)
+    assert "Zofia" in (fake.last_system or "")
+
+
+# --- reminders / alarms / events (S4) --------------------------------------
+def test_engine_reminder_task_text_is_clean(tmp_path):
+    a = _assistant(tmp_path)
+    a.awake = True
+    r = a.route("Hej Jessico, przypomnij mi za godzinę, że muszę otworzyć pokój", now=NOW)
+    assert r.action == "reminder"
+    assert r.data["text"] == "muszę otworzyć pokój"  # no stray "Hej"/commas
+    assert "," not in r.text.split(":")[1]  # task half has no orphan commas
+
+
+def test_engine_alarm_vocabulary(tmp_path):
+    a = _assistant(tmp_path)
+    a.awake = True
+    r = a.route("ustaw alarm za 10 minut", now=NOW)
+    assert r.action == "reminder" and r.data["category"] == "alarm"
+    assert "udzik" in r.text or "larm" in r.text  # "budzik"/"alarm" wording
+
+
+def test_engine_event_vocabulary(tmp_path):
+    a = _assistant(tmp_path)
+    a.awake = True
+    r = a.route("dodaj wydarzenie spotkanie z Anną o 15:00", now=NOW)
+    assert r.action == "reminder" and r.data["category"] == "event"
+    assert "spotkanie z Anną" in r.data["text"]
+
+
+def test_engine_alarm_vocabulary_en(tmp_path):
+    a = _assistant(tmp_path)
+    a.awake = True
+    r = a.route("set an alarm in 10 minutes", now=NOW)
+    assert r.action == "reminder" and r.data["category"] == "alarm"
+
+
+def test_engine_recall_reminders_broadened(tmp_path):
+    a = _assistant(tmp_path)
+    a.awake = True
+    a.route("ustaw alarm za 10 minut", now=NOW)
+    r = a.route("co mam zaplanowane", now=NOW)
+    assert r.action == "recall" and "budzik" in r.text  # the broadened phrase lists it
+
+
+def test_engine_due_reminder_spoken_without_emoji(tmp_path):
+    a = _assistant(tmp_path)
+    a.awake = True
+    a.route("przypomnij mi za 5 sekund, że pranie", now=NOW)
+    fired = a.due_reminders(NOW + timedelta(seconds=6))
+    assert len(fired) == 1
+    assert "⏰" not in fired[0].text and "pranie" in fired[0].text
+    assert fired[0].text.startswith("Przypominam")
+
+
+# --- voice notes (S3) ------------------------------------------------------
+def test_memory_voice_notes_persist(tmp_path):
+    p = tmp_path / "m.json"
+    MemoryStore(p).add_voice_note(tmp_path / "x.wav", now=NOW, duration_s=3.5, transcript="hej")
+    vns = MemoryStore(p).voice_notes()
+    assert len(vns) == 1 and vns[0].duration_s == 3.5 and vns[0].audio_path.endswith("x.wav")
+
+
+def test_engine_voice_note_record_intent(tmp_path):
+    a = _assistant(tmp_path)
+    a.awake = True
+    assert a.route("nagraj notatkę głosową", now=NOW).action == "voice_note_record"
+    assert a.route("record a voice note", now=NOW).action == "voice_note_record"
+
+
+def test_engine_voice_note_play_empty(tmp_path):
+    a = _assistant(tmp_path)
+    a.awake = True
+    r = a.route("odtwórz notatki", now=NOW)
+    assert r.action == "voice_note_play" and r.data["paths"] == []
+
+
+def test_engine_voice_note_play_lists_stored(tmp_path):
+    mem = MemoryStore(tmp_path / "m.json")
+    mem.add_voice_note(tmp_path / "a.wav", now=NOW, duration_s=2.0)
+    a = Assistant(memory=mem, gemini=GeminiClient(api_key=""), always_awake=True)
+    r = a.route("play my voice notes", now=NOW)
+    assert r.action == "voice_note_play" and len(r.data["paths"]) == 1

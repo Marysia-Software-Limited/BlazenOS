@@ -54,7 +54,28 @@ shared-memory ring → `blazend-asr` (see `docs/14` §3a):
 
 Related env (image build / dev only): `BLAZEN_REAL_AUDIO=1` enables the real
 voice path in `scripts/dev-run.sh`; `BLAZEN_AUDIO_DEVICE` overrides the device
-hint; `BLAZEN_ASR_MODEL` overrides `asr.yaml active` (8 GB Pi → `small`).
+hint; `BLAZEN_ASR_MODEL` overrides `asr.yaml active` (8 GB Pi → `small`);
+`BLAZEN_VAD_OPEN`/`BLAZEN_VAD_CLOSE` override the VAD energy floors for a
+low-sensitivity mic (see `vad` keys above).
+
+## Conversation engine — local LLM + cloud layers
+
+Freeform chat is **on-device first**: `blazend.assistant.localllm.LocalLlm`
+loads the GGUF named by `llm.yaml active_model` (override `BLAZEN_LLM_MODEL`)
+and answers locally. Model files resolve to `<models>/llm/<active>/<file>`,
+where `<models>` is `BLAZEN_MODELS_DIR` (else `<repo>/models`) and `<file>` is
+`models.<active>.cpu.file` from `llm.yaml` — the exact layout
+`scripts/install_models.py` writes. The runtime binding (`llama-cpp-python`,
+the `runtime` extra) is imported lazily, so a host without it (or without the
+GGUF) simply reports the local engine as unavailable and falls through.
+
+The chat fallback chain is **local LLM → OpenAI → Gemini → canned reply**.
+The cloud layers activate only when their key is set in the environment
+(sourced from `.env`): `OPENAI_API_KEY` (+ optional `OPENAI_MODEL`, default
+`gpt-4o-mini`) for the OpenAI second layer; `GEMINI_API_KEY` (+ `GEMINI_MODEL`)
+for Gemini, which also remains the **only** path for web-grounded news/site
+lookups. With local first, normal operation stays on-device; the cloud layers
+are opt-in via key presence.
 
 ## Voice-policy file
 

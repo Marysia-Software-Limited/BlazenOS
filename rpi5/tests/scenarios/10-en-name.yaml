@@ -1,0 +1,25 @@
+id: 10-en-name
+language: en
+description: Jessica learns the user's name and recalls it (fast-path, no LLM).
+tags: [profile, name, en]
+synth_voice: en_US-lessac-medium
+preconditions:
+  audio.volume: 50
+turns:
+  - user: "hey Jessica"
+    expect:
+      wake_acknowledged: true
+      detected_language: en
+
+  - user: "my name is Alex"
+    expect:
+      assistant_says_contains: "Alex"
+      assistant_language: en
+
+  - user: "what's my name"
+    expect:
+      assistant_says_contains: "Alex"
+      assistant_language: en
+
+postconditions:
+  no_unit_restarts: true

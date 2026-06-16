@@ -24,8 +24,16 @@ WAKE_NAMES: tuple[str, ...] = (
 
 # Longest-first so "hej jessico" wins over "jessico"/"jess".
 _ORDERED = sorted(WAKE_NAMES, key=len, reverse=True)
+
+
+def _name_pattern(name: str) -> str:
+    # Allow whitespace OR punctuation between words: ASR often writes
+    # "Hej, Jessico" with a comma, so "hej jessico" must still match whole.
+    return r"[\s,]+".join(re.escape(word) for word in name.split())
+
+
 _WAKE_RE = re.compile(
-    r"\b(" + "|".join(re.escape(n) for n in _ORDERED) + r")\b",
+    r"\b(" + "|".join(_name_pattern(n) for n in _ORDERED) + r")\b",
     re.IGNORECASE,
 )
 

@@ -70,3 +70,9 @@ mypy_path = "src"
 [[tool.mypy.overrides]]
 module = ["faster_whisper.*"]
 ignore_missing_imports = true
+
+# llama-cpp-python (the `runtime` extra) ships partial stubs and is imported
+# lazily in blazend.assistant.localllm. Same treatment as faster-whisper.
+[[tool.mypy.overrides]]
+module = ["llama_cpp.*"]
+ignore_missing_imports = true

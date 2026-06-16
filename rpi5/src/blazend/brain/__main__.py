@@ -21,6 +21,8 @@ from datetime import datetime
 from pathlib import Path
 
 from blazend.assistant.engine import Assistant, Reply
+from blazend.assistant.localllm import LocalLlm
+from blazend.assistant.openai import OpenAiClient
 from blazend.config import load
 from blazend.events import Envelope, system_event
 from blazend.ipc import Publisher, Subscriber, runtime_dir
@@ -143,7 +145,16 @@ async def run(mock: bool) -> None:
         require_wake = bool(load("wake-word").get("require_wake", True))
     except Exception:  # noqa: BLE001
         require_wake = True
-    await serve(Assistant(always_awake=not require_wake))
+    # On-device LLM for freeform chat. Construction is cheap (the GGUF loads
+    # lazily on first chat); degrade to Gemini/canned if config is unreadable.
+    try:
+        llm: LocalLlm | None = LocalLlm()
+    except Exception:  # noqa: BLE001
+        log.warning("local LLM unavailable; freeform chat will fall back to cloud")
+        llm = None
+    # Cloud second layer (OpenAI) behind the local model; activates if the key
+    # is set. Local stays first, so normal operation is on-device.
+    await serve(Assistant(always_awake=not require_wake, llm=llm, openai=OpenAiClient()))
 
 
 def main() -> None:
