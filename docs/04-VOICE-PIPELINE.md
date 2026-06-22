@@ -102,8 +102,16 @@ Fast path keeps "stop talking" reliable even when the brain is busy.
   entirely on a Raspberry Pi. You are designed to assist blind and visually
   impaired users. Answers are short (one or two sentences) unless the user
   asks for detail. Never invent tool outputs."
-- **Streaming:** tokens stream to TTS so the speaker starts before the
-  reply is finished, hiding latency.
+- **Streaming (sentence-sliced):** the local LLM streams tokens
+  (`LocalLlm.chat_stream`); a `SentenceSlicer`
+  (`blazend/assistant/sentences.py`) cuts the stream into complete Polish/
+  English sentences (abbrev- and decimal-aware) and the voice runner
+  dispatches each finished sentence to Piper the instant it completes — so
+  audio starts after the **first sentence** (~a couple of seconds) instead
+  of after the whole reply (tens of seconds on the Pi CPU). The runner emits
+  a 4-stage latency log: trigger → first token → first sentence → first
+  audio. Only the freeform-LLM path streams; short command/cloud replies
+  speak as one utterance.
 
 ## Stage 7 — TTS (`blazend-tts`, **Rust**)
 
@@ -112,7 +120,9 @@ Fast path keeps "stop talking" reliable even when the brain is busy.
   over the Piper C++ engine, with streaming PCM out the Rust side.
 - **Default voice per language:**
   - EN: `en_US-lessac-medium`
-  - PL: `pl_PL-darkman-medium`
+  - PL: `pl_PL-gosia-medium` (Jessica's young-woman voice; the installed
+    default in `configs/tts.yaml`. `pl_PL-darkman-medium` is unused — it was
+    never packaged and crashes Piper on the rig.)
 - Both voices stay warm in RAM (~150 MB combined) and are selected per
   utterance based on the detected reply language.
 - **Mode:** streaming PCM at 22.05 kHz int16 — chunks emitted to
@@ -128,6 +138,18 @@ Fast path keeps "stop talking" reliable even when the brain is busy.
 - **Crate:** `cpal` + `rodio` for mixing.
 - **Mixing:** earcons (beeps for wake, error) mixed with TTS via PipeWire
   loopback. Ducking when ASR sees user start speaking.
+
+## Media playback — radio & local files (`blazend-player`, **Rust**)
+
+Separate from the spoken-reply path: the `radio_play` intent (and local-file
+playback) is handled by **`blazend-player`**, spawned by the Python runner
+(`StreamPlayer`, `blazend/voice/runner.py`). It decodes mp3/aac/flac/ogg/wav
+with pure-Rust `symphonia` into a **prebuffered jitter buffer** ahead of the
+ALSA write loop, so low-bitrate / jittery internet streams play smoothly —
+fixing the underrun stutter of the previous `ffmpeg -f alsa` path. One source
+at a time; any spoken command stops the stream (frees the speaker) so Jessica
+can answer. Buffer sizing lives in the `player:` block of `radio.yaml`. See
+[`07-CONFIGURATION.md`](07-CONFIGURATION.md#internet-radio-radioyaml).
 
 ## End-to-end latency budgets
 

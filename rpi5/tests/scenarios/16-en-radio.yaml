@@ -1,0 +1,32 @@
+id: 16-en-radio
+language: en
+description: |
+  Internet radio. Jessica offers stations on a bare "play the radio", plays a
+  named station (Trójka, Radio Kraków), and stops on request. Stream via
+  ffmpeg → ALSA; no cloud LLM. Needs network. Engine: cpu.
+tags: [radio, streaming, krakow, trojka, en]
+synth_voice: en_US-lessac-medium
+preconditions:
+  llm.active_engine: cpu
+turns:
+  - user: "hey Jessica"
+    expect:
+      wake_acknowledged: true
+      detected_language: en
+
+  - user: "play the radio"
+    expect:
+      assistant_says_any: ["i can play", "which station"]
+      assistant_language: en
+
+  - user: "play Radio Kraków"
+    expect:
+      assistant_says_contains: "playing"
+      assistant_language: en
+
+  - user: "turn off the radio"
+    expect:
+      assistant_says_contains: "radio"
+      assistant_language: en
+postconditions:
+  no_unit_restarts: true

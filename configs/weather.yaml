@@ -1,0 +1,22 @@
+# /etc/blazen/weather.yaml
+#
+# Current-conditions lookup for the "jaka pogoda" / "what's the weather" intent.
+# Provider is Open-Meteo (https://open-meteo.com) — keyless, free, on-device
+# HTTP; no account and no cloud LLM involved. Kraków is the default location
+# (Polish-first), used whenever the user doesn't name a city.
+
+version: 1
+
+provider: open-meteo                     # only one for now (keyless)
+units: metric                            # metric (°C, km/h) | imperial
+
+# Default location — Kraków. Used for a bare "jaka pogoda" with no city.
+default_location:
+  name: Kraków
+  latitude: 50.0614
+  longitude: 19.9366
+
+# Allow resolving other cities by name via Open-Meteo's geocoding API.
+allow_geocoding: true
+
+timeout_s: 15

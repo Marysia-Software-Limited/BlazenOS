@@ -117,7 +117,7 @@ gen-events: python ## Regenerate IPC event types (Python + Rust) from JSON Schem
 
 .PHONY: models
 models: venv ## Download + verify all on-device ML models
-	$(PY) scripts/install_models.py --config configs/llm.yaml --config configs/asr.yaml --config configs/tts.yaml --config configs/wake-word.yaml
+	$(PY) scripts/install_models.py --config configs/llm.yaml --config configs/asr.yaml --config configs/tts.yaml --config configs/wake-word.yaml --config configs/embeddings.yaml
 
 # -------- dev-host launcher (no VM) --------
 

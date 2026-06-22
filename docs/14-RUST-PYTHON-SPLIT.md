@@ -47,6 +47,7 @@ component is a smell — split the component first.
 | `blazend-ipc` (library)    | Rust   | `tokio`, `serde_json`  | Shared by every Rust binary. Defines event schema in `events.rs`. |
 | `blazend-audio-in`         | Rust   | `cpal`, `crossbeam`    | Mic capture, ring buffer in shared memory, VAD-feed.   |
 | `blazend-audio-out`        | Rust   | `cpal`, `rodio`        | Speaker playback, ducking, earcons mixer.              |
+| `blazend-player`           | Rust   | `symphonia`, `alsa`, `ureq` | Internet-radio + local-file player. Decodes mp3/aac/flac/ogg/wav into a prebuffered jitter buffer → ALSA (fixes stream stutter; replaces the old ffmpeg path). Spawned by the Python runner (`StreamPlayer`). |
 | `blazend-wake`             | Rust   | `ort` (ONNX Runtime)   | openWakeWord ONNX loop; loads N models in parallel.    |
 | `blazend-tts`              | Rust   | `piper-rs` or wrapped  | Streaming PCM out, voice swap on language change.      |
 | `blazend-health`           | Rust   | `tokio`, `systemd`     | Watchdog; talks to systemd notify socket.              |

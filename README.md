@@ -2,7 +2,7 @@
 
 **Voice-first Linux distribution for Raspberry Pi 5.** The appliance twin of **Jessica**, a voice-first personal assistant designed specifically for **blind and visually impaired users**.
 
-No keyboard, no monitor. The user speaks; Jessica listens, thinks, answers, reads things aloud, drafts replies, takes notes, surfaces the morning briefing, plays podcasts, integrates with Gemini for deep-research questions, and learns the user's voice over time.
+No keyboard, no monitor. The user speaks; Jessica listens, thinks, answers, reads things aloud, drafts replies, takes long-form titled notes and recalls them in context on later questions (on-device semantic memory), surfaces the morning briefing, plays podcasts, integrates with Gemini for deep-research questions, and learns the user's voice over time.
 
 The LLM runs on the Pi 5 CPU by default; an optional Raspberry Pi AI HAT+ (Hailo) accelerates it. The product is **bilingual PL + EN from M1** — Polish-first, English co-equal — and Jessica responds to **"hej Jessico" / "Jess" / "hey Jessica"**. SSH is on by default for administration (pubkey-only; no credential ships — you provision your own key).
 

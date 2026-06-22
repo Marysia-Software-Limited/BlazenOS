@@ -1,0 +1,45 @@
+id: 13-en-remember-notes
+language: en
+description: |
+  Personal memory (RAG): remembering long titled notes
+  ("remember: <title>. <content>"), reading them back, and using the stored
+  content as context for the local LLM in a later question. Engine: cpu.
+tags: [notes, memory, rag, semantic, en]
+synth_voice: en_US-lessac-medium
+preconditions:
+  llm.active_engine: cpu
+  llm.temperature: 0.0
+  llm.seed: 0
+  embeddings.notes_context.enabled: true
+turns:
+  - user: "hey Jessica"
+    expect:
+      wake_acknowledged: true
+      detected_language: en
+
+  - user: "remember: weekend plan. I want to go to the mountains and relax"
+    expect:
+      assistant_says_contains: "weekend plan"
+      assistant_language: en
+
+  - user: "remember that the wifi password is summer2026"
+    expect:
+      assistant_says_contains: "summer2026"
+      assistant_language: en
+
+  - user: "what do you remember"
+    expect:
+      assistant_says_any: ["mountains", "weekend"]
+      assistant_language: en
+
+  - user: "what am I planning for the weekend"
+    expect:
+      assistant_language: en
+      assistant_semantic_similarity_any:
+        threshold: 0.62
+        references:
+          - "You're planning a trip to the mountains to relax."
+          - "You want to go to the mountains and relax this weekend."
+      conversation_remembers: mountains
+postconditions:
+  no_unit_restarts: true

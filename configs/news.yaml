@@ -1,0 +1,26 @@
+# /etc/blazen/news.yaml
+#
+# Keyless RSS fallback for the "co w wiadomościach" / "what's in the news"
+# intent, used when Gemini search-grounding is unavailable (no key, or an API
+# error like quota/billing). Gemini stays the primary path — it can focus on
+# Kraków + Poland from international agencies and translate to Polish. The RSS
+# fallback is plain HTTP+XML (no LLM): Polish-language, Poland-focused feeds for
+# `pl` (already in Polish — no translation needed) and international agencies
+# for `en`. All feed URLs below were probed and return items.
+
+version: 1
+max_headlines: 5
+
+feeds:
+  pl:                                    # Polish-language, Poland-focused
+    - name: RMF24
+      url: "https://www.rmf24.pl/fakty/feed"
+    - name: Polsat News
+      url: "https://www.polsatnews.pl/rss/polska.xml"
+  en:                                    # international agencies
+    - name: BBC World
+      url: "https://feeds.bbci.co.uk/news/world/rss.xml"
+    - name: Al Jazeera
+      url: "https://www.aljazeera.com/xml/rss/all.xml"
+
+timeout_s: 12

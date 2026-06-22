@@ -1,0 +1,27 @@
+id: 14-en-datetime
+language: en
+description: |
+  Clock and calendar — a screenless assistant must answer the time and date
+  itself from the local (NTP-synced) clock, never punting to the model
+  ("I can't access the time"). Engine: cpu.
+tags: [time, date, clock, en]
+synth_voice: en_US-lessac-medium
+preconditions:
+  llm.active_engine: cpu
+turns:
+  - user: "hey Jessica"
+    expect:
+      wake_acknowledged: true
+      detected_language: en
+
+  - user: "what time is it"
+    expect:
+      assistant_says_contains: "time"
+      assistant_language: en
+
+  - user: "what's the date"
+    expect:
+      assistant_says_contains: "today"
+      assistant_language: en
+postconditions:
+  no_unit_restarts: true

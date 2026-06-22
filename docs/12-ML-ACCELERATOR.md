@@ -9,6 +9,14 @@ behaviour.
 This document is the contract for plugging in an optional ML accelerator
 and how the LLM-based conversation uses it.
 
+> **Note — text embeddings stay CPU-only.** Jessica's personal-memory recall
+> (`embeddings.yaml`, `blazend.assistant.embeddings`) runs a small sentence
+> embedder (`multilingual-e5-small`, 384-dim) on `onnxruntime` CPU. It is light
+> enough (tens of ms per short text) that it does not need the accelerator, and
+> if the model/deps are absent the engine degrades to lexical note recall — so
+> retrieval-augmented memory respects the same CPU-path-is-the-contract rule.
+> See `docs/07-CONFIGURATION.md` → "Personal memory + semantic recall".
+
 ## 1. Why optional, not required
 
 - Most home users will not install an accelerator.

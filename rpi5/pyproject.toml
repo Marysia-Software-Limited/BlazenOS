@@ -27,6 +27,13 @@ runtime = [
   "faster-whisper>=1.0",
   "llama-cpp-python>=0.3",
   "piper-tts>=1.2",
+  # On-device note embeddings (semantic recall). Lazy-imported in
+  # blazend.assistant.embeddings; absent in the test-fast venv.
+  "onnxruntime>=1.17",
+  "tokenizers>=0.20",
+  # HAT status LEDs: APA102 over SPI0. Lazy-imported in blazend.led_hw;
+  # absent in the test-fast venv (the driver degrades to a no-op without it).
+  "spidev>=3.6",
 ]
 wake-training = [
   # Build-time only: `scripts/train-wake.py` trains the Jessica wake model
@@ -75,4 +82,18 @@ ignore_missing_imports = true
 # lazily in blazend.assistant.localllm. Same treatment as faster-whisper.
 [[tool.mypy.overrides]]
 module = ["llama_cpp.*"]
+ignore_missing_imports = true
+
+# onnxruntime + tokenizers (the `runtime` extra) are imported lazily in
+# blazend.assistant.embeddings; no/partial stubs. Don't fail the strict gate
+# on their absence in the dev venv.
+[[tool.mypy.overrides]]
+module = ["onnxruntime.*", "tokenizers.*"]
+ignore_missing_imports = true
+
+# spidev (the `runtime` extra) is the C-extension SPI driver, imported lazily in
+# blazend.led_hw; no stubs and hardware-only. Don't fail the strict gate on its
+# absence in the dev venv.
+[[tool.mypy.overrides]]
+module = ["spidev.*"]
 ignore_missing_imports = true

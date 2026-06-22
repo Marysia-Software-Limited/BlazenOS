@@ -8,17 +8,37 @@ the REPL and the IPC `blazend-brain` unit both drive it.
 
 from __future__ import annotations
 
+import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
 from blazend.assistant import wake
+from blazend.assistant.embeddings import EmbedderError, EmbedderLike
 from blazend.assistant.gemini import GeminiClient, GeminiError
 from blazend.assistant.localllm import LlmError, LocalLlm
-from blazend.assistant.memory import MemoryStore
+from blazend.assistant.memory import MemoryStore, Note
+from blazend.assistant.news import NewsClient, NewsError
 from blazend.assistant.openai import OpenAiClient, OpenAiError
+from blazend.assistant.radio import RadioDirectory
+from blazend.assistant.sentences import SentenceSlicer
 from blazend.assistant.timeparse import parse_when
+from blazend.assistant.weather import (
+    Place,
+    WeatherClient,
+    WeatherError,
+    describe_code,
+)
+
+# Streaming hooks for sentence-sliced TTS. ``on_sentence(text, language)`` fires
+# the instant a sentence completes; ``on_token()`` fires on the first token (for
+# latency instrumentation). Both optional — absent → the old whole-reply path.
+OnSentence = Callable[[str, str], None]
+OnToken = Callable[[], None]
+
+log = logging.getLogger("blazend.assistant")
 
 PERSONA = (
     "Jesteś Jessica — głosowa asystentka osobista dla osób niewidomych i "
@@ -71,6 +91,31 @@ _REMIND = re.compile(
 _ALARM_HINT = re.compile(r"\b(alarm|budzik|wake\s+me|timer)\b", re.IGNORECASE)
 _EVENT_HINT = re.compile(r"\b(wydarzenie|spotkanie|event|meeting)\b", re.IGNORECASE)
 _REMEMBER = re.compile(r"\b(zapamiętaj|zapamietaj|zapisz|remember)\b", re.IGNORECASE)
+# Clock / calendar — a screenless assistant on a device with a clock must
+# answer these locally, never punt to the LLM ("I can't access the time").
+_TIME_QUERY = re.compile(
+    r"\b(która\s+(jest\s+)?godzina|jaka\s+(jest\s+)?godzina|"
+    r"what\s+time\s+is\s+it|what'?s\s+the\s+time)\b",
+    re.IGNORECASE,
+)
+_DATE_QUERY = re.compile(
+    r"\b(jaki\s+(jest\s+)?(dziś|dzis|dzisiaj)\s+dzień|"
+    r"który\s+(jest\s+)?(dziś|dzis|dzisiaj)\s+dzień|"
+    r"jaka\s+(jest\s+)?(dziś|dzis|dzisiaj\s+)?data|którego\s+(dziś|dzis|dzisiaj)|"
+    r"what'?s?\s+(the\s+)?(today'?s\s+)?date|what\s+day\s+is\s+(it|today)|what'?s\s+today)\b",
+    re.IGNORECASE,
+)
+# Locale-independent day/month names (don't depend on the system locale).
+_PL_DAYS = ("poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela")
+_PL_MONTHS = (
+    "stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca",
+    "lipca", "sierpnia", "września", "października", "listopada", "grudnia",
+)
+_EN_DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+_EN_MONTHS = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)
 # User's name: ask ("jak mam na imię" / "what's my name") vs set ("mam na imię X").
 _NAME_GET = re.compile(
     r"\b(jak\s+(mam\s+na\s+imię|mam\s+na\s+imie|się\s+nazywam|sie\s+nazywam)|"
@@ -98,6 +143,28 @@ _VOICE_NOTE_PLAY = re.compile(
 _NEWS = re.compile(
     r"\b(wiadomo\w*|co\s+(nowego|słychać|slychac)|aktualno\w*|"
     r"news|headlines|what'?s\s+happening)\b",
+    re.IGNORECASE,
+)
+_WEATHER = re.compile(
+    r"\b(pogod\w*|jaka\s+(jest\s+)?aura|czy\s+(będzie|bedzie)\s+pad\w*|"
+    r"weather|forecast|temperatur\w*|is\s+it\s+(going\s+to\s+)?(rain|snow))\b",
+    re.IGNORECASE,
+)
+# "...w Krakowie" / "...in Kraków" — pull the city out of a weather question.
+_WEATHER_CITY = re.compile(
+    r"\b(?:w(?:e)?|in)\s+([A-Za-zÀ-ÖØ-öø-ż'’\- ]+?)\s*$",
+    re.IGNORECASE,
+)
+# Radio: stop first (more specific), then a play/offer trigger. The play check
+# fires on the word "radio", a known station word, or a resolved station name.
+_RADIO_STOP = re.compile(
+    r"\b(wyłącz|wylacz|zatrzymaj|zgaś|zgas|przestań|przestan)\b.*\b(radio|muzyk\w*|stacj\w*|gra\w*)\b|"
+    r"\b(stop|turn\s+off|pause)\b.*\b(radio|music|station|playing)\b",
+    re.IGNORECASE,
+)
+_RADIO_KW = re.compile(
+    r"\bradio\b|\btrójk\w*|\btrojk\w*|\bjedynk\w*|\bdwójk\w*|\bdwojk\w*|"
+    r"\bczwórk\w*|\bczwork\w*|\brmf\b|\bnowy\s+świat\b|\bnowy\s+swiat\b",
     re.IGNORECASE,
 )
 _SITE = re.compile(
@@ -137,6 +204,24 @@ def _strip_lead_filler(text: str) -> str:
     return text
 
 
+def _split_title_content(body: str) -> tuple[str, str]:
+    """Split a remembered note into a short title + the rest of the content.
+
+    The title is everything up to the first sentence break ("zapamiętaj:
+    <title>. <content>"). ASR frequently drops punctuation, so a body with no
+    break — or with an empty side — stays a single untitled blob (title empty),
+    which is the original, back-compatible behaviour.
+    """
+    m = re.search(r"[.?!\n]", body)
+    if not m:
+        return "", body.strip()
+    title = body[: m.start()].strip()
+    content = body[m.end() :].strip()
+    if not title or not content:
+        return "", body.strip()
+    return title, content
+
+
 @dataclass
 class Reply:
     """The assistant's response to one utterance."""
@@ -144,7 +229,8 @@ class Reply:
     text: str
     language: str = "pl"
     # wake | asleep | note | reminder | recall | news | chat | profile | error
-    #   | voice_note_record | voice_note_play
+    #   | voice_note_record | voice_note_play | time | date | weather
+    #   | radio_play | radio_stop | radio_offer
     action: str = "chat"
     data: dict[str, Any] = field(default_factory=dict)
 
@@ -159,22 +245,102 @@ class Assistant:
         gemini: GeminiClient | None = None,
         llm: LocalLlm | None = None,
         openai: OpenAiClient | None = None,
+        embedder: EmbedderLike | None = None,
+        weather: WeatherClient | None = None,
+        radio: RadioDirectory | None = None,
+        news: NewsClient | None = None,
         persona: str = PERSONA,
         always_awake: bool = False,
+        notes_top_k: int = 4,
+        notes_min_score: float = 0.82,
+        notes_rel_margin: float = 0.06,
+        notes_max_chars: int = 1200,
     ):
         self.memory = memory or MemoryStore()
         self.gemini = gemini or GeminiClient()
         # On-device LLM for freeform chat. Defaults to None so unit tests stay
         # offline/deterministic; the runner injects a real LocalLlm().
         self.llm = llm
+        # Weather via Open-Meteo (keyless, on-device HTTP). Lazily built so the
+        # default (Kraków) is always available; tests inject a fake transport.
+        self.weather = weather or WeatherClient()
+        # Internet-radio catalogue (configs/radio.yaml). The runner does the
+        # actual streaming; the engine only resolves the spoken station name.
+        self.radio = radio if radio is not None else RadioDirectory()
+        # Keyless RSS news fallback for when Gemini grounding is unavailable.
+        self.news = news if news is not None else NewsClient()
         # Cloud second layer behind the local LLM (OpenAI). Local stays first.
         self.openai = openai
+        # On-device embedder for semantic note recall. None → lexical fallback.
+        self._embedder = embedder
+        self._embedder_model = str(getattr(embedder, "name", "")) if embedder else ""
+        self._notes_top_k = notes_top_k
+        self._notes_min_score = notes_min_score
+        self._notes_rel_margin = notes_rel_margin
+        self._notes_max_chars = notes_max_chars
         self.persona = persona
         self.awake = always_awake
         self._always_awake = always_awake
+        if embedder is not None and embedder.available:
+            self._backfill_embeddings()
+
+    # -- semantic note embeddings --------------------------------------
+    def _backfill_embeddings(self) -> None:
+        """Embed any pre-existing notes that lack a stored vector (one-time)."""
+        for note in self.memory.notes_missing_embeddings(model=self._embedder_model):
+            self._embed_note(note)
+
+    def _embed_note(self, note: Note) -> None:
+        if not (self._embedder and self._embedder.available):
+            return
+        blob = f"{note.title}. {note.text}" if note.title else note.text
+        try:
+            vector = self._embedder.embed([blob], kind="passage")[0]
+        except EmbedderError as e:
+            log.warning("note embedding failed (%s); semantic recall degraded", e)
+            return
+        self.memory.set_note_embedding(note.id, vector, model=self._embedder_model)
+
+    def _notes_context(self, text: str, lang: str) -> str:
+        """Retrieve the user's notes relevant to ``text`` for the LLM prompt."""
+        if not (self._embedder and self._embedder.available):
+            return ""
+        try:
+            qvec = self._embedder.embed([text], kind="query")[0]
+        except EmbedderError:
+            return ""
+        hits = self.memory.search_notes_semantic(
+            qvec,
+            limit=self._notes_top_k,
+            min_score=self._notes_min_score,
+            rel_margin=self._notes_rel_margin,
+        )
+        if not hits:
+            return ""
+        header = _t(
+            lang,
+            " Zapisane notatki użytkownika (wykorzystaj, jeśli pomocne):",
+            " The user's saved notes (use them if relevant):",
+        )
+        budget = self._notes_max_chars
+        parts: list[str] = []
+        for n in hits:
+            piece = f" [{n.title}] {n.text}" if n.title else f" {n.text}"
+            if len(piece) > budget:
+                break
+            parts.append(piece)
+            budget -= len(piece)
+        return header + "".join(parts) if parts else ""
 
     # -- top-level -----------------------------------------------------
-    def route(self, text: str, *, now: datetime) -> Reply:
+    def route(
+        self,
+        text: str,
+        *,
+        now: datetime,
+        on_sentence: OnSentence | None = None,
+        on_token: OnToken | None = None,
+    ) -> Reply:
         text = text.strip()
         lang = detect_lang(text)
         if not text:
@@ -201,14 +367,26 @@ class Assistant:
                 return Reply(_t(lang, f"Tak, {name}? Słucham.", f"Yes, {name}? I'm listening."), lang, "wake")
             return Reply(_t(lang, "Tak? Słucham.", "Yes? I'm listening."), lang, "wake")
 
-        return self._handle(command, lang, now=now)
+        return self._handle(command, lang, now=now, on_sentence=on_sentence, on_token=on_token)
 
     # -- command handling ----------------------------------------------
-    def _handle(self, text: str, lang: str, *, now: datetime) -> Reply:
+    def _handle(
+        self,
+        text: str,
+        lang: str,
+        *,
+        now: datetime,
+        on_sentence: OnSentence | None = None,
+        on_token: OnToken | None = None,
+    ) -> Reply:
         if _NAME_GET.search(text):
             return self._get_name(lang)
         if _NAME_SET.search(text):
             return self._set_name(text, lang, now=now)
+        if _DATE_QUERY.search(text):
+            return self._say_date(lang, now)
+        if _TIME_QUERY.search(text):
+            return self._say_time(lang, now)
         if _VOICE_NOTE_PLAY.search(text):
             return self._play_voice_notes(lang)
         if _VOICE_NOTE_REC.search(text):
@@ -221,19 +399,34 @@ class Assistant:
             return self._remind(text, lang, now=now)
         if _REMEMBER.search(text):
             return self._remember(text, lang, now=now)
-        if _NEWS.search(text) or _SITE.search(text):
+        if _WEATHER.search(text):
+            return self._weather(text, lang)
+        if _NEWS.search(text):
+            return self._news(lang)
+        if _SITE.search(text):
             return self._lookup(text, lang)
-        return self._chat(text, lang)
+        if _RADIO_STOP.search(text):
+            return self._radio_stop(lang)
+        if _RADIO_KW.search(text) or self.radio.resolve(text) is not None:
+            return self._radio(text, lang)
+        return self._chat(text, lang, on_sentence=on_sentence, on_token=on_token)
 
     def _remember(self, text: str, lang: str, *, now: datetime) -> Reply:
         body = _REMEMBER.sub("", text, count=1).strip(" ,.:!")
         body = _REMEMBER_TAIL.sub("", body).strip()
         if not body:
             return Reply(_t(lang, "Co mam zapamiętać?", "What should I remember?"), lang, "wake")
-        note = self.memory.add_note(body, now=now)
+        title, content = _split_title_content(body)
+        if title:
+            note = self.memory.add_note(content, now=now, title=title)
+            spoken = title  # read the title back, not a long dictated body
+        else:
+            note = self.memory.add_note(body, now=now)
+            spoken = note.text
+        self._embed_note(note)
         return Reply(
-            _t(lang, f"Zapamiętałam: {note.text}.", f"Got it, I'll remember: {note.text}."),
-            lang, "note", {"id": note.id, "text": note.text},
+            _t(lang, f"Zapamiętałam: {spoken}.", f"Got it, I'll remember: {spoken}."),
+            lang, "note", {"id": note.id, "title": note.title, "text": note.text},
         )
 
     def _set_name(self, text: str, lang: str, *, now: datetime) -> Reply:
@@ -257,6 +450,25 @@ class Assistant:
                 lang, "profile", {"name": None},
             )
         return Reply(_t(lang, f"Masz na imię {name}.", f"Your name is {name}."), lang, "profile", {"name": name})
+
+    def _say_time(self, lang: str, now: datetime) -> Reply:
+        """Tell the current time from the (NTP-synced) system clock — no network."""
+        data = {"hour": now.hour, "minute": now.minute}
+        if lang == "pl":
+            return Reply(f"Jest godzina {now:%H:%M}.", lang, "time", data)
+        h12 = now.hour % 12 or 12
+        ampm = "AM" if now.hour < 12 else "PM"
+        return Reply(f"The time is {h12}:{now.minute:02d} {ampm}.", lang, "time", data)
+
+    def _say_date(self, lang: str, now: datetime) -> Reply:
+        """Tell today's date with locale-independent day/month names."""
+        wd = now.weekday()
+        data = {"year": now.year, "month": now.month, "day": now.day, "weekday": wd}
+        if lang == "pl":
+            text = f"Dziś jest {_PL_DAYS[wd]}, {now.day} {_PL_MONTHS[now.month - 1]} {now.year}."
+        else:
+            text = f"Today is {_EN_DAYS[wd]}, {_EN_MONTHS[now.month - 1]} {now.day}, {now.year}."
+        return Reply(text, lang, "date", data)
 
     def _record_voice_note(self, lang: str) -> Reply:
         # The engine only routes; the runner performs the actual capture + save
@@ -334,30 +546,155 @@ class Assistant:
             lang, "recall", {"count": len(pend)},
         )
 
+    def _weather(self, text: str, lang: str) -> Reply:
+        """Current conditions via Open-Meteo. Default location is Kraków."""
+        place = self._weather_place(text, lang)
+        try:
+            c = self.weather.current(place)
+        except WeatherError as e:
+            log.warning("weather lookup failed (%s)", e)
+            return Reply(
+                _t(lang, "Nie mogę teraz sprawdzić pogody.", "I can't check the weather right now."),
+                lang, "error", {"reason": "weather_failed"},
+            )
+        desc = describe_code(c.code, lang)
+        temp, feels, wind = round(c.temperature), round(c.feels_like), round(c.wind_speed)
+        if lang == "pl":
+            # Label form ("Kraków: …") avoids Polish locative inflection
+            # ("w Krakowie") that a bare nominative ("w Kraków") would get wrong.
+            out = (f"{c.place}: {temp}{c.units_temp}, {desc}. "
+                   f"Odczuwalna {feels}{c.units_temp}, wiatr {wind} {c.units_wind}.")
+        else:
+            out = (f"In {c.place} it's {temp}{c.units_temp}, {desc}. "
+                   f"Feels like {feels}{c.units_temp}, wind {wind} {c.units_wind}.")
+        return Reply(out, lang, "weather", {"place": c.place, "temp": temp, "code": c.code})
+
+    def _weather_place(self, text: str, lang: str) -> Place | None:
+        """Pull a city out of the question, or ``None`` to use the default (Kraków)."""
+        m = _WEATHER_CITY.search(text.strip())
+        if not m:
+            return None
+        city = _tidy(m.group(1))
+        # Drop trailing time words so "pogoda w Krakowie dziś" still resolves.
+        city = re.sub(r"\s+(dziś|dzis|dzisiaj|teraz|today|now)$", "", city, flags=re.IGNORECASE)
+        if not city or city.lower() in {"dziś", "dzis", "dzisiaj", "teraz", "today", "now"}:
+            return None
+        try:
+            return self.weather.geocode(city, lang)  # None → default location
+        except WeatherError:
+            return None
+
+    def _news(self, lang: str) -> Reply:
+        """Top headlines from international agencies, focused on Kraków + Poland.
+
+        Primary path is Gemini search-grounding (fresh, Kraków-focused, translated
+        to the user's language). If Gemini is absent or errors (quota/billing),
+        fall back to a keyless RSS brief (Poland-focused Polish feeds for `pl`,
+        international agencies for `en`).
+        """
+        if self.gemini.available:
+            if lang == "pl":
+                query = ("Podaj najważniejsze aktualne wiadomości z międzynarodowych agencji "
+                         "(Reuters, AP, AFP, BBC), ze szczególnym uwzględnieniem Krakowa i Polski.")
+                sys = self.persona + (" Odpowiedz po polsku, zwięźle, 3-4 najważniejsze punkty. "
+                                      "Przetłumacz nagłówki na polski.")
+            else:
+                query = ("Give the top current news from international agencies "
+                         "(Reuters, AP, AFP, BBC), focusing on Kraków and Poland.")
+                sys = self.persona + " Answer in English, briefly — 3-4 key points."
+            try:
+                answer = self.gemini.grounded(query, system=sys)
+                return Reply(answer, lang, "news", {"grounded": True, "focus": "krakow-poland"})
+            except GeminiError as e:
+                log.warning("news via Gemini failed (%s); falling back to RSS", e)
+        # Keyless RSS fallback — no API key, no LLM.
+        try:
+            items = self.news.headlines(lang)
+        except NewsError as e:
+            log.warning("RSS news fallback failed (%s)", e)
+            items = []
+        if items:
+            lead = _t(lang, "Najważniejsze wiadomości:", "Top headlines:")
+            body = " ".join(f"{i + 1}. {h}." for i, h in enumerate(items))
+            return Reply(f"{lead} {body}", lang, "news", {"source": "rss", "count": len(items)})
+        return Reply(
+            _t(lang, "Nie mogę teraz sprawdzić wiadomości.", "I can't check the news right now."),
+            lang, "error", {"reason": "news_unavailable"},
+        )
+
+    def _radio(self, text: str, lang: str) -> Reply:
+        """Play a named station, or offer the headline stations if none is named."""
+        if not self.radio.available:
+            return Reply(
+                _t(lang, "Radio nie jest skonfigurowane.", "Radio isn't configured."),
+                lang, "radio_offer", {},
+            )
+        station = self.radio.resolve(text)
+        if station is None:
+            names = [s.name for s in self.radio.offer()]
+            if len(names) > 1:
+                joined = ", ".join(names[:-1]) + _t(lang, f" lub {names[-1]}", f" or {names[-1]}")
+            else:
+                joined = names[0]
+            return Reply(
+                _t(lang, f"Mogę włączyć: {joined}. Którą stację?",
+                   f"I can play: {joined}. Which station?"),
+                lang, "radio_offer", {"stations": [s.id for s in self.radio.offer()]},
+            )
+        # "Włączam stację <name>" (apposition) keeps the name in the nominative
+        # so single-word channel nicknames don't need accusative inflection
+        # ("Włączam Trójka" → grammatically "Trójkę"); works for every station.
+        return Reply(
+            _t(lang, f"Włączam stację {station.name}.", f"Playing {station.name}."),
+            lang, "radio_play", {"id": station.id, "name": station.name, "url": station.url},
+        )
+
+    def _radio_stop(self, lang: str) -> Reply:
+        return Reply(
+            _t(lang, "Wyłączam radio.", "Turning off the radio."), lang, "radio_stop", {},
+        )
+
     def _lookup(self, query: str, lang: str) -> Reply:
+        """Open/summarise a site or answer a general up-to-date query via Gemini."""
         if not self.gemini.available:
             return Reply(
                 _t(lang,
-                   "Sprawdzenie wiadomości wymaga konta Gemini — ustaw GEMINI_API_KEY.",
-                   "Checking the news needs a Gemini account — set GEMINI_API_KEY."),
+                   "To wymaga konta Gemini — ustaw GEMINI_API_KEY.",
+                   "That needs a Gemini account — set GEMINI_API_KEY."),
                 lang, "news", {"needs_key": True},
             )
         sys = self.persona + _t(lang, " Streść zwięźle, po polsku.", " Summarise briefly, in English.")
         try:
             answer = self.gemini.grounded(query, system=sys)
         except GeminiError as e:
-            return Reply(_t(lang, f"Nie udało się sprawdzić: {e}", f"Lookup failed: {e}"), lang, "error")
+            log.warning("site lookup via Gemini failed (%s)", e)
+            return Reply(
+                _t(lang, "Nie mogę teraz tego sprawdzić.", "I can't look that up right now."),
+                lang, "error", {"reason": "lookup_failed"},
+            )
         return Reply(answer, lang, "news", {"grounded": True})
 
-    def _chat(self, text: str, lang: str) -> Reply:
+    def _chat(
+        self,
+        text: str,
+        lang: str,
+        *,
+        on_sentence: OnSentence | None = None,
+        on_token: OnToken | None = None,
+    ) -> Reply:
         # Personalise with the user's name when known.
         system = self.persona
         name = self.memory.get_profile("name")
         if name:
             system += _t(lang, f" Użytkownik ma na imię {name}.", f" The user's name is {name}.")
+        # Retrieve the user's relevant stored notes and inject them. Shared
+        # `system=` kwarg → this covers local LLM, OpenAI and Gemini uniformly.
+        system += self._notes_context(text, lang)
         # On-device LLM first (offline, private). Then the OpenAI cloud second
         # layer, then Gemini, then the canned "needs a model/key" fallback.
         if self.llm is not None and self.llm.available:
+            if on_sentence is not None:
+                return self._chat_stream_local(text, system, lang, on_sentence, on_token)
             try:
                 answer = self.llm.chat(text, system=system)
             except LlmError as e:
@@ -381,6 +718,40 @@ class Assistant:
                "I can chat freely once GEMINI_API_KEY (or a local model) is set."),
             lang, "chat", {"needs_key": True},
         )
+
+    def _chat_stream_local(
+        self,
+        text: str,
+        system: str,
+        lang: str,
+        on_sentence: OnSentence,
+        on_token: OnToken | None,
+    ) -> Reply:
+        """Stream the local LLM, slicing into sentences for immediate TTS.
+
+        Each completed sentence is handed to ``on_sentence`` the moment it ends,
+        so the runner can start speaking while later tokens are still generating.
+        Returns the full reply (``data["streamed"]=True`` so the caller knows the
+        sentences were already dispatched and must not re-speak the whole text).
+        """
+        assert self.llm is not None
+        slicer = SentenceSlicer()
+        parts: list[str] = []
+        seen_token = False
+        try:
+            for chunk in self.llm.chat_stream(text, system=system):
+                if not seen_token:
+                    seen_token = True
+                    if on_token is not None:
+                        on_token()
+                parts.append(chunk)
+                for sentence in slicer.feed(chunk):
+                    on_sentence(sentence, lang)
+            for sentence in slicer.flush():
+                on_sentence(sentence, lang)
+        except LlmError as e:
+            return Reply(_t(lang, f"Coś poszło nie tak: {e}", f"Something went wrong: {e}"), lang, "error")
+        return Reply("".join(parts).strip(), lang, "chat", {"engine": "local", "streamed": True})
 
     # -- reminders due -------------------------------------------------
     def due_reminders(self, now: datetime) -> list[Reply]:

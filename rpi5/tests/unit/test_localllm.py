@@ -21,7 +21,7 @@ def _config_root(monkeypatch):
 
 
 class FakeLlm:
-    """Implements the LlmBackend Protocol."""
+    """Implements the LlmBackend Protocol (generate only — no streaming)."""
 
     def __init__(self, reply: str = "ok") -> None:
         self.reply = reply
@@ -30,6 +30,18 @@ class FakeLlm:
     def generate(self, *, system: str, user: str) -> str:
         self.calls.append((system, user))
         return self.reply
+
+
+class FakeStreamLlm(FakeLlm):
+    """Also implements the optional generate_stream seam."""
+
+    def __init__(self, chunks: list[str]) -> None:
+        super().__init__("".join(chunks))
+        self.chunks = chunks
+
+    def generate_stream(self, *, system: str, user: str):
+        self.calls.append((system, user))
+        yield from self.chunks
 
 
 def test_available_with_injected_backend():
@@ -65,3 +77,18 @@ def test_unavailable_when_no_model_and_no_injected_backend(monkeypatch, tmp_path
     # regardless of whether the binding is importable.
     monkeypatch.setenv("BLAZEN_MODELS_DIR", str(tmp_path))
     assert LocalLlm().available is False
+
+
+def test_chat_stream_yields_backend_chunks():
+    fake = FakeStreamLlm(["Cześć", ". ", "Jak ", "się ", "masz?"])
+    llm = LocalLlm(backend=fake)
+    chunks = list(llm.chat_stream("hej", system="S"))
+    assert chunks == ["Cześć", ". ", "Jak ", "się ", "masz?"]
+    assert "".join(chunks) == "Cześć. Jak się masz?"
+
+
+def test_chat_stream_falls_back_to_single_chunk_without_streaming():
+    # A backend with only generate() → chat_stream yields the whole reply once.
+    fake = FakeLlm("Jedno zdanie.")
+    llm = LocalLlm(backend=fake)
+    assert list(llm.chat_stream("hej")) == ["Jedno zdanie."]

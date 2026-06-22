@@ -115,10 +115,19 @@ The LED protocol is defined in [`07-CONFIGURATION.md`](07-CONFIGURATION.md).
 The orchestrator runs an **LED simulator** that derives the colour from the
 live event stream and writes it to `/run/blazen/led.json`
 (off→asleep, green→listening, blue→capturing, magenta→processing,
-yellow→reprompt, red→error) — see `blazend/led.py`. On real hardware an
-**APA102 SPI driver** paints the same colour across the HAT's 3 on-board RGB
-LEDs (identical colour contract); in the VM / on the dev host `led.json` is
-the status surface (and what Tier-3 scenarios assert on).
+yellow→reprompt, red→error) — see `blazend/led.py`, the single colour contract.
+
+On real hardware the **APA102 SPI driver** (`blazend/led_hw.py`) paints the same
+contract colour across the HAT's 3 on-board RGB LEDs over **SPI0**
+(`/dev/spidev0.0`, BCM10 MOSI / BCM11 SCLK; needs `dtparam=spi=on`). It is wired
+into the hands-free voice runner (`blazend.voice`), so the LEDs track the live
+pipeline state — green listening → blue capturing → magenta processing → green.
+The driver is **fail-soft**: with no SPI device (the VM / a dev host) it degrades
+to a no-op and `led.json` stays the status surface (and what Tier-3 scenarios
+assert on) — the headless/CPU path remains the contract. Verify the LEDs (and
+channel order) on a Pi with `python -m blazend.led_hw`, which cycles every
+colour. Tuning knobs (`BLAZEN_LED*`) are in
+[`07-CONFIGURATION.md`](07-CONFIGURATION.md).
 
 ## Power
 

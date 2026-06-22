@@ -14,6 +14,7 @@ members = [
   "blazend-tts",
   "blazend-health",
   "blazend-nlu",
+  "blazend-player",
 ]
 
 [workspace.package]
@@ -39,6 +40,10 @@ crossbeam-channel = "0.5"
 cpal         = "0.15"
 rodio        = "0.19"
 memmap2      = "0.9"
+# Stream/file player (blazend-player): pure-Rust decode + ALSA out.
+symphonia    = { version = "0.5", default-features = false, features = ["mp3", "aac", "isomp4", "ogg", "vorbis", "flac", "wav", "pcm"] }
+ureq         = { version = "2", default-features = false, features = ["tls"] }
+alsa         = "0.9"
 
 # ML / ONNX (wake + VAD). Added in M2 once the loader stabilises.
 # ort = { version = "...", default-features = false, features = ["load-dynamic"] }

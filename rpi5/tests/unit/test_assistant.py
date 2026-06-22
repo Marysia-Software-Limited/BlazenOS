@@ -7,16 +7,20 @@ news / chat) with a fake Gemini transport and an injected clock.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from blazend.assistant import wake
+from blazend.assistant.embeddings import EmbedderError
 from blazend.assistant.engine import Assistant, detect_lang
-from blazend.assistant.gemini import GeminiClient
+from blazend.assistant.gemini import GeminiClient, GeminiError
 from blazend.assistant.localllm import LocalLlm
 from blazend.assistant.memory import MemoryStore
+from blazend.assistant.news import NewsClient
 from blazend.assistant.openai import OpenAiClient
 from blazend.assistant.timeparse import parse_when
 
 NOW = datetime(2026, 6, 12, 14, 0, 0)
+REPO = Path(__file__).resolve().parents[3]
 
 
 # --- wake / name -----------------------------------------------------------
@@ -79,12 +83,15 @@ def _fake_transport(reply_text):
     return transport
 
 
-def _assistant(tmp_path, *, gemini_reply=None):
+def _assistant(tmp_path, *, gemini_reply=None, news_xml=""):
     gem = GeminiClient(
         api_key="test-key" if gemini_reply is not None else "",
         transport=_fake_transport(gemini_reply or ""),
     )
-    return Assistant(memory=MemoryStore(tmp_path / "mem.json"), gemini=gem)
+    # Inject an OFFLINE news client (empty feed by default) so news routing in
+    # tests never touches the live network. Pass news_xml for an RSS fixture.
+    news = NewsClient(transport=lambda _url: news_xml)
+    return Assistant(memory=MemoryStore(tmp_path / "mem.json"), gemini=gem, news=news)
 
 
 def test_engine_requires_wake(tmp_path):
@@ -114,11 +121,16 @@ def test_engine_reminder_fires(tmp_path):
     assert len(fired) == 1 and "pranie" in fired[0].text
 
 
-def test_engine_news_needs_key(tmp_path):
-    a = _assistant(tmp_path)  # no key
+def test_engine_news_rss_fallback_without_key(tmp_path):
+    # No Gemini key → the keyless RSS fallback still gives a brief.
+    a = _assistant(tmp_path, news_xml=(
+        "<rss><channel><title>F</title>"
+        "<item><title>Nagłówek pierwszy</title></item></channel></rss>"
+    ))
     a.awake = True
     r = a.route("co w wiadomościach?", now=NOW)
-    assert r.action == "news" and r.data.get("needs_key")
+    assert r.action == "news" and r.data.get("source") == "rss"
+    assert "Nagłówek pierwszy" in r.text
 
 
 def test_engine_news_grounded_with_key(tmp_path):
@@ -126,6 +138,140 @@ def test_engine_news_grounded_with_key(tmp_path):
     a.awake = True
     r = a.route("Jessica, sprawdź wiadomości", now=NOW)
     assert r.action == "news" and r.text.startswith("Dziś główna wiadomość")
+    assert r.data.get("focus") == "krakow-poland"  # Kraków + Poland focused
+
+
+def test_engine_news_falls_back_to_rss_when_gemini_errors(tmp_path):
+    from blazend.assistant.news import NewsClient
+
+    def boom(_url, _body):  # Gemini transport that fails (e.g. 429/billing)
+        raise GeminiError("Gemini HTTP 429: credits depleted")
+    gem = GeminiClient(api_key="test-key", transport=boom)
+    rss = NewsClient(transport=lambda url: (
+        "<rss><channel><title>F</title>"
+        "<item><title>Wiadomość jeden</title></item>"
+        "<item><title>Wiadomość dwa</title></item></channel></rss>"
+    ))
+    a = Assistant(memory=MemoryStore(tmp_path / "m.json"), gemini=gem, news=rss)
+    a.awake = True
+    r = a.route("co w wiadomościach", now=NOW)
+    assert r.action == "news" and r.data.get("source") == "rss"
+    assert "Wiadomość jeden" in r.text
+    # Crucially: the raw Gemini error is NOT read aloud.
+    assert "429" not in r.text and "http" not in r.text.lower()
+
+
+def test_engine_news_short_error_when_all_unavailable(tmp_path):
+    from blazend.assistant.news import NewsClient, NewsError
+
+    class _DeadNews(NewsClient):
+        def headlines(self, lang, limit=None):
+            raise NewsError("all feeds down")
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"),
+        gemini=GeminiClient(api_key=""),  # no Gemini
+        news=_DeadNews(transport=lambda url: ""),
+    )
+    a.awake = True
+    r = a.route("co w wiadomościach", now=NOW)
+    assert r.action == "error" and len(r.text) < 80  # short, spoken-friendly
+
+
+def _radio_assistant(tmp_path, monkeypatch):
+    monkeypatch.setenv("BLAZEN_CONFIG_ROOT", str(REPO / "configs"))
+    a = Assistant(memory=MemoryStore(tmp_path / "m.json"), gemini=GeminiClient(api_key=""))
+    a.awake = True
+    return a
+
+
+def test_engine_radio_play_trojka_pl(tmp_path, monkeypatch):
+    a = _radio_assistant(tmp_path, monkeypatch)
+    r = a.route("włącz Trójkę", now=NOW)
+    assert r.action == "radio_play" and r.data["id"] == "trojka"
+    assert r.data["url"].startswith("http") and "Trójk" in r.text
+
+
+def test_engine_radio_play_radio_krakow_pl(tmp_path, monkeypatch):
+    a = _radio_assistant(tmp_path, monkeypatch)
+    r = a.route("puść Radio Kraków", now=NOW)
+    assert r.action == "radio_play" and r.data["id"] == "radio-krakow"
+
+
+def test_engine_radio_offer_when_unspecified_pl(tmp_path, monkeypatch):
+    a = _radio_assistant(tmp_path, monkeypatch)
+    r = a.route("włącz radio", now=NOW)
+    assert r.action == "radio_offer" and "Trójka" in r.text and "?" in r.text
+
+
+def test_engine_radio_stop_pl(tmp_path, monkeypatch):
+    a = _radio_assistant(tmp_path, monkeypatch)
+    r = a.route("wyłącz radio", now=NOW)
+    assert r.action == "radio_stop"
+
+
+def test_engine_radio_play_en(tmp_path, monkeypatch):
+    a = _radio_assistant(tmp_path, monkeypatch)
+    r = a.route("play the radio, channel three", now=NOW)
+    assert r.action == "radio_play" and r.data["id"] == "trojka" and r.language == "en"
+
+
+def test_engine_radio_does_not_reach_llm(tmp_path, monkeypatch):
+    monkeypatch.setenv("BLAZEN_CONFIG_ROOT", str(REPO / "configs"))
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"), gemini=GeminiClient(api_key=""),
+        llm=LocalLlm(backend=_FakeLlm("SHOULD NOT BE CALLED")),
+    )
+    a.awake = True
+    r = a.route("włącz Trójkę", now=NOW)
+    assert r.action == "radio_play" and "SHOULD NOT" not in r.text
+
+
+def _weather_client(*, temp=18.0, feels=17.0, code=3, wind=12.0, geo=None):
+    from blazend.assistant.weather import WeatherClient
+
+    def transport(url):
+        if "geocoding-api" in url:
+            return {"results": geo if geo is not None else []}
+        return {"current": {
+            "temperature_2m": temp, "apparent_temperature": feels,
+            "weather_code": code, "wind_speed_10m": wind,
+        }}
+    return WeatherClient(transport=transport)
+
+
+def test_engine_weather_defaults_to_krakow_pl(tmp_path):
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"), gemini=GeminiClient(api_key=""),
+        weather=_weather_client(temp=18.4, code=3),
+    )
+    a.awake = True
+    r = a.route("jaka jest pogoda", now=NOW)  # no city → default Kraków
+    assert r.action == "weather" and r.language == "pl"
+    assert "Kraków" in r.text and "18" in r.text and "pochmurno" in r.text and "°C" in r.text
+
+
+def test_engine_weather_named_city_geocoded_en(tmp_path):
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"), gemini=GeminiClient(api_key=""),
+        weather=_weather_client(temp=9.0, code=61,
+                                geo=[{"name": "London", "latitude": 51.5, "longitude": -0.12}]),
+    )
+    a.awake = True
+    r = a.route("what's the weather in London", now=NOW)
+    assert r.action == "weather" and r.language == "en"
+    assert "London" in r.text and "rain" in r.text.lower()
+
+
+def test_engine_weather_does_not_reach_llm(tmp_path):
+    # Weather must be answered by the weather client, never the chat model.
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"), gemini=GeminiClient(api_key=""),
+        llm=LocalLlm(backend=_FakeLlm("SHOULD NOT BE CALLED")),
+        weather=_weather_client(temp=5.0, code=0),
+    )
+    a.awake = True
+    r = a.route("pogoda", now=NOW)
+    assert r.action == "weather" and "SHOULD NOT" not in r.text
 
 
 def test_engine_chat_with_key(tmp_path):
@@ -167,6 +313,95 @@ def test_engine_chat_prefers_local_llm(tmp_path):
     assert "świetnie" in r.text
 
 
+def test_engine_time_query_pl(tmp_path):
+    a = Assistant(memory=MemoryStore(tmp_path / "m.json"), gemini=GeminiClient(api_key=""))
+    a.awake = True
+    r = a.route("która godzina", now=NOW)  # NOW = 14:00
+    assert r.action == "time" and r.language == "pl"
+    assert "14:00" in r.text and "godzina" in r.text.lower()
+
+
+def test_engine_time_query_en(tmp_path):
+    a = Assistant(memory=MemoryStore(tmp_path / "m.json"), gemini=GeminiClient(api_key=""))
+    a.awake = True
+    r = a.route("what time is it", now=NOW)
+    assert r.action == "time" and r.language == "en"
+    assert "2:00 PM" in r.text and "time" in r.text.lower()
+
+
+def test_engine_date_query_pl(tmp_path):
+    a = Assistant(memory=MemoryStore(tmp_path / "m.json"), gemini=GeminiClient(api_key=""))
+    a.awake = True
+    r = a.route("jaki dziś dzień", now=NOW)  # NOW = 2026-06-12
+    assert r.action == "date" and r.language == "pl"
+    assert "czerwca" in r.text and "2026" in r.text and "12" in r.text
+
+
+def test_engine_date_query_en(tmp_path):
+    a = Assistant(memory=MemoryStore(tmp_path / "m.json"), gemini=GeminiClient(api_key=""))
+    a.awake = True
+    r = a.route("what's the date", now=NOW)
+    assert r.action == "date" and r.language == "en"
+    assert "June" in r.text and "12" in r.text and "2026" in r.text
+
+
+def test_engine_time_query_does_not_reach_llm(tmp_path):
+    # The clock must be answered locally — never punted to the model.
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"),
+        gemini=GeminiClient(api_key=""),
+        llm=LocalLlm(backend=_FakeLlm("SHOULD NOT BE CALLED")),
+    )
+    a.awake = True
+    r = a.route("która jest godzina?", now=NOW)
+    assert r.action == "time" and "SHOULD NOT" not in r.text
+
+
+class _FakeStreamLlm(_FakeLlm):
+    """Local backend that streams the reply token-by-token."""
+
+    def __init__(self, chunks: list[str]) -> None:
+        super().__init__("".join(chunks))
+        self.chunks = chunks
+
+    def generate_stream(self, *, system: str, user: str):
+        self.last_system = system
+        yield from self.chunks
+
+
+def test_engine_streams_local_chat_sentence_by_sentence(tmp_path):
+    backend = _FakeStreamLlm(["Mam się ", "świetnie", ". ", "A Ty", "?"])
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"),
+        gemini=GeminiClient(api_key=""),
+        llm=LocalLlm(backend=backend),
+    )
+    a.awake = True
+    spoken: list[tuple[str, str]] = []
+    tokens = {"n": 0}
+    r = a.route(
+        "jak się masz?", now=NOW,
+        on_sentence=lambda s, lang: spoken.append((lang, s)),
+        on_token=lambda: tokens.__setitem__("n", tokens["n"] + 1),
+    )
+    # Each completed sentence dispatched the instant it finished, in order.
+    assert spoken == [("pl", "Mam się świetnie."), ("pl", "A Ty?")]
+    assert tokens["n"] == 1                       # on_token fires once (first token)
+    assert r.action == "chat" and r.data == {"engine": "local", "streamed": True}
+    assert r.text == "Mam się świetnie. A Ty?"   # full reply still returned
+
+
+def test_engine_non_chat_path_ignores_streaming_hooks(tmp_path):
+    # A command (remember) must not invoke the streaming sentence sink.
+    a = Assistant(memory=MemoryStore(tmp_path / "m.json"), gemini=GeminiClient(api_key=""))
+    a.awake = True
+    spoken: list[str] = []
+    r = a.route("zapamiętaj że kod to 4729", now=NOW,
+                on_sentence=lambda s, lang: spoken.append(s))
+    assert r.action == "note" and spoken == []
+    assert not r.data.get("streamed")
+
+
 def test_engine_chat_falls_back_to_openai(tmp_path):
     a = Assistant(
         memory=MemoryStore(tmp_path / "m.json"),
@@ -187,17 +422,24 @@ def test_engine_chat_canned_when_nothing(tmp_path):
     assert r.action == "chat" and r.data.get("needs_key")
 
 
-def test_engine_news_still_needs_gemini_with_local_llm(tmp_path):
-    # The local LLM / OpenAI must NOT satisfy a web-grounded news lookup.
+def test_engine_news_never_uses_chat_llm(tmp_path):
+    # News must NOT be answered by the local LLM / OpenAI chat layer — only
+    # Gemini grounding or the RSS fallback.
     a = Assistant(
         memory=MemoryStore(tmp_path / "m.json"),
         gemini=GeminiClient(api_key=""),
         llm=LocalLlm(backend=_FakeLlm("local")),
         openai=_openai("openai"),
+        news=NewsClient(transport=lambda _url: (
+            "<rss><channel><title>F</title>"
+            "<item><title>Świeży nagłówek</title></item></channel></rss>"
+        )),
     )
     a.awake = True
     r = a.route("co w wiadomościach?", now=NOW)
-    assert r.action == "news" and r.data.get("needs_key")
+    assert r.action == "news" and r.data.get("source") == "rss"
+    assert r.data.get("engine") not in ("local", "openai")
+    assert "local" not in r.text and "openai" not in r.text
 
 
 # --- user's name (S2) ------------------------------------------------------
@@ -247,6 +489,141 @@ def test_engine_chat_injects_name_into_system_prompt(tmp_path):
     a.route("mam na imię Zofia", now=NOW)
     a.route("opowiedz coś o kawie", now=NOW)
     assert "Zofia" in (fake.last_system or "")
+
+
+# --- titled notes + semantic recall (RAG) ----------------------------------
+class _FakeEmbedder:
+    """Deterministic 3-axis embedder (weekend / wifi / generic) for tests."""
+
+    name = "fake-emb"
+    available = True
+
+    def embed(self, texts, *, kind="passage"):
+        return [self._vec(t) for t in texts]
+
+    @staticmethod
+    def _vec(t):
+        t = t.lower()
+        weekend = 1.0 if ("weekend" in t or "gór" in t) else 0.0
+        wifi = 1.0 if ("wifi" in t or "hasło" in t) else 0.0
+        return [weekend, wifi, 0.1]
+
+
+def test_remember_titled_note_splits_title_and_content(tmp_path):
+    a = _assistant(tmp_path)
+    a.awake = True
+    r = a.route("zapamiętaj: plan na weekend. Chcę pojechać w góry i odpocząć", now=NOW)
+    assert r.action == "note"
+    assert r.data["title"] == "plan na weekend"
+    assert "góry" in r.data["text"] and "weekend" not in r.data["text"]
+    assert "plan na weekend" in r.text  # speaks the title back, not the long body
+
+
+def test_remember_untitled_note_back_compat(tmp_path):
+    a = _assistant(tmp_path)
+    a.awake = True
+    r = a.route("zapamiętaj że hasło do wifi to lato2026", now=NOW)
+    assert r.action == "note" and r.data["title"] == "" and "lato2026" in r.data["text"]
+
+
+def test_chat_injects_relevant_note_into_system_prompt(tmp_path):
+    fake = _FakeLlm("ok")
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"),
+        gemini=GeminiClient(api_key=""),
+        llm=LocalLlm(backend=fake),
+        embedder=_FakeEmbedder(),
+    )
+    a.awake = True
+    a.route("zapamiętaj: plan na weekend. Chcę pojechać w góry", now=NOW)
+    a.route("zapamiętaj że hasło do wifi to lato2026", now=NOW)
+    a.route("co planuję w weekend?", now=NOW)
+    system = fake.last_system or ""
+    assert "góry" in system        # the relevant note was retrieved + injected
+    assert "lato2026" not in system  # the irrelevant note was filtered by score
+
+
+def test_remember_title_with_question_mark_separator(tmp_path):
+    a = _assistant(tmp_path)
+    a.awake = True
+    r = a.route("zapamiętaj: czy kupić mleko? tak, dwa litry", now=NOW)
+    assert r.action == "note"
+    assert r.data["title"] == "czy kupić mleko" and "dwa litry" in r.data["text"]
+
+
+def test_chat_no_note_context_when_embedder_absent(tmp_path):
+    # No embedder → lexical fallback, nothing injected into the system prompt.
+    fake = _FakeLlm("ok")
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"),
+        gemini=GeminiClient(api_key=""),
+        llm=LocalLlm(backend=fake),
+    )
+    a.awake = True
+    a.route("zapamiętaj: plan na weekend. góry", now=NOW)
+    a.route("co planuję?", now=NOW)
+    system = (fake.last_system or "").lower()
+    assert "notatki użytkownika" not in system and "saved notes" not in system
+
+
+def test_remember_survives_embedder_failure(tmp_path):
+    class _BoomEmbedder:
+        name = "boom"
+        available = True
+
+        def embed(self, texts, *, kind="passage"):
+            raise EmbedderError("onnx blew up")
+
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"),
+        gemini=GeminiClient(api_key=""),
+        embedder=_BoomEmbedder(),
+    )
+    a.awake = True
+    r = a.route("zapamiętaj że kod do bramy to 4729", now=NOW)
+    assert r.action == "note" and "4729" in r.data["text"]  # stored despite embed error
+
+
+def test_assistant_backfills_existing_notes_on_init(tmp_path):
+    p = tmp_path / "m.json"
+    mem = MemoryStore(p)
+    mem.add_note("góry weekend", now=NOW)  # pre-existing, no embedding yet
+    assert mem.notes_missing_embeddings(model="fake-emb") == mem.notes()
+    # Constructing an Assistant with an embedder backfills the missing vectors.
+    Assistant(memory=MemoryStore(p), gemini=GeminiClient(api_key=""), embedder=_FakeEmbedder())
+    assert MemoryStore(p).notes_missing_embeddings(model="fake-emb") == []
+
+
+def test_chat_context_respects_top_k(tmp_path):
+    fake = _FakeLlm("ok")
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"),
+        gemini=GeminiClient(api_key=""),
+        llm=LocalLlm(backend=fake),
+        embedder=_FakeEmbedder(),
+        notes_top_k=2,
+    )
+    a.awake = True
+    for i in range(6):  # six equally-relevant weekend notes
+        a.route(f"zapamiętaj że weekend numer {i}", now=NOW)
+    a.route("co o weekend?", now=NOW)
+    system = fake.last_system or ""
+    assert "numer" in system and system.count("numer") <= 2  # capped at top_k
+
+
+def test_notes_context_respects_char_budget(tmp_path):
+    a = Assistant(
+        memory=MemoryStore(tmp_path / "m.json"),
+        gemini=GeminiClient(api_key=""),
+        embedder=_FakeEmbedder(),
+        notes_top_k=10,
+        notes_max_chars=20,
+    )
+    a.awake = True
+    a.route("zapamiętaj że weekend aaa", now=NOW)  # short — fits the budget
+    a.route("zapamiętaj że weekend " + "b" * 30, now=NOW)  # long — overflows it
+    ctx = a._notes_context("co o weekend?", "pl")
+    assert "aaa" in ctx and "bbbb" not in ctx  # long note dropped by the char budget
 
 
 # --- reminders / alarms / events (S4) --------------------------------------

@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 
 def data_dir() -> Path:
@@ -27,11 +30,17 @@ def data_dir() -> Path:
 
 @dataclass
 class Note:
-    """A remembered term/fact."""
+    """A remembered term/fact.
+
+    ``title`` is an optional short label for longer dictated notes
+    ("zapamiętaj: <title>. <content>"); when empty the note is a single
+    untitled blob (the original behaviour) and ``text`` holds the whole thing.
+    """
 
     id: str
     text: str
     created: str  # ISO timestamp
+    title: str = ""
     kind: str = "note_created"
 
 
@@ -75,6 +84,9 @@ class MemoryStore:
     def __init__(self, path: Path | None = None):
         self.path = Path(path) if path else data_dir() / "memory.json"
         self._db = self._load()
+        # Note embeddings live in a sidecar so memory.json stays human-readable;
+        # loaded lazily on first semantic call.
+        self._emb_cache: dict[str, Any] | None = None
 
     # -- persistence -------------------------------------------------------
     def _load(self) -> _Db:
@@ -100,8 +112,13 @@ class MemoryStore:
         return f"{prefix}-{self._db.seq}"
 
     # -- notes -------------------------------------------------------------
-    def add_note(self, text: str, *, now: datetime) -> Note:
-        note = Note(id=self._next_id("note"), text=text.strip(), created=now.isoformat())
+    def add_note(self, text: str, *, now: datetime, title: str = "") -> Note:
+        note = Note(
+            id=self._next_id("note"),
+            text=text.strip(),
+            created=now.isoformat(),
+            title=title.strip(),
+        )
         self._db.notes.append(asdict(note))
         self._save()
         return note
@@ -114,7 +131,91 @@ class MemoryStore:
         if not query:
             return notes
         q = query.casefold()
-        return [n for n in notes if q in n.text.casefold()]
+        return [n for n in notes if q in n.text.casefold() or q in n.title.casefold()]
+
+    # -- note embeddings (on-device semantic recall) -----------------------
+    def _emb_path(self) -> Path:
+        return self.path.parent / "note_embeddings.json"
+
+    def _load_embeddings(self) -> dict[str, Any]:
+        if self._emb_cache is None:
+            p = self._emb_path()
+            if p.exists():
+                self._emb_cache = json.loads(p.read_text(encoding="utf-8"))
+            else:
+                self._emb_cache = {"model": "", "vectors": {}}
+        return self._emb_cache
+
+    def _save_embeddings(self) -> None:
+        emb = self._load_embeddings()
+        p = self._emb_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(emb, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(p)
+
+    def set_note_embedding(self, note_id: str, vector: Sequence[float], *, model: str = "") -> None:
+        """Persist a note's embedding. A change of ``model`` drops stale vectors."""
+        emb = self._load_embeddings()
+        if model and emb.get("model") != model:
+            emb["model"] = model
+            emb["vectors"] = {}
+        emb["vectors"][note_id] = [float(x) for x in vector]
+        self._save_embeddings()
+
+    def notes_missing_embeddings(self, *, model: str = "") -> list[Note]:
+        """Notes with no stored vector (or all of them if the model changed)."""
+        emb = self._load_embeddings()
+        if model and emb.get("model") != model:
+            return self.notes()
+        have = emb.get("vectors", {})
+        return [n for n in self.notes() if n.id not in have]
+
+    def search_notes_semantic(
+        self,
+        query_vec: Sequence[float],
+        *,
+        limit: int = 4,
+        min_score: float = 0.0,
+        rel_margin: float = 0.0,
+    ) -> list[Note]:
+        """Top notes by cosine similarity to ``query_vec`` (descending).
+
+        Filtering is calibrated for embedders (e.g. e5) whose cosines are
+        compressed into a narrow high band, where a flat absolute threshold
+        can't separate relevant from irrelevant:
+
+        * ``min_score`` — the **best** match must clear this absolute floor,
+          else nothing is returned (handles "no relevant note": every score is
+          mediocre). It is also the hard floor for every returned note.
+        * ``rel_margin`` — keep only notes within this cosine margin of the top
+          hit, which isolates a clear winner from a cluster of near-ties.
+        """
+        emb = self._load_embeddings()
+        vectors: dict[str, list[float]] = emb.get("vectors", {})
+        if not vectors:
+            return []
+        q = np.asarray(query_vec, dtype=np.float32)
+        qn = float(np.linalg.norm(q))
+        if qn == 0.0:
+            return []
+        q = q / qn
+        by_id = {n.id: n for n in self.notes()}
+        scored: list[tuple[float, Note]] = []
+        for nid, vec in vectors.items():
+            note = by_id.get(nid)
+            if note is None:
+                continue
+            v = np.asarray(vec, dtype=np.float32)
+            vn = float(np.linalg.norm(v))
+            if vn == 0.0:
+                continue
+            scored.append((float(np.dot(q, v / vn)), note))
+        scored.sort(key=lambda t: t[0], reverse=True)
+        if not scored or scored[0][0] < min_score:
+            return []
+        cutoff = max(min_score, scored[0][0] - rel_margin)
+        return [n for s, n in scored if s >= cutoff][:limit]
 
     # -- profile (user facts: name, …) -------------------------------------
     def set_profile(self, key: str, value: str, *, now: datetime) -> None:

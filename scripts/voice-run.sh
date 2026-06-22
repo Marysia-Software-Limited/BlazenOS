@@ -4,7 +4,7 @@
 # Starts only the two Rust units that own the mic + wake detection:
 #   blazend-audio-in   (real cpal capture → shared-memory ring)
 #   blazend-wake       (real openWakeWord "Hej Jessico" → wake.sock)
-# then the Python wake runner (_test_projects/wake_jessica.py), which reads the
+# then the Python wake runner (`python -m blazend.voice`), which reads the
 # ring for both wake- and button-triggered captures and does ASR → engine →
 # Piper itself. No asr/brain/tts/audio-out units here (the runner covers them),
 # so there's no ALSA contention.
@@ -49,12 +49,13 @@ if command -v systemctl >/dev/null && systemctl --user is-active --quiet pipewir
   sleep 1
 fi
 
-if [ ! -x "$CARGO_TARGET/blazend-audio-in" ] || [ ! -x "$CARGO_TARGET/blazend-wake" ]; then
+if [ ! -x "$CARGO_TARGET/blazend-audio-in" ] || [ ! -x "$CARGO_TARGET/blazend-wake" ] || [ ! -x "$CARGO_TARGET/blazend-player" ]; then
   log "building appliance Rust workspace…"
   (cd "$REPO_ROOT/rpi5/crates" && cargo build --workspace --quiet)
 fi
 
 export ORT_DYLIB_PATH="${ORT_DYLIB_PATH:-$(find "$VENV" -name 'libonnxruntime.so.1*' 2>/dev/null | head -1)}"
+export BLAZEN_PLAYER="${BLAZEN_PLAYER:-$CARGO_TARGET/blazend-player}"
 
 declare -a PIDS=()
 cleanup() {
@@ -76,5 +77,5 @@ log "starting blazend-wake (Hej Jessico → wake.sock)"
 ("$CARGO_TARGET/blazend-wake" >>"$RUN_DIR/wake.log" 2>&1) & PIDS+=($!)
 
 sleep 1.5  # let the ring + wake socket come up
-log "starting Python wake runner — logs at $RUN_DIR/runner.log"
-"$PY" "$REPO_ROOT/_test_projects/wake_jessica.py" 2>&1 | tee "$RUN_DIR/runner.log"
+log "starting Python wake runner (blazend.voice) — logs at $RUN_DIR/runner.log"
+"$PY" -m blazend.voice 2>&1 | tee "$RUN_DIR/runner.log"

@@ -1,0 +1,53 @@
+# /etc/blazen/embeddings.yaml
+#
+# On-device text-embedding model for Jessica's personal-memory recall (RAG):
+# remembered notes are embedded once and the relevant ones are retrieved and
+# injected into the LLM chat prompt for future questions. The CPU/onnxruntime
+# path is the contract — if the model is absent the engine degrades to lexical
+# note recall. See docs/12-ML-ACCELERATOR.md and docs/07-CONFIGURATION.md.
+
+version: 1
+
+active_model: multilingual-e5-small      # voice-mutable
+dim: 384
+
+# Retrieval + injection into the chat context (read by build_runner →
+# Assistant). All voice-mutable.
+notes_context:
+  enabled: true
+  top_k: 4                               # max notes injected per question
+  # e5 cosines sit in a compressed high band (related ~0.84-0.90, unrelated
+  # ~0.75-0.83), so filtering is floor + relative margin, not a flat threshold:
+  min_score: 0.82                        # the BEST hit must clear this, else inject nothing
+  rel_margin: 0.06                       # keep only notes within this cosine of the top hit
+  max_chars: 1200                        # budget for the injected block (~300 tok)
+
+# e5 models are asymmetric: the question is embedded as a "query", stored notes
+# as a "passage". These prefixes are part of the model contract.
+e5_prefixes:
+  query: "query: "
+  passage: "passage: "
+
+# Model catalogue. `scripts/install_models.py --config configs/embeddings.yaml`
+# downloads each file under models/embeddings/<name>/. SHAs are filled on the
+# first verified download (the installer warns + proceeds while "<TBD>").
+models:
+  multilingual-e5-small:
+    family: e5
+    parameters_m: 118
+    dim: 384
+    max_seq: 256
+    size_mb: 470
+    files:
+      - file: model.onnx
+        download_url: https://huggingface.co/Xenova/multilingual-e5-small/resolve/main/onnx/model.onnx
+        sha256: "4aa845c27760e06e9a686b9d8b5d440eae4b6612cd09e5b522b716d3941f77ff"
+        size_mb: 449
+      - file: tokenizer.json
+        download_url: https://huggingface.co/Xenova/multilingual-e5-small/resolve/main/tokenizer.json
+        sha256: "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39"
+        size_mb: 17
+    license: MIT
+
+allowed:
+  - multilingual-e5-small

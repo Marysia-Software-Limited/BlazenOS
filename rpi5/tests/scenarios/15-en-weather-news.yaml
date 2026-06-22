@@ -1,0 +1,26 @@
+id: 15-en-weather-news
+language: en
+description: |
+  Internet weather and news. Weather via Open-Meteo (keyless, default Kraków,
+  here a named city); news from international agencies focused on Kraków and
+  Poland (Gemini grounding). Needs network.
+tags: [weather, news, internet, krakow, en]
+synth_voice: en_US-lessac-medium
+preconditions:
+  llm.active_engine: cpu
+turns:
+  - user: "hey Jessica"
+    expect:
+      wake_acknowledged: true
+      detected_language: en
+
+  - user: "what's the weather in London"
+    expect:
+      assistant_says_contains: "London"
+      assistant_language: en
+
+  - user: "what's in the news"
+    expect:
+      assistant_language: en
+postconditions:
+  no_unit_restarts: true

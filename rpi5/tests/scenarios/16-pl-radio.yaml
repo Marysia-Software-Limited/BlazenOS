@@ -1,0 +1,37 @@
+id: 16-pl-radio
+language: pl
+description: |
+  Radio internetowe. Jessica proponuje stacje na samo "włącz radio", włącza
+  nazwaną stację (Trójka, Radio Kraków), i wyłącza na żądanie. Strumień przez
+  ffmpeg → ALSA; bez chmurowego LLM. Wymaga sieci. Engine: cpu.
+tags: [radio, streaming, krakow, trojka, pl]
+synth_voice: pl_PL-gosia-medium
+preconditions:
+  llm.active_engine: cpu
+turns:
+  - user: "hej Jessico"
+    expect:
+      wake_acknowledged: true
+      detected_language: pl
+
+  - user: "włącz radio"
+    expect:
+      assistant_says_any: ["mogę włączyć", "trójka", "którą stację"]
+      assistant_language: pl
+
+  - user: "włącz Trójkę"
+    expect:
+      assistant_says_contains: "włączam"
+      assistant_language: pl
+
+  - user: "włącz Radio Kraków"
+    expect:
+      assistant_says_contains: "włączam"
+      assistant_language: pl
+
+  - user: "wyłącz radio"
+    expect:
+      assistant_says_contains: "wyłączam"
+      assistant_language: pl
+postconditions:
+  no_unit_restarts: true

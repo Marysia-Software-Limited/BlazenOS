@@ -19,6 +19,13 @@ score_window_ms: 1000
 require_wake: true
 conversation_window_s: 20
 
+# Hands-free capture (S5 `blazend.voice.runner`). After a wake fires and the
+# acknowledgement plays, the runner records a FIXED window straight from the
+# Rust audio ring — no energy VAD, because the quiet WM8960 HAT fragments
+# short utterances. `capture_window_s` is that window length; the HAT button
+# delimits its own (held) window instead. Env override: `BLAZEN_CAPTURE_S`.
+capture_window_s: 4.5
+
 # The Jessica wake is one **bilingual** model trained locally (openWakeWord
 # melspectrogram+embedding front-end + a classifier head fit on Piper-synthesised
 # clips); `jessica_pl` and `jessica_en` both point at that single file. The wake

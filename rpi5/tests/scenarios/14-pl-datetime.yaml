@@ -1,0 +1,27 @@
+id: 14-pl-datetime
+language: pl
+description: |
+  Zegar i kalendarz — asystentka bez ekranu musi sama podać godzinę i datę
+  z lokalnego (zsynchronizowanego przez NTP) zegara, nigdy nie odsyłając
+  pytania do modelu ("nie mam dostępu do czasu"). Engine: cpu.
+tags: [time, date, clock, pl]
+synth_voice: pl_PL-gosia-medium
+preconditions:
+  llm.active_engine: cpu
+turns:
+  - user: "hej Jessico"
+    expect:
+      wake_acknowledged: true
+      detected_language: pl
+
+  - user: "która godzina"
+    expect:
+      assistant_says_contains: "godzina"
+      assistant_language: pl
+
+  - user: "jaki dziś dzień"
+    expect:
+      assistant_says_contains: "dziś"
+      assistant_language: pl
+postconditions:
+  no_unit_restarts: true

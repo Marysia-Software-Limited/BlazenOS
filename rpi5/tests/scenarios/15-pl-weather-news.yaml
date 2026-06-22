@@ -1,0 +1,26 @@
+id: 15-pl-weather-news
+language: pl
+description: |
+  Pogoda i wiadomości z internetu. Pogoda przez Open-Meteo (bez klucza,
+  domyślnie Kraków); wiadomości z międzynarodowych agencji ze skupieniem na
+  Krakowie i Polsce, streszczone po polsku (Gemini grounding). Wymaga sieci.
+tags: [weather, news, internet, krakow, pl]
+synth_voice: pl_PL-gosia-medium
+preconditions:
+  llm.active_engine: cpu
+turns:
+  - user: "hej Jessico"
+    expect:
+      wake_acknowledged: true
+      detected_language: pl
+
+  - user: "jaka jest pogoda"
+    expect:
+      assistant_says_contains: "Kraków"
+      assistant_language: pl
+
+  - user: "co w wiadomościach"
+    expect:
+      assistant_language: pl
+postconditions:
+  no_unit_restarts: true

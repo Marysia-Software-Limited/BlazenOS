@@ -1,0 +1,46 @@
+id: 13-pl-remember-notes
+language: pl
+description: |
+  Pamięć osobista (RAG): zapamiętywanie długich notatek z tytułem
+  ("zapamiętaj: <tytuł>. <treść>"), odczytywanie ich, oraz wykorzystanie
+  zapisanej treści jako kontekstu dla lokalnego LLM w późniejszym pytaniu.
+  Engine: cpu.
+tags: [notes, memory, rag, semantic, pl]
+synth_voice: pl_PL-gosia-medium
+preconditions:
+  llm.active_engine: cpu
+  llm.temperature: 0.0
+  llm.seed: 0
+  embeddings.notes_context.enabled: true
+turns:
+  - user: "hej Jessico"
+    expect:
+      wake_acknowledged: true
+      detected_language: pl
+
+  - user: "zapamiętaj: plan na weekend. Chcę pojechać w góry i odpocząć"
+    expect:
+      assistant_says_contains: "plan na weekend"
+      assistant_language: pl
+
+  - user: "zapamiętaj że hasło do wifi to lato2026"
+    expect:
+      assistant_says_contains: "lato2026"
+      assistant_language: pl
+
+  - user: "co pamiętasz"
+    expect:
+      assistant_says_any: ["góry", "weekend"]
+      assistant_language: pl
+
+  - user: "co planuję na weekend"
+    expect:
+      assistant_language: pl
+      assistant_semantic_similarity_any:
+        threshold: 0.62
+        references:
+          - "Planujesz wyjazd w góry, żeby odpocząć."
+          - "Chcesz pojechać w góry i odpocząć w weekend."
+      conversation_remembers: góry
+postconditions:
+  no_unit_restarts: true

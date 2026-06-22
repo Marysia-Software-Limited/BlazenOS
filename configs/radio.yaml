@@ -1,0 +1,79 @@
+# /etc/blazen/radio.yaml
+#
+# Internet radio Jessica can stream to the speaker on request ("włącz Trójkę",
+# "puść Radio Kraków", "play the radio"). All stream URLs below were probed and
+# confirmed playable. Playback is a plain HTTP audio stream → blazend-player
+# (Rust: symphonia decode + prebuffered jitter buffer) → ALSA; no cloud LLM.
+# Polish-first: Trójka and Radio Kraków lead the offer list.
+#
+# Each station: `name` is what Jessica says; `aliases` are spoken forms she
+# matches (PL + EN, lower-case, accent-insensitive). `default` marks the station
+# played for a bare "włącz radio" / "play the radio".
+
+version: 1
+
+# Stream/file playback engine (blazend-player Rust unit). The jitter buffer is
+# the fix for low-bitrate / jittery streams that stuttered under the old ffmpeg
+# path. Streams play until stopped; the same unit also plays local recordings.
+player:
+  backend: blazend-player                 # Rust decode (mp3/aac/flac/ogg/wav) → ALSA
+  prebuffer_ms: 1500                       # buffered before playback starts (smooth start)
+  buffer_ms: 4000                          # jitter-buffer depth held during playback
+  alsa_buffer_ms: 500                      # ALSA hardware buffer size
+
+stations:
+  - id: trojka
+    name: Trójka
+    default: true
+    aliases: [trójka, trojka, "program trzeci", "trzeci program", "polskie radio trójka",
+              "polskie radio program 3", "program 3", "radio trójka", "channel three"]
+    url: "http://mp3.polskieradio.pl:8904/"
+    tags: [polskie-radio, music, talk, pl]
+
+  - id: radio-krakow
+    name: Radio Kraków
+    aliases: [radio kraków, radio krakow, kraków, krakow, "local radio", "radio krakowa"]
+    url: "https://stream3.nadaje.com:9117/radiokrakow"
+    tags: [local, krakow, talk, pl]
+
+  - id: off-radio-krakow
+    name: OFF Radio Kraków
+    aliases: [off radio kraków, off radio krakow, "off radio", "off kraków", "off krakow"]
+    url: "https://stream4.nadaje.com:13333/offradiokrakow"
+    tags: [local, krakow, music, alternative, pl]
+
+  - id: rk-kultura
+    name: Radio Kraków Kultura
+    aliases: [radio kraków kultura, "rk kultura", "kraków kultura", "kultura"]
+    url: "https://stream4.nadaje.com:9777/RKKultura"
+    tags: [local, krakow, culture, pl]
+
+  - id: jedynka
+    name: Jedynka
+    aliases: [jedynka, "program pierwszy", "program 1", "polskie radio jedynka", "channel one"]
+    url: "http://mp3.polskieradio.pl:8900/"
+    tags: [polskie-radio, talk, pl]
+
+  - id: dwojka
+    name: Dwójka
+    aliases: [dwójka, dwojka, "program drugi", "program 2", "polskie radio dwójka", "channel two"]
+    url: "http://mp3.polskieradio.pl:8902/"
+    tags: [polskie-radio, culture, classical, pl]
+
+  - id: czworka
+    name: Czwórka
+    aliases: [czwórka, czworka, "program czwarty", "program 4", "polskie radio czwórka", "channel four"]
+    url: "http://mp3.polskieradio.pl:8906/"
+    tags: [polskie-radio, youth, music, pl]
+
+  - id: rmf-fm
+    name: RMF FM
+    aliases: [rmf, "rmf fm", "radio rmf"]
+    url: "http://195.150.20.242:8000/rmf_fm"
+    tags: [commercial, music, pl]
+
+  - id: radio-nowy-swiat
+    name: Radio Nowy Świat
+    aliases: [radio nowy świat, radio nowy swiat, "nowy świat", "nowy swiat"]
+    url: "https://stream.rcs.revma.com/ypqt40u0x1zuv"
+    tags: [independent, talk, music, pl]

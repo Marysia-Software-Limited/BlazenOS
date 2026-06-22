@@ -7,7 +7,7 @@
 version: 1
 
 active_engine: auto                      # auto | cpu | hailo
-active_model: qwen2.5-3b-instruct-q4_k_m # voice-mutable
+active_model: bielik-1.5b-v3-instruct-q4_k_m  # voice-mutable; Bielik (PL-first). 1.5B = ~2s/turn warm on 8GB CPU; 4.5B (~42s/turn) is the "larger brain" for 16GB/Hailo.
 
 # Sampling.
 temperature: 0.4
@@ -77,6 +77,34 @@ hailo:
 # Model catalogue. Each entry can be CPU-only, Hailo-only, or both.
 # `make models` downloads the variants that match the chosen engines.
 models:
+  # Bielik (SpeakLeash) — Polish-specialised, built on Qwen2.5 so English is
+  # retained. v3-small fits the 8 GB Pi 5; the 11B Polish leader needs 16 GB.
+  # On Open PL LLM Leaderboard (Instruct, 5-shot): Bielik-4.5B 56.1 vs
+  # Qwen2.5-3B 41.2; Bielik-1.5B 41.4 ≈ Qwen2.5-3B at half the size.
+  bielik-4.5b-v3-instruct-q4_k_m:
+    family: bielik
+    parameters_b: 4.5
+    cpu:
+      file: Bielik-4.5B-v3.0-Instruct-Q4_K_M.gguf
+      download_url: https://huggingface.co/second-state/Bielik-4.5B-v3.0-Instruct-GGUF/resolve/main/Bielik-4.5B-v3.0-Instruct-Q4_K_M.gguf
+      sha256: "<TBD>"
+      size_mb: 2880
+      ram_mb: 3600
+      pi5_cpu_ttft_ms: 450
+      pi5_cpu_tok_s: 8
+    license: Apache-2.0
+  bielik-1.5b-v3-instruct-q4_k_m:
+    family: bielik
+    parameters_b: 1.5
+    cpu:
+      file: Bielik-1.5B-v3.0-Instruct-Q4_K_M.gguf
+      download_url: https://huggingface.co/second-state/Bielik-1.5B-v3.0-Instruct-GGUF/resolve/main/Bielik-1.5B-v3.0-Instruct-Q4_K_M.gguf
+      sha256: "<TBD>"
+      size_mb: 970
+      ram_mb: 1400
+      pi5_cpu_ttft_ms: 300
+      pi5_cpu_tok_s: 16
+    license: Apache-2.0
   qwen2.5-3b-instruct-q4_k_m:
     family: qwen2.5
     parameters_b: 3
@@ -176,6 +204,8 @@ models:
     license: Apache-2.0
 
 allowed:
+  - bielik-4.5b-v3-instruct-q4_k_m
+  - bielik-1.5b-v3-instruct-q4_k_m
   - qwen2.5-3b-instruct-q4_k_m
   - qwen2.5-7b-instruct-q4_k_m
   - qwen2.5-1.5b-instruct-q4_k_m
@@ -194,8 +224,8 @@ auto_engine_rules:
 # Auto-downshift rules. Applied at boot if the requested model wouldn't
 # fit. Keep the chain short so behaviour is predictable.
 auto_downshift_chain:
-  - qwen2.5-7b-instruct-q4_k_m
-  - qwen2.5-3b-instruct-q4_k_m
+  - bielik-4.5b-v3-instruct-q4_k_m
+  - bielik-1.5b-v3-instruct-q4_k_m
   - qwen2.5-1.5b-instruct-q4_k_m
   - tinyllama-1.1b-q4_k_m
 

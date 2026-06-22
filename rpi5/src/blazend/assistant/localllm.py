@@ -1,4 +1,4 @@
-"""Local LLM adapter — Jessica's on-device brain (llama.cpp / Qwen2.5).
+"""Local LLM adapter — Jessica's on-device brain (llama.cpp / GGUF; default Bielik).
 
 The on-device counterpart to :class:`blazend.assistant.gemini.GeminiClient`:
 same public surface (:attr:`available`, :meth:`chat`) so the engine can prefer
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -60,7 +61,11 @@ def _llama_importable() -> bool:
 
 
 class LlmBackend(Protocol):
-    """Minimal seam over llama.cpp so tests can inject a fake."""
+    """Minimal seam over llama.cpp so tests can inject a fake.
+
+    ``generate_stream`` is optional — :meth:`LocalLlm.chat_stream` falls back to
+    a single :meth:`generate` chunk for backends that don't implement it.
+    """
 
     def generate(self, *, system: str, user: str) -> str: ...
 
@@ -106,14 +111,17 @@ class _LlamaCppBackend:
         self._seed = seed
         self._max_tokens = max_tokens
 
+    def _messages(self, system: str, user: str) -> list[dict[str, str]]:
+        return [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+
     def generate(self, *, system: str, user: str) -> str:
         # create_chat_completion applies the model's own chat template from the
-        # GGUF metadata (Qwen2.5 ChatML) — no manual prompt formatting.
+        # GGUF metadata (e.g. Bielik or Qwen2.5 ChatML) — no manual formatting.
         out = self._llm.create_chat_completion(
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
+            messages=self._messages(system, user),
             temperature=self._temperature,
             top_p=self._top_p,
             top_k=self._top_k,
@@ -122,6 +130,23 @@ class _LlamaCppBackend:
             max_tokens=self._max_tokens,
         )
         return str(out["choices"][0]["message"]["content"]).strip()
+
+    def generate_stream(self, *, system: str, user: str) -> Iterator[str]:
+        """Yield reply token text as llama.cpp produces it (``stream=True``)."""
+        stream = self._llm.create_chat_completion(
+            messages=self._messages(system, user),
+            temperature=self._temperature,
+            top_p=self._top_p,
+            top_k=self._top_k,
+            repeat_penalty=self._repeat_penalty,
+            seed=self._seed,
+            max_tokens=self._max_tokens,
+            stream=True,
+        )
+        for chunk in stream:
+            piece = chunk["choices"][0].get("delta", {}).get("content")
+            if piece:
+                yield str(piece)
 
 
 class LocalLlm:
@@ -188,3 +213,17 @@ class LocalLlm:
         return self._ensure_backend().generate(
             system=system or self.system_prompt, user=user
         )
+
+    def chat_stream(self, user: str, *, system: str | None = None) -> Iterator[str]:
+        """Stream the reply as token-text chunks (for sentence-sliced TTS).
+
+        Falls back to a single chunk (the whole reply) for backends without a
+        ``generate_stream`` — e.g. the deterministic fakes used in tests.
+        """
+        backend = self._ensure_backend()
+        sys = system or self.system_prompt
+        stream = getattr(backend, "generate_stream", None)
+        if stream is None:
+            yield backend.generate(system=sys, user=user)
+            return
+        yield from stream(system=sys, user=user)

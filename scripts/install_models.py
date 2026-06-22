@@ -79,6 +79,10 @@ def handle_entry(kind: str, name: str, entry: dict, *, hailo_only: bool = False)
     # Flat entry (asr/tts/wake-word):
     if "download_url" in entry and "file" in entry:
         _download_subentry(kind, name, "flat", entry)
+    # Multi-file entry (e.g. embeddings: onnx + tokenizer into one dir):
+    if not hailo_only:
+        for sub in entry.get("files", []) or []:
+            _download_subentry(kind, name, str(sub.get("file", "file")), sub)
 
 
 def _download_subentry(kind: str, name: str, slot: str, sub: dict) -> None:

@@ -1,28 +1,28 @@
-id: 06-pl-wake-word
-language: pl
+id: 06-en-wake-word
+language: en
 description: >-
-  Polski wake word ("hej Jessico") aktywuje się, zostaje potwierdzony, a komenda
-  wypowiedziana zaraz po nim jest przechwycona bez użycia rąk i obsłużona.
-tags: [smoke, wake, hands-free, pl]
-synth_voice: pl_PL-gosia-medium
+  English wake word ("hey Jessica") fires, is acknowledged, and a command spoken
+  right after it is captured hands-free and handled on-device.
+tags: [smoke, wake, hands-free, en]
+synth_voice: en_US-lessac-medium
 preconditions:
   audio.volume: 50
   wake_word.active: [jessica_en, jessica_pl]
 turns:
-  - user: "hej Jessico"
+  - user: "hey Jessica"
     expect:
       wake_acknowledged: true
-      wake_word.last_fired: jessica_pl
-      detected_language: pl
+      wake_word.last_fired: jessica_en
+      detected_language: en
       led: blue
       latency_ms_max: 250
 
   # Hands-free: spoken inside the conversation window, captured from the ring
   # (no second wake), routed on-device.
-  - user: "zapamiętaj że kod do bramy to 4729"
+  - user: "remember that the gate code is 4729"
     expect:
       assistant_says_contains: "4729"
-      assistant_language: pl
+      assistant_language: en
 postconditions:
   no_unit_restarts: true
   latency_budget:
