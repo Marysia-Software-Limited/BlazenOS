@@ -30,7 +30,11 @@
  * Non-negative values are real outcomes; negative values are errors
  * (see `JESSICA_ERR_*` constants for the encoded reasons).
  */
-enum JessicaMergeOutcome {
+enum JessicaMergeOutcome
+#if __STDC_VERSION__ >= 202311L
+  : int32_t
+#endif // __STDC_VERSION__ >= 202311L
+ {
   /**
    * Fact stored fresh.
    */
@@ -48,6 +52,102 @@ enum JessicaMergeOutcome {
    */
   JESSICA_MERGE_OUTCOME_RESOLVED_KEEP_LOCAL = 3,
 };
+#if __STDC_VERSION__ >= 202311L
+typedef enum JessicaMergeOutcome JessicaMergeOutcome;
+#else
 typedef int32_t JessicaMergeOutcome;
+#endif // __STDC_VERSION__ >= 202311L
+
+/**
+ * Opaque handle to the per-process Jessica state. Behind a `Mutex`
+ * so the iOS `MainActor` and the Android `Dispatchers.Main` can
+ * both reach it safely.
+ */
+typedef struct JessicaHandle JessicaHandle;
+
+/**
+ * Create a new Jessica state handle.
+ *
+ * The caller owns the returned pointer and MUST eventually call
+ * [`jessica_ffi_free`] on it.
+ */
+struct JessicaHandle *jessica_ffi_new(void);
+
+/**
+ * Free a handle obtained from [`jessica_ffi_new`]. Calling with NULL
+ * is a no-op. Double-free is undefined behaviour.
+ */
+void jessica_ffi_free(struct JessicaHandle *handle);
+
+/**
+ * Free a string returned from [`jessica_ffi_match_intent`] or
+ * [`jessica_ffi_version`]. NULL is a no-op.
+ */
+void jessica_ffi_free_string(char *ptr);
+
+/**
+ * Library version string (NUL-terminated). The caller owns the
+ * returned buffer and MUST free it via [`jessica_ffi_free_string`].
+ */
+char *jessica_ffi_version(void);
+
+/**
+ * Load the YAML intent catalogue.
+ *
+ * Returns `JESSICA_OK` on success or one of the `JESSICA_ERR_*`
+ * constants on failure. The YAML format matches
+ * `blazen_os/configs/intents/system.yaml`.
+ */
+int32_t jessica_ffi_load_intents(struct JessicaHandle *handle,
+                                 const uint8_t *yaml_ptr,
+                                 uintptr_t yaml_len);
+
+/**
+ * How many intents are currently loaded.
+ */
+int64_t jessica_ffi_intent_count(struct JessicaHandle *handle);
+
+/**
+ * Match a spoken transcript against the loaded catalogue.
+ *
+ * Returns NULL when no intent matches. On a match, returns a
+ * heap-allocated NUL-terminated JSON string the caller owns and
+ * must free via [`jessica_ffi_free_string`].
+ *
+ * The JSON shape is the serde-default for [`IntentMatch`]:
+ * ```json
+ * {"name": "...", "language": "pl", "action": "...", "tool": null, "params": {}, "confirm": "never"}
+ * ```
+ */
+char *jessica_ffi_match_intent(struct JessicaHandle *handle,
+                               const uint8_t *transcript_ptr,
+                               uintptr_t transcript_len,
+                               const uint8_t *language_ptr,
+                               uintptr_t language_len);
+
+/**
+ * Merge an incoming fact into the local sync log.
+ *
+ * Returns one of [`JessicaMergeOutcome`] cast to `i32`, or a
+ * `JESSICA_ERR_*` value on bad input.
+ *
+ * `fact_json_ptr` must point at a buffer containing a valid
+ * [`Fact`](jessica_core::Fact) serialised as JSON.
+ */
+int32_t jessica_ffi_merge_fact(struct JessicaHandle *handle,
+                               const uint8_t *fact_json_ptr,
+                               uintptr_t fact_json_len);
+
+/**
+ * Number of distinct facts in the local sync log.
+ */
+int64_t jessica_ffi_fact_count(struct JessicaHandle *handle);
+
+/**
+ * Look up a fact by its ULID. Returns NULL when the id is unknown
+ * or on bad input. On success, returns a heap-allocated
+ * NUL-terminated JSON string the caller owns.
+ */
+char *jessica_ffi_get_fact(struct JessicaHandle *handle, const uint8_t *id_ptr, uintptr_t id_len);
 
 #endif  /* JESSICA_FFI_H */

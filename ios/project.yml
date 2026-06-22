@@ -9,7 +9,7 @@ name: Jessica
 options:
   bundleIdPrefix: os.blazen.jessica
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "26.0"
   developmentLanguage: pl
 
 settings:
@@ -32,7 +32,7 @@ targets:
   Jessica:
     type: application
     platform: iOS
-    deploymentTarget: "17.0"
+    deploymentTarget: "26.0"
     sources:
       - path: Jessica
         excludes:
@@ -63,6 +63,9 @@ targets:
           without touching the screen.
         NSSpeechRecognitionUsageDescription: >-
           Jessica turns your speech into text on-device.
+        NSPersonalVoiceUsageDescription: >-
+          Jessica can use your Personal Voice for a more natural
+          conversation experience.
     dependencies:
       - package: JessicaCore
         product: JessicaCore
@@ -70,7 +73,7 @@ targets:
   JessicaTests:
     type: bundle.unit-test
     platform: iOS
-    deploymentTarget: "17.0"
+    deploymentTarget: "26.0"
     sources:
       - path: JessicaTests
     dependencies:

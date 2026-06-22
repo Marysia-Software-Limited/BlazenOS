@@ -25,7 +25,10 @@ libc        = "0.2"
 jni        = { version = "0.21", default-features = false }
 
 [build-dependencies]
-cbindgen = "0.27"
+# 0.29+ understands the Rust 2024 `#[unsafe(no_mangle)]` attribute form used
+# in lib.rs; 0.27 silently skipped those fns, leaving the header without the
+# `jessica_ffi_*` declarations the iOS/Swift seam needs.
+cbindgen = "0.29"
 
 [dev-dependencies]
 serde_json = { workspace = true }
