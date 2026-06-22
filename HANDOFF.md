@@ -65,18 +65,18 @@ Goal: produce a flashable **dev `.img`** with the **maintainer's Mac key
 baked in** so they can `ssh blazen@jessica` from the Mac after booting it.
 
 ```bash
-# 0. Sync
-cd ~/dev/blazen_os && git pull --ff-only origin main   # expect aeb5897+ ; reconcile any paul-local divergence first
+# 0. Sync (the launcher ./run-on-paul.sh does this step for you)
+cd ~/dev/blazen_os && git pull --ff-only origin main   # expect 974fe85+ ; reconcile any paul-local divergence first
 
-# 1. Get the Mac pubkey onto paul (maintainer runs from the Mac):
-#      scp ~/.ssh/id_ed25519.pub paul:/tmp/mac.pub
-#    (optionally append id_rsa.pub into the same file — authorized_keys is copied verbatim, multi-line OK)
+# 1. SSH keys are SHARED between the Mac and paul (confirmed 2026-06-22), so
+#    paul bakes its OWN key — no scp needed. The baked key is therefore
+#    valid from the Mac too. Key used in step 3: $HOME/.ssh/id_ed25519.pub.
 
 # 2. (Recommended) pre-bundle models so the Pi doesn't lazy-download on first wake:
 make models                       # faster-whisper small (PL default), Piper pl_PL-gosia + en_US-lessac, wake jessica.onnx
 
-# 3. Build the DEV raw image with the Mac key baked in:
-BLAZEN_DEV_SSH_PUBKEY=/tmp/mac.pub make pi-image-dev
+# 3. Build the DEV raw image with the shared key baked in:
+BLAZEN_DEV_SSH_PUBKEY=$HOME/.ssh/id_ed25519.pub make pi-image-dev
 #   → vm-images/blazen_os-0.0.1-dev.img  (~3 GB)
 #   (pi-image-dev = scripts/build-image.sh --format raw --dev; needs venv + rust-aarch64, both via the target)
 ```
