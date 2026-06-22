@@ -4,6 +4,136 @@ Created **2026-06-11** during the macOS → paul session transition.
 
 ---
 
+## Session log — 2026-06-22 (macOS → paul) — plan: dedicated appliance SD image + remote dev loop
+
+macOS Claude investigated **how to run blazen_os on the real `jessica` Pi 5
+from a dedicated SD-card image while developing from the Mac**, and is
+handing the **image build to the paul session**. Nothing was built or flashed
+this session — this is a plan + reconnaissance handoff. User decisions are
+already locked (see "Decisions" below); paul Claude can execute Phase 2
+directly.
+
+### Reconnaissance (verified live this session)
+
+- **`jessica` = 192.168.50.24** (`/etc/hosts` on the Mac; `jessica_wifi` =
+  .25). Reachable, ~0.6 ms. `beret@jessica` SSH works from the Mac
+  (Mac `id_rsa` is authorized). `blazen@jessica` is **denied** — the
+  appliance `blazen` user does not exist yet.
+- **`jessica` is NOT running the appliance image.** It's a **stock
+  Debian 13 trixie** Pi OS (kernel `6.18.33+rpt-rpi-2712`, aarch64) on a
+  **231 GB SD card** (`mmcblk0`: 512 M `/boot/firmware` + 230.8 G `/`),
+  139 G free, no Docker. It carries the **dev git checkout** at
+  `~/dev/blazen_os` (was at `90ba5f8`; its local divergence — README,
+  docs, `test_entrypoints.py`/`test_voice_main.py`/`test_voice_runner.py`,
+  `test_localllm.py`, `test_embeddings.py` — is now **already pushed to
+  origin** at `aeb5897`, so Phase 0 reconciliation is effectively done).
+- **WM8960 ReSpeaker HAT live** (ALSA card 2 `wm8960soundcard`, capture +
+  playback) + two HDMI cards (`vc4hdmi0/1`). `eth0` wired (.24) + `wlan0`
+  (.25), both on the LAN.
+- **Build-host survey:** Mac has `docker` + `qemu-img` but **no `cross`**
+  (macOS pi-gen is the unsupported path per `docs/15`). **paul** is
+  reachable, x86_64, Docker-OK — the documented, proven image rig
+  (build #14 succeeded there). jessica has space but no Docker and would
+  be circular to build on.
+- **Mac keys:** `~/.ssh/id_ed25519.pub` (`beret@aniela.local`) and
+  `id_rsa.pub`. The Mac currently authenticates to jessica with `id_rsa`.
+
+### The two-track model (key framing — don't conflate)
+
+| | **Track A — dev loop** (daily run/test/fix) | **Track B — appliance image** (the "dedicated SD card") |
+|---|---|---|
+| What | git checkout on stock Pi OS, run via `scripts/*.sh` + `make test-fast` | baked pi-gen `.img`: `blazen` user, code at `/usr/lib/blazen`, systemd `blazend-*` units |
+| Edit→run | seconds (push → pull → run) | ~30 min (rebuild → reflash → reboot) |
+| Card | **current 231 GB card** (already set up) | **dedicated 2nd card** |
+
+"Run, test, fix from the Mac" day-to-day = **Track A** (already ~90%
+working on jessica). **Track B** is occasional shipped-product validation.
+They live on **separate SD cards** (swap to switch); never flash the
+appliance image over the dev card or you lose the checkout.
+
+### Decisions (locked by the user this session)
+
+1. **Build host = paul** (proven x86_64 + Docker + `cross`).
+2. **Dedicated 2nd SD card** for the appliance image; keep jessica's
+   231 GB card as the dev environment.
+3. **dev flavor** (`make pi-image-dev`): login `blazen`, SSH on, baked
+   operator key, passwordless sudo, serial password fallback.
+
+### What paul Claude should do next (Track B — Phase 2: build the image)
+
+Goal: produce a flashable **dev `.img`** with the **maintainer's Mac key
+baked in** so they can `ssh blazen@jessica` from the Mac after booting it.
+
+```bash
+# 0. Sync
+cd ~/dev/blazen_os && git pull --ff-only origin main   # expect aeb5897+ ; reconcile any paul-local divergence first
+
+# 1. Get the Mac pubkey onto paul (maintainer runs from the Mac):
+#      scp ~/.ssh/id_ed25519.pub paul:/tmp/mac.pub
+#    (optionally append id_rsa.pub into the same file — authorized_keys is copied verbatim, multi-line OK)
+
+# 2. (Recommended) pre-bundle models so the Pi doesn't lazy-download on first wake:
+make models                       # faster-whisper small (PL default), Piper pl_PL-gosia + en_US-lessac, wake jessica.onnx
+
+# 3. Build the DEV raw image with the Mac key baked in:
+BLAZEN_DEV_SSH_PUBKEY=/tmp/mac.pub make pi-image-dev
+#   → vm-images/blazen_os-0.0.1-dev.img  (~3 GB)
+#   (pi-image-dev = scripts/build-image.sh --format raw --dev; needs venv + rust-aarch64, both via the target)
+```
+
+Footguns already documented (apply them): pinned pi-gen tag
+`2026-04-13-raspios-trixie-arm64`; `docker rm -v -f pigen_work` before a
+re-run after failure; `~/.cargo/bin/cross` not on `make`'s PATH (Makefile
+handles it); stale `deploy/*.img` shadowing (post_convert now drops them).
+Verify the rootfs by loopback as in the 2026-06-11 paul log
+(`blazen` login shell, `~blazen/.ssh/authorized_keys` = the Mac key,
+`ssh.service` enabled, `blazend-*` units enabled).
+
+**Then hand the artifact back to the Mac** for flashing (Track B
+Phase 3–4 happen on the Mac, which has the SD reader):
+
+```bash
+# maintainer runs from the Mac:
+scp paul:~/dev/blazen_os/vm-images/blazen_os-0.0.1-dev.img ~/dev/blazen_os/vm-images/
+diskutil list                                  # identify the dedicated card, e.g. /dev/disk4 (triple-check size)
+scripts/flash-sd.sh --image ~/dev/blazen_os/vm-images/blazen_os-0.0.1-dev.img --device /dev/disk4
+# swap card into the Pi, boot, then:
+ssh blazen@jessica   # or blazen@blazen.local
+systemctl is-active blazend.target ; cat /run/blazen/state.json   # expect ready: true
+```
+
+### Track A reference (the loop the maintainer uses most — Mac + jessica)
+
+Already proven green on this hardware (2026-06-15 log). No image needed:
+
+```bash
+# Mac ~/.ssh/config:  Host jessica / HostName 192.168.50.24 / User beret
+git commit -am '…' && git push origin main                          # on Mac
+ssh jessica 'cd ~/dev/blazen_os && git pull --ff-only && make test-fast'
+ssh -t jessica 'cd ~/dev/blazen_os && BLAZEN_REAL_AUDIO=1 BLAZEN_REAL_TTS=1 scripts/dev-run.sh'
+ssh -t jessica 'cd ~/dev/blazen_os && scripts/voice-run.sh'         # hands-free "Hej Jessico"
+```
+
+Fixes found on the appliance (Track B) are made in Track A, verified green,
+then the image is re-baked/reflashed — never hand-edit `/usr/lib/blazen`.
+
+### Open items / risks for paul Claude
+
+1. **paul-local divergence** — `git pull --ff-only` must be clean; reconcile
+   paul's own uncommitted work before building.
+2. **Models pre-bundle vs lazy-load** — `make models` HTTP errors are
+   non-fatal (image lazy-loads on first wake); bundle if first-boot network
+   is uncertain.
+3. **Hostname/IP after flash** — appliance `TARGET_HOSTNAME=blazen`. Same
+   `eth0` NIC MAC → likely same DHCP lease (`.24`, so `jessica` still
+   resolves); `blazen.local` (mDNS) also works.
+4. **Wi-Fi-only boot** would need `wpa_supplicant.conf` in the card's
+   `/boot/blazen-firstboot/` (`docs/06` §1); wired `eth0` needs nothing.
+5. **One Pi, two cards** — appliance and dev OS can't run simultaneously;
+   Track B is a physical card swap.
+
+---
+
 ## Session log — 2026-06-15 (jessica — REAL Pi 5) — first on-hardware bring-up
 
 First time the repo has been checked out and tested on **actual Pi 5
