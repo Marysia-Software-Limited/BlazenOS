@@ -17,6 +17,22 @@ embedded distro. The test pyramid is therefore deeper than usual.
 `make test` runs Tier 0–3. Tier 4 and 5 are gated by `make test-hw` and
 `make test-soak`.
 
+## Coverage target (2026-06-22)
+
+Python line coverage target is **≥ 80%** (`pytest --cov=blazend`), weighted
+toward **integration/e2e** rather than thin unit tests: the highest-value
+suites exercise the **voice loop** (`blazend.voice.runner` + the
+`voice/__main__` wiring: wake → capture → ASR → brain → TTS, plus the
+`radio_play`/`radio_stop` and streamed-TTS paths) and the **unit entrypoints**
+(`*/__main__.py`) with all I/O (sockets, models, audio, subprocess, network)
+mocked. New this session: `blazend-player` has Rust unit tests
+(`cargo test -p blazend-player`: URL detection, content-type hints, gain
+clamping); the radio path is integration-tested through `StreamPlayer`
+(subprocess spawn monkeypatched). The marginal WM8960 mic (Tier 4 / HIL) is a
+hardware limitation, not a test gap — see [`02-HARDWARE.md`](02-HARDWARE.md).
+Coverage is informational, not a hard CI gate; `make test-fast` (lint + Tier
+0+1) remains the merge gate.
+
 ## Tier 0 — Unit
 
 - **Python:** `pytest rpi5/tests/unit` — config schema validation, intent

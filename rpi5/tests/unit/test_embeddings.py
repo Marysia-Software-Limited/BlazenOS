@@ -6,11 +6,17 @@ with synthetic vectors. Mirrors the fake-backend pattern in test_assistant.py.
 """
 from __future__ import annotations
 
+import importlib.machinery
 import json
 import math
+import sys
+import types
 from datetime import datetime
 
-from blazend.assistant.embeddings import Embedder
+import numpy as np
+import pytest
+
+from blazend.assistant.embeddings import Embedder, EmbedderError, _OnnxBackend
 from blazend.assistant.memory import MemoryStore
 from blazend.config import Config
 
@@ -152,6 +158,142 @@ def test_semantic_search_floor_drops_all_when_nothing_relevant(tmp_path):
         )
         == []
     )
+
+
+# ---------------------------------------------------------------------------
+# _OnnxBackend + Embedder real-path coverage, with fake ORT + tokenizers.
+# ---------------------------------------------------------------------------
+
+
+class _FakeEncoding:
+    def __init__(self, ids, mask) -> None:
+        self.ids = ids
+        self.attention_mask = mask
+
+
+class _FakeTokenizer:
+    last_truncation: int | None = None
+
+    @classmethod
+    def from_file(cls, _path):  # noqa: ANN001, ANN206
+        return cls()
+
+    def enable_truncation(self, *, max_length: int) -> None:
+        _FakeTokenizer.last_truncation = max_length
+
+    def encode_batch(self, texts):  # noqa: ANN001
+        out = []
+        for i, _t in enumerate(texts):
+            n = i + 1
+            out.append(_FakeEncoding(list(range(1, n + 1)), [1] * n))
+        return out
+
+
+class _FakeInput:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+class _FakeSession:
+    def __init__(self, _model, *, providers) -> None:  # noqa: ANN001
+        self.providers = providers
+
+    def get_inputs(self):
+        return [_FakeInput("input_ids"), _FakeInput("attention_mask")]
+
+    def run(self, _outputs, feeds):  # noqa: ANN001
+        b, t = feeds["input_ids"].shape
+        # (B, T, H=3) of ones → mean-pool then L2-normalise downstream.
+        return [np.ones((b, t, 3), dtype=np.float32)]
+
+
+@pytest.fixture
+def _fake_onnx_deps(monkeypatch):
+    ort = types.ModuleType("onnxruntime")
+    ort.InferenceSession = _FakeSession
+    ort.__spec__ = importlib.machinery.ModuleSpec("onnxruntime", loader=None)
+    tok = types.ModuleType("tokenizers")
+    tok.Tokenizer = _FakeTokenizer
+    tok.__spec__ = importlib.machinery.ModuleSpec("tokenizers", loader=None)
+    monkeypatch.setitem(sys.modules, "onnxruntime", ort)
+    monkeypatch.setitem(sys.modules, "tokenizers", tok)
+
+
+def test_onnx_backend_encode_pools_and_normalises(_fake_onnx_deps, tmp_path):
+    model = tmp_path / "model.onnx"
+    tokenizer = tmp_path / "tokenizer.json"
+    model.write_bytes(b"\x00")
+    tokenizer.write_text("{}", encoding="utf-8")
+    backend = _OnnxBackend(model, tokenizer, max_seq=32)
+    assert _FakeTokenizer.last_truncation == 32
+
+    vecs = backend.encode(["a", "bb"])
+    assert len(vecs) == 2
+    for v in vecs:
+        assert len(v) == 3
+        assert abs(sum(x * x for x in v) - 1.0) < 1e-5  # L2-normalised
+
+
+def test_embedder_real_path_available_and_embeds(_fake_onnx_deps, tmp_path, monkeypatch):
+    """available True (deps + files present) → embed builds the ONNX backend."""
+    monkeypatch.setenv("BLAZEN_MODELS_DIR", str(tmp_path))
+    root = tmp_path / "embeddings" / "m"
+    root.mkdir(parents=True)
+    (root / "model.onnx").write_bytes(b"\x00")
+    (root / "tokenizer.json").write_text("{}", encoding="utf-8")
+
+    emb = Embedder(
+        config=_cfg(
+            {
+                "active_model": "m",
+                "e5_prefixes": {"query": "query: ", "passage": "passage: "},
+                "models": {
+                    "m": {
+                        "max_seq": 16,
+                        "files": [{"file": "model.onnx"}, {"file": "tokenizer.json"}],
+                    }
+                },
+            }
+        )
+    )
+    assert emb.available is True
+    out = emb.embed(["notatka"], kind="passage")
+    assert len(out) == 1 and len(out[0]) == 3
+
+
+def test_embed_empty_returns_empty():
+    emb = Embedder(config=_cfg({"active_model": "m", "models": {"m": {}}}), backend=_FakeBackend())
+    assert emb.embed([]) == []
+
+
+def test_ensure_backend_raises_without_configured_model():
+    emb = Embedder(config=_cfg({"active_model": "", "models": {}}))
+    with pytest.raises(EmbedderError, match="no active embedding model"):
+        emb.embed(["x"])
+
+
+def test_ensure_backend_raises_when_files_missing(tmp_path, monkeypatch):
+    monkeypatch.setenv("BLAZEN_MODELS_DIR", str(tmp_path))  # files absent
+    emb = Embedder(
+        config=_cfg(
+            {
+                "active_model": "m",
+                "models": {"m": {"files": [{"file": "model.onnx"}, {"file": "tokenizer.json"}]}},
+            }
+        )
+    )
+    with pytest.raises(EmbedderError, match="not found"):
+        emb.embed(["x"])
+
+
+def test_embed_wraps_backend_runtime_failure():
+    class _Boom:
+        def encode(self, _texts):  # noqa: ANN001
+            raise ValueError("onnx blew up")
+
+    emb = Embedder(config=_cfg({"active_model": "m", "models": {"m": {}}}), backend=_Boom())
+    with pytest.raises(EmbedderError, match="embedding failed"):
+        emb.embed(["x"])
 
 
 def test_note_loads_without_title_field(tmp_path):

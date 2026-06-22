@@ -73,25 +73,34 @@ automatically. See [`12-ML-ACCELERATOR.md`](12-ML-ACCELERATOR.md).
 
 | Model                          | Size  | Pi 5 CPU TTFT | Pi 5 CPU tok/s | Hailo-10H TTFT | Hailo-10H tok/s | 16 GB default | 8 GB default |
 |--------------------------------|------:|--------------:|---------------:|---------------:|----------------:|---------------|--------------|
+| **Bielik-1.5B-v3.0-Instruct-Q4_K_M** | 1.0 GB | (warm ~2 s/turn) | — | n/a | n/a | Alt | **Yes (PL-first)** |
+| Bielik-4.5B-v3.0-Instruct-Q4_K_M | 2.9 GB | (warm ~42 s/turn on CPU) | — | TBD | TBD | **Yes (larger brain)** | Opt-in (slow on CPU) |
 | Qwen2.5-1.5B-Instruct-Q4_K_M   | 1.0 GB | 300 ms       | 18             | n/a (rare)     | n/a             | —             | Low-RAM fallback |
-| **Qwen2.5-3B-Instruct-Q4_K_M** | 2.0 GB | 350 ms       | 12             | ~120 ms        | ~35             | **Yes**       | **Yes** |
+| Qwen2.5-3B-Instruct-Q4_K_M     | 2.0 GB | 350 ms       | 12             | ~120 ms        | ~35             | Alt           | Alt |
 | Qwen2.5-7B-Instruct-Q4_K_M     | 4.5 GB | 650 ms       | 6              | ~250 ms        | ~18             | Opt-in (16 GB only) | — |
 | Llama-3.2-3B-Instruct-Q4_K_M   | 2.0 GB | 400 ms       | 10             | ~140 ms        | ~32             | Alt           | Alt |
 | Phi-3.5-mini-Instruct-Q4_K_M   | 2.4 GB | 500 ms       | 9              | ~180 ms        | ~28             | Experimental  | Experimental |
 | TinyLlama-1.1B-Q4_K_M          | 700 MB | 200 ms       | 22             | n/a            | n/a             | Smoke tests only | Smoke tests only |
 
-> **Decision (2026-06-11):** **Qwen 2.5 3B** is the default on both
-> Pi 5 SKUs. Apache-2.0 license, strong multilingual instruction
-> following including Polish. **Qwen 2.5 7B Q4** is an **opt-in upgrade
-> on Pi 5 16 GB only** — better answers at ~2× the wall-clock cost; the
-> voice command *"use the larger brain"* / *"użyj większego mózgu"*
-> switches between 3B and 7B at runtime (a model reload of ~3 s).
-> Llama 3.2 is kept as an alternate for users who want Meta's tuning.
-> Hailo numbers are vendor reference figures and will be re-measured at
-> M9 on the bench.
+> **Decision (2026-06-22): switched the default to Bielik** (SpeakLeash,
+> Polish-first). Bielik v3-small is *built on Qwen2.5*, so it keeps Qwen's
+> English while lifting Polish sharply — Open PL LLM Leaderboard (Instruct,
+> 5-shot): **Bielik-4.5B 56.1 / Bielik-1.5B 41.4 vs Qwen2.5-3B 41.2**. The
+> **8 GB Pi 5 default is Bielik-1.5B** (warm ~2 s/turn, ~2 GB RAM, fluent
+> casual Polish, voice-appropriate short replies). **Bielik-4.5B is the
+> "larger brain"** (*"użyj większego mózgu"*) — best Polish that fits 8 GB
+> but **~42 s/turn on CPU**, so it's intended for the **16 GB reference or
+> the Hailo path**, not live CPU voice. GGUFs come from `second-state/…-GGUF`
+> (the speakleash repos ship only fp16/Q8). Small-model caveat: a 1.5B can
+> slip on facts (it called Kraków the capital) — factual/complex questions
+> escalate to Gemini per the routing rules. Qwen 2.5 stays in the catalogue
+> as an alternate; the 11B Bielik (Polish leaderboard champion, ~6.7 GB Q4)
+> needs 16 GB. Hailo figures are vendor reference, re-measured at M9.
+>
+> **(Prior, 2026-06-11):** Qwen 2.5 3B was the default; superseded above.
 
-Licenses: Qwen2.5 Apache-2.0; Llama 3.2 Llama Community License; Phi-3.5
-MIT; TinyLlama Apache-2.0.
+Licenses: Bielik v3 Apache-2.0; Qwen2.5 Apache-2.0; Llama 3.2 Llama
+Community License; Phi-3.5 MIT; TinyLlama Apache-2.0.
 
 ### Context window
 

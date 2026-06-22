@@ -50,9 +50,9 @@ niewidomym i słabowidzącym:
 1. Mikrofon ciągle nasłuchuje słowa wybudzającego (wake word).
 2. Po wybudzeniu lokalny model ASR (Whisper przez `faster-whisper`)
    zamienia mowę na tekst.
-3. Lokalny LLM (domyślnie Qwen 2.5 3B Q4 na llama.cpp; opcjonalnie
-   wariant `.hef` na akceleratorze Hailo) decyduje o intencji i
-   generuje odpowiedź — bez internetu.
+3. Lokalny LLM (domyślnie **Bielik 1.5B** — polski model SpeakLeash — na
+   llama.cpp; opcjonalnie wariant `.hef` na akceleratorze Hailo) decyduje
+   o intencji i generuje odpowiedź — bez internetu.
 4. Lokalny silnik TTS (Piper) odpowiada syntezą mowy.
 5. SSH jest **domyślnie włączony** do administracji (np. zmiana sieci
    Wi-Fi, przywrócenie systemu) — tylko z kluczem publicznym, bez żadnych
@@ -83,7 +83,7 @@ AI HAT+ (Tier 4 — patrz [`docs/08-TESTING.md`](docs/08-TESTING.md)).
 | Wake word | [openWakeWord](https://github.com/dscripka/openWakeWord) | Two models loop in parallel: `hey jessica` (EN) + `hej jessico` (PL). |
 | ASR | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | Multilingual `small` default — PL + EN out of the box. |
 | VAD | [silero-vad](https://github.com/snakers4/silero-vad) | End-of-utterance detection. |
-| LLM (CPU) | [llama.cpp](https://github.com/ggml-org/llama.cpp) | Qwen 2.5 3B Q4 default — multilingual PL/EN. See [docs/05-MODELS.md](docs/05-MODELS.md). |
+| LLM (CPU) | [llama.cpp](https://github.com/ggml-org/llama.cpp) | **Bielik 1.5B** default (Polish-first, SpeakLeash; built on Qwen2.5 so EN is retained); Bielik 4.5B = larger brain. See [docs/05-MODELS.md](docs/05-MODELS.md). |
 | LLM (accel) | [HailoRT](https://github.com/hailo-ai/hailort) | Optional `.hef` runtime on AI HAT+ — see [docs/12-ML-ACCELERATOR.md](docs/12-ML-ACCELERATOR.md). |
 | TTS | [Piper](https://github.com/rhasspy/piper) | Two voices warm: `pl_PL-darkman-medium` + `en_US-lessac-medium`. <100 ms first audio. |
 | Orchestrator | `blazend` (Python systemd service) | See [docs/01-ARCHITECTURE.md](docs/01-ARCHITECTURE.md). |

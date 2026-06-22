@@ -5,11 +5,18 @@ All tests inject a fake backend so they run with neither llama-cpp-python nor a
 """
 from __future__ import annotations
 
+import sys
+import types
 from pathlib import Path
 
 import pytest
 
-from blazend.assistant.localllm import LocalLlm, resolve_model_path
+from blazend.assistant.localllm import (
+    LlmError,
+    LocalLlm,
+    _LlamaCppBackend,
+    resolve_model_path,
+)
 from blazend.config import load
 
 REPO = Path(__file__).resolve().parents[3]
@@ -92,3 +99,111 @@ def test_chat_stream_falls_back_to_single_chunk_without_streaming():
     fake = FakeLlm("Jedno zdanie.")
     llm = LocalLlm(backend=fake)
     assert list(llm.chat_stream("hej")) == ["Jedno zdanie."]
+
+
+# ---------------------------------------------------------------------------
+# _LlamaCppBackend — driven with a fake `llama_cpp.Llama` (no real model).
+# ---------------------------------------------------------------------------
+
+
+class _FakeLlama:
+    """Stand-in for llama_cpp.Llama: canned chat completions, sync + stream."""
+
+    last_kwargs: dict = {}
+
+    def __init__(self, **kwargs) -> None:
+        _FakeLlama.last_kwargs = kwargs
+
+    def create_chat_completion(self, *, stream: bool = False, **_kw):
+        if not stream:
+            return {"choices": [{"message": {"content": "  Cześć!  "}}]}
+        chunks = [
+            {"choices": [{"delta": {"content": "Cześć"}}]},
+            {"choices": [{"delta": {"content": ". "}}]},
+            {"choices": [{"delta": {}}]},  # no content → skipped
+            {"choices": [{"delta": {"content": "Jak?"}}]},
+        ]
+        return iter(chunks)
+
+
+@pytest.fixture
+def _fake_llama_cpp(monkeypatch):
+    """Inject a fake `llama_cpp` module so the lazy import resolves to it."""
+    import importlib.machinery
+
+    mod = types.ModuleType("llama_cpp")
+    mod.Llama = _FakeLlama
+    mod.__spec__ = importlib.machinery.ModuleSpec("llama_cpp", loader=None)
+    monkeypatch.setitem(sys.modules, "llama_cpp", mod)
+    return mod
+
+
+def _backend(tmp_path) -> _LlamaCppBackend:
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"\x00")
+    return _LlamaCppBackend(
+        model,
+        n_ctx=2048,
+        n_threads=4,
+        n_batch=128,
+        use_mmap=True,
+        use_mlock=False,
+        temperature=0.4,
+        top_p=0.9,
+        top_k=40,
+        repeat_penalty=1.1,
+        seed=0,
+        max_tokens=64,
+    )
+
+
+def test_llamacpp_backend_generate(_fake_llama_cpp, tmp_path):
+    backend = _backend(tmp_path)
+    assert backend.generate(system="S", user="hej") == "Cześć!"  # stripped
+    assert _FakeLlama.last_kwargs["n_ctx"] == 2048
+    assert _FakeLlama.last_kwargs["n_gpu_layers"] == 0
+
+
+def test_llamacpp_backend_generate_stream(_fake_llama_cpp, tmp_path):
+    backend = _backend(tmp_path)
+    chunks = list(backend.generate_stream(system="S", user="hej"))
+    assert chunks == ["Cześć", ". ", "Jak?"]  # empty delta dropped
+
+
+def test_local_llm_uses_llamacpp_backend_when_model_present(_fake_llama_cpp, tmp_path, monkeypatch):
+    """End-to-end through LocalLlm: real `_ensure_backend` builds the llama backend."""
+    monkeypatch.setenv("BLAZEN_MODELS_DIR", str(tmp_path))
+    cfg = load("llm")
+    active = cfg.get("active_model")
+    file = cfg.get("models", {})[active]["cpu"]["file"]
+    model = tmp_path / "llm" / active / file
+    model.parent.mkdir(parents=True, exist_ok=True)
+    model.write_bytes(b"\x00")
+
+    llm = LocalLlm()
+    assert llm.available is True
+    assert llm.chat("hej") == "Cześć!"
+    assert list(llm.chat_stream("hej")) == ["Cześć", ". ", "Jak?"]
+
+
+def test_ensure_backend_raises_without_active_model(monkeypatch):
+    """No active_model in config → LlmError, not a crash."""
+
+    def fake_load(_name):
+        from blazend.config import Config
+
+        return Config(name="llm", data={}, sources=[])
+
+    monkeypatch.setattr("blazend.assistant.localllm.load", fake_load)
+    llm = LocalLlm()
+    assert llm.available is False
+    with pytest.raises(LlmError, match="no active_model"):
+        llm.chat("hej")
+
+
+def test_ensure_backend_raises_when_model_file_missing(monkeypatch, tmp_path):
+    """active_model set but the GGUF is absent → LlmError."""
+    monkeypatch.setenv("BLAZEN_MODELS_DIR", str(tmp_path))  # empty → file missing
+    llm = LocalLlm()
+    with pytest.raises(LlmError, match="not found"):
+        llm.chat("hej")

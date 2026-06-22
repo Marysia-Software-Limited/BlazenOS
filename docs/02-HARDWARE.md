@@ -80,6 +80,23 @@ the full integration, model preparation pipeline, and budget tables.
 3. **Any USB mic with ALSA support** — e.g., Jabra Speak 510, Anker
    PowerConf S3, Blue Snowball. Easier to source but no status LEDs.
 
+> **Live-rig finding (2026-06-22, `jessica` 8 GB).** The dev rig runs an
+> older **WM8960**-codec HAT on the **mainline `wm8960-soundcard`** overlay
+> (not the V2 `respeaker-2mic-v2_0` overlay above). On it, **mic capture is
+> marginal**: it captures almost entirely **sub-bass electrical rumble**
+> (~98 % of energy <100 Hz, dominant ~0–23 Hz) even in silence — the symptom
+> of an unbiased/floating analog input (MICBIAS not powered by this overlay;
+> verified: forcing MICBIAS via `i2cset` didn't revive it, and all of
+> LINPUT1/2/3 read pure DC). Real speech is only intelligible in a **thin
+> gain window** (`amixer -c <card> set Capture 45` + the `Boost Mixer
+> LINPUT1/RINPUT1` DAPM switches on **during** an active capture), spoken
+> **short, close, moderate volume** — then Whisper/wake work (wake scored
+> 0.99 once tuned). **Speaker/TTS output on the HAT is unaffected and works.**
+> Conclusion: the WM8960 HAT mic is **not reliable for hands-free voice**;
+> the robust fix is a **USB mic** (`blazend-audio-in`/cpal auto-selects it,
+> keep the HAT for speaker out) or the V2 HAT + its overlay. See the
+> `jessica-live-rig` engineering note.
+
 ### Speaker
 
 - For dev: any 3.5 mm or USB speaker.

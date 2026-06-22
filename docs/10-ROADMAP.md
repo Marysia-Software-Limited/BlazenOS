@@ -4,6 +4,24 @@ Milestones are sized to ship in 1–3 weeks each. Each milestone has an
 **exit criterion** that must be demonstrable before the next milestone
 starts.
 
+## Latest progress (2026-06-22, on-rig `jessica`)
+
+- **`blazend-player` (new Rust unit) landed** — buffered stream/file player
+  (symphonia mp3/aac/flac/ogg/wav + prebuffered jitter buffer → ALSA). Fixes
+  the internet-radio stutter from the old `ffmpeg -f alsa` path and adds local
+  recording playback; handles Shoutcast ICY. Python `StreamPlayer` spawns it.
+  Verified on the HAT: Trójka plays with **0 underruns**.
+- **Bielik is the on-device LLM** (was Qwen 2.5 3B). Default **Bielik-1.5B-v3**
+  on 8 GB (~2 s/turn warm, fluent Polish); **Bielik-4.5B-v3** is the larger
+  brain for 16 GB / Hailo (~42 s/turn on CPU). See [`05-MODELS.md`](05-MODELS.md).
+  Demonstrated end-to-end: voice/text → Bielik → Piper → HAT speaker.
+- **Hardware blocker found:** the WM8960 HAT **mic is marginal** on the
+  mainline overlay (captures sub-bass rumble; usable only in a thin gain
+  window) — see [`02-HARDWARE.md`](02-HARDWARE.md). Speaker/TTS path works.
+  A USB mic (or the V2 HAT overlay) is the reliable input fix.
+- **Test coverage push** to ≥80%, focused on integration/e2e (voice loop +
+  unit entrypoints). See [`08-TESTING.md`](08-TESTING.md).
+
 ## M0 — Scaffolding **(done — 2026-06-11)**
 
 - Docs (`README`, `AGENTS.md`, `CLAUDE.md`, `docs/00..14`).

@@ -62,7 +62,7 @@ if [ "$WANT_LIVE" = "1" ]; then
   fi
   rm -f "$BLAZEN_RUNTIME_DIR"/*.sock 2>/dev/null || true
   log "starting blazend-audio-in + blazend-wake"
-  "$CARGO_TARGET/blazend-audio-in" --device "${BLAZEN_AUDIO_DEVICE:-wm8960}" \
+  "$CARGO_TARGET/blazend-audio-in" --device "${BLAZEN_AUDIO_DEVICE:-plughw:CARD=wm8960soundcard,DEV=0}" \
     >>"$BLAZEN_RUNTIME_DIR/diag-audio-in.log" 2>&1 & PIDS+=($!)
   "$CARGO_TARGET/blazend-wake" >>"$BLAZEN_RUNTIME_DIR/diag-wake.log" 2>&1 & PIDS+=($!)
   sleep 1.5
