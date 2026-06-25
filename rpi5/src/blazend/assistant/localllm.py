@@ -27,6 +27,18 @@ class LlmError(RuntimeError):
     """Raised when a local LLM generation cannot be performed."""
 
 
+class Llm(Protocol):
+    """The chat surface the engine needs — satisfied by :class:`LocalLlm` and by
+    :class:`blazend.assistant.ollama.OllamaLlm` (the dev LAN-GPU backend)."""
+
+    @property
+    def available(self) -> bool: ...
+
+    def chat(self, user: str, *, system: str | None = None) -> str: ...
+
+    def chat_stream(self, user: str, *, system: str | None = None) -> Iterator[str]: ...
+
+
 def models_root() -> Path:
     """On-disk model tree. ``BLAZEN_MODELS_DIR`` overrides; else ``<repo>/models``.
 

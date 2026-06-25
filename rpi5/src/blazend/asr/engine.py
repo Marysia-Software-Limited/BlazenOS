@@ -104,16 +104,31 @@ def _resolve_model_dir(name: str) -> str:
 class _FasterWhisperBackend:
     """Real backend. Imports faster-whisper lazily (CPU, int8)."""
 
-    def __init__(self, model: str, compute_type: str, beam_size: int) -> None:
+    def __init__(
+        self, model: str, compute_type: str, beam_size: int, initial_prompt: str = ""
+    ) -> None:
         from faster_whisper import WhisperModel
 
         self._model = WhisperModel(
             _resolve_model_dir(model), device="cpu", compute_type=compute_type
         )
         self._beam_size = beam_size
+        # A short domain prompt biases the decoder toward the vocabulary the
+        # assistant actually hears (her name + common commands), which sharply
+        # cuts misreads like "która godzina" → "kto jedzie na" on the quiet HAT.
+        self._initial_prompt = initial_prompt or None
 
     def run(self, pcm: npt.NDArray[np.float32], language: str | None) -> BackendResult:
-        segments, info = self._model.transcribe(pcm, language=language, beam_size=self._beam_size)
+        segments, info = self._model.transcribe(
+            pcm,
+            language=language,
+            beam_size=self._beam_size,
+            initial_prompt=self._initial_prompt,
+            # Each utterance is an independent short command — don't carry text
+            # across (avoids faster-whisper's repeat-hallucination on noise).
+            condition_on_previous_text=False,
+            temperature=0.0,
+        )
         seg_list = list(segments)
         text = "".join(s.text for s in seg_list)
         if seg_list:
@@ -133,11 +148,14 @@ class Transcriber:
         self.language_mode: str = str(cfg.get("language", "auto"))  # auto | pl | en
         self.compute_type: str = str(cfg.get("compute_type", "int8"))
         self.beam_size: int = int(cfg.get("beam_size", 1))
+        self.initial_prompt: str = str(cfg.get("initial_prompt", ""))
         self._backend: WhisperBackend | None = backend
 
     def _ensure_backend(self) -> WhisperBackend:
         if self._backend is None:
-            self._backend = _FasterWhisperBackend(self.model, self.compute_type, self.beam_size)
+            self._backend = _FasterWhisperBackend(
+                self.model, self.compute_type, self.beam_size, self.initial_prompt
+            )
         return self._backend
 
     def transcribe(

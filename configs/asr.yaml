@@ -10,9 +10,17 @@ version: 1
 active: small                          # 8 GB baked default (medium needs 16 GB + a separate download)
 backend: faster-whisper
 compute_type: int8                     # int8 | int8_float32 | float16 (Hailo path overrides)
-beam_size: 1                           # set to 5 for batch / offline transcription
+beam_size: 5                           # push-to-talk → one short utterance at a time, so the
+                                       # extra beam-search cost is fine and accuracy matters more
 language: pl                           # Polish-only mode: force PL (skips the auto-detect
                                        # first pass → faster + more accurate). auto | en | pl | de
+# Domain prompt: biases the decoder toward the words Jessica actually hears (her
+# name + the common commands), which sharply reduces misreads on the quiet HAT
+# mic (e.g. "która godzina" misheard as "kto jedzie na"). Keep it short.
+initial_prompt: >-
+  Rozmowa z asystentką głosową Dżesiką po polsku. Polecenia: Która godzina?
+  Jaka jest pogoda? Włącz radio Trójkę. Włącz Jedynkę. Włącz Radio Kraków.
+  Zatrzymaj. Ustaw budzik. Przypomnij mi. Co potrafisz?
 auto_detect:
   first_window_ms: 1000
   switch_threshold: 0.7

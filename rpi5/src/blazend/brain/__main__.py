@@ -17,11 +17,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 
 from blazend.assistant.engine import Assistant, Reply
-from blazend.assistant.localllm import LocalLlm
+from blazend.assistant.localllm import Llm, LocalLlm
+from blazend.assistant.ollama import OllamaLlm
 from blazend.assistant.openai import OpenAiClient
 from blazend.config import load
 from blazend.events import Envelope, system_event
@@ -145,10 +147,21 @@ async def run(mock: bool) -> None:
         require_wake = bool(load("wake-word").get("require_wake", True))
     except Exception:  # noqa: BLE001
         require_wake = True
-    # On-device LLM for freeform chat. Construction is cheap (the GGUF loads
-    # lazily on first chat); degrade to Gemini/canned if config is unreadable.
+    # LLM for freeform chat. Default is on-device Bielik (the GGUF loads lazily
+    # on first chat). For dev testing, BLAZEN_LLM_OLLAMA_URL points the brain at a
+    # LAN Ollama box (e.g. Bielik 11B on a GPU) — used instead of the slow Pi-CPU
+    # Bielik when reachable. Degrade to Gemini/canned if config is unreadable.
+    llm: Llm | None
     try:
-        llm: LocalLlm | None = LocalLlm()
+        ollama_url = os.environ.get("BLAZEN_LLM_OLLAMA_URL", "").strip()
+        remote = OllamaLlm(ollama_url) if ollama_url else None
+        if remote is not None and remote.available:
+            log.info("brain LLM: remote Ollama %s (model=%s)", remote.url, remote.model)
+            llm = remote
+        else:
+            if ollama_url:
+                log.warning("Ollama %s unreachable — using on-device Bielik", ollama_url)
+            llm = LocalLlm()
     except Exception:  # noqa: BLE001
         log.warning("local LLM unavailable; freeform chat will fall back to cloud")
         llm = None

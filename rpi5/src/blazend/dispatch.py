@@ -247,7 +247,12 @@ class IntentDispatcher:
     ) -> DispatchResult:
         now = now or datetime.now()
         if tool == "clock.time":
-            return DispatchResult(_t(lang, f"Jest {now:%H:%M}.", f"It's {now:%H:%M}."), lang, "tool")
+            # Spell the time out in Polish words so Piper says it naturally
+            # ("dwudziesta trzecia szesnaście") instead of mangling "23:16".
+            from blazend.assistant.plnum import time_words
+
+            pl = f"Jest godzina {time_words(now.hour, now.minute)}."
+            return DispatchResult(_t(lang, pl, f"It's {now:%H:%M}."), lang, "tool")
         if tool == "clock.date":
             return DispatchResult(_t(lang, f"Dziś jest {now:%d.%m.%Y}.", f"Today is {now:%Y-%m-%d}."),
                                   lang, "tool")

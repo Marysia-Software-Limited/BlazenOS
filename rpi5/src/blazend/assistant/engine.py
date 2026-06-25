@@ -18,7 +18,7 @@ from typing import Any
 from blazend.assistant import wake
 from blazend.assistant.embeddings import EmbedderError, EmbedderLike
 from blazend.assistant.gemini import GeminiClient, GeminiError
-from blazend.assistant.localllm import LlmError, LocalLlm
+from blazend.assistant.localllm import Llm, LlmError
 from blazend.assistant.memory import MemoryStore, Note
 from blazend.assistant.news import NewsClient, NewsError
 from blazend.assistant.openai import OpenAiClient, OpenAiError
@@ -243,7 +243,7 @@ class Assistant:
         *,
         memory: MemoryStore | None = None,
         gemini: GeminiClient | None = None,
-        llm: LocalLlm | None = None,
+        llm: Llm | None = None,
         openai: OpenAiClient | None = None,
         embedder: EmbedderLike | None = None,
         weather: WeatherClient | None = None,
@@ -455,7 +455,13 @@ class Assistant:
         """Tell the current time from the (NTP-synced) system clock — no network."""
         data = {"hour": now.hour, "minute": now.minute}
         if lang == "pl":
-            return Reply(f"Jest godzina {now:%H:%M}.", lang, "time", data)
+            # Spell the time out in Polish words so Piper says it naturally
+            # ("dwudziesta trzecia szesnaście") instead of mangling "23:16".
+            from blazend.assistant.plnum import time_words
+
+            return Reply(
+                f"Jest godzina {time_words(now.hour, now.minute)}.", lang, "time", data
+            )
         h12 = now.hour % 12 or 12
         ampm = "AM" if now.hour < 12 else "PM"
         return Reply(f"The time is {h12}:{now.minute:02d} {ampm}.", lang, "time", data)
