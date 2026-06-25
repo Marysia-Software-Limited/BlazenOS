@@ -27,8 +27,11 @@ use vad::{EnergyVad, VadEvent};
 
 /// ASR-facing capture rate; the ring always stores mono 16 kHz i16.
 const TARGET_RATE: u32 = 16_000;
-/// WM8960 HAT exposes the two analog mics as a stereo capture; we downmix.
-const CAPTURE_CHANNELS: u32 = 2;
+/// Capture mono and let `plughw` do any channel conversion — works for both the
+/// stereo WM8960 HAT (downmixes its two mics) and a mono USB mic (passes
+/// through). Opening a mono device as stereo scrambles the samples, so mono is
+/// the portable choice.
+const CAPTURE_CHANNELS: u32 = 1;
 
 #[derive(Parser, Debug)]
 #[command(name = "blazend-audio-in", version)]
@@ -65,6 +68,45 @@ struct Args {
     /// Minimum speech before an utterance opens (ms).
     #[arg(long, default_value_t = 150)]
     min_speech_ms: u32,
+    /// Maximum length of a single utterance (ms). The VAD force-closes at this
+    /// cap even if the energy never drops below `close_rms` — a safety net for a
+    /// noisy capture floor that would otherwise keep an utterance open forever
+    /// and starve ASR of segments.
+    #[arg(long, default_value_t = 8000)]
+    max_speech_ms: u32,
+    /// High-pass cutoff (Hz) applied to capture before the ring + VAD, to reject
+    /// low-frequency rumble and especially **mains hum** (50/60 Hz ground-loop),
+    /// which otherwise dominates the RMS and masks speech. `0` disables it.
+    /// Two cascaded one-pole stages (~12 dB/oct); speech formants pass intact.
+    #[arg(long, default_value_t = 180.0)]
+    hp_cutoff: f32,
+}
+
+/// One-pole high-pass: `y[n] = a·(y[n-1] + x[n] − x[n-1])`, `a = fs/(2π·fc+fs)`.
+/// State persists across capture chunks. Two in series give a 2nd-order roll-off
+/// — enough to push a 50 Hz hum ~20 dB below 300 Hz+ speech.
+struct HighPass {
+    a: f32,
+    px: f32,
+    py: f32,
+}
+
+impl HighPass {
+    fn new(fc: f32, fs: f32) -> Self {
+        let a = fs / (2.0 * std::f32::consts::PI * fc + fs);
+        Self {
+            a,
+            px: 0.0,
+            py: 0.0,
+        }
+    }
+    #[inline]
+    fn step(&mut self, x: f32) -> f32 {
+        let y = self.a * (self.py + x - self.px);
+        self.px = x;
+        self.py = y;
+        y
+    }
 }
 
 fn ring_path() -> std::path::PathBuf {
@@ -98,7 +140,8 @@ fn ts_from_pos(write_pos: u64) -> u64 {
 /// Open the capture PCM with **RW interleaved** access (not mmap) so the card's
 /// playback substream stays free for TTS. Requests mono-downmix-friendly
 /// stereo at the target rate; `plughw` converts from the codec's native clock.
-fn open_capture(device: &str, channels: u32) -> Result<alsa::pcm::PCM> {
+#[allow(dead_code)] // kept for reference; capture now goes via the arecord subprocess
+fn open_capture(device: &str, channels: u32) -> Result<(alsa::pcm::PCM, u32)> {
     use alsa::pcm::{Access, Format, HwParams, PCM};
     use alsa::{Direction, ValueOr};
     let pcm = PCM::new(device, Direction::Capture, false)
@@ -106,16 +149,46 @@ fn open_capture(device: &str, channels: u32) -> Result<alsa::pcm::PCM> {
     {
         let hwp = HwParams::any(&pcm)?;
         hwp.set_channels(channels)?;
-        hwp.set_rate(TARGET_RATE, ValueOr::Nearest)?;
+        // Don't force the rate: a raw `hw:` device (no plug resampler) may only
+        // support its native rate (e.g. a 48 kHz USB headset mic). Accept what
+        // it offers and decimate to TARGET_RATE in the read loop.
+        let _ = ValueOr::Nearest;
         hwp.set_format(Format::s16())?;
         hwp.set_access(Access::RWInterleaved)?;
-        let buf = (i64::from(TARGET_RATE) / 2).max(2048); // ~0.5 s
-        hwp.set_buffer_size_near(buf)?;
-        hwp.set_period_size_near((buf / 4).max(256), ValueOr::Nearest)?;
+        // Let ALSA/`plug` negotiate the buffer + period. Forcing small explicit
+        // sizes here fought the plug resampler on a 48 kHz-native USB mic (it
+        // needs ~3× slave buffering for 48 k→16 k) and produced attenuated,
+        // near-silent reads. `arecord` works precisely because it doesn't force
+        // these — so neither do we.
         pcm.hw_params(&hwp)?;
+        let neg_rate = hwp.get_rate().unwrap_or(0);
+        let neg_ch = hwp.get_channels().unwrap_or(0);
+        let neg_buf: i64 = hwp.get_buffer_size().unwrap_or(-1);
+        let neg_per: i64 = hwp.get_period_size().unwrap_or(-1);
+        tracing::warn!(
+            neg_rate,
+            neg_ch,
+            neg_buf,
+            neg_per,
+            "DIAG negotiated hwparams"
+        );
+    }
+    let actual_rate = {
+        let hwc = pcm.hw_params_current()?;
+        hwc.get_rate().unwrap_or(TARGET_RATE)
+    };
+    // Force start-on-first-frame via swparams, then prepare + start explicitly.
+    // Without this the capture stream can sit un-started and `readi` returns a
+    // steady near-silent floor (arecord sets this; we didn't).
+    {
+        let swp = pcm.sw_params_current()?;
+        swp.set_start_threshold(1)?;
+        swp.set_avail_min(1)?;
+        pcm.sw_params(&swp)?;
     }
     pcm.prepare()?;
-    Ok(pcm)
+    let _ = pcm.start();
+    Ok((pcm, actual_rate))
 }
 
 async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
@@ -130,46 +203,52 @@ async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
     thread::Builder::new()
         .name("alsa-capture".into())
         .spawn(move || {
-            let pcm = match open_capture(&dev, channels as u32) {
-                Ok(p) => {
+            use std::io::Read;
+            use std::process::{Command, Stdio};
+            // The hand-rolled alsa-crate `readi` path returned only a constant
+            // near-silent floor on this hardware (every rate/buffer/start config
+            // we tried), while `arecord` on the identical device captures
+            // cleanly. So let `arecord` (libasound) own the capture + any plug
+            // resampling, and read raw 16 kHz mono S16 from its stdout.
+            let mut child = match Command::new("arecord")
+                .args([
+                    "-D", &dev, "-q", "-t", "raw", "-f", "S16_LE", "-r", "16000", "-c", "1",
+                ])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+            {
+                Ok(c) => {
                     let _ = ready_tx.send(Ok(()));
-                    p
+                    c
                 }
                 Err(e) => {
-                    let _ = ready_tx.send(Err(format!("{e:#}")));
+                    let _ = ready_tx.send(Err(format!("arecord spawn failed: {e}")));
                     return;
                 }
             };
-            let io = match pcm.io_i16() {
-                Ok(io) => io,
-                Err(e) => {
-                    tracing::error!("ALSA io_i16: {e}");
-                    return;
-                }
+            let mut out = match child.stdout.take() {
+                Some(o) => o,
+                None => return,
             };
-            let period = (TARGET_RATE as usize / 10).max(160); // ~100 ms
-            let mut buf = vec![0i16; period * channels];
+            let mut bytes = [0u8; 3200]; // 1600 i16 frames = 100 ms @ 16 kHz mono
             loop {
-                match io.readi(&mut buf) {
-                    Ok(n) if n > 0 => {
-                        let mut mono = Vec::with_capacity(n);
-                        for frame in buf[..n * channels].chunks(channels) {
-                            let sum: i32 = frame.iter().map(|&s| i32::from(s)).sum();
-                            mono.push((sum / channels as i32) as f32 / 32768.0);
-                        }
+                match out.read(&mut bytes) {
+                    Ok(0) => break, // arecord exited
+                    Ok(n) => {
+                        let usable = n - (n % 2);
+                        let mono: Vec<f32> = bytes[..usable]
+                            .chunks_exact(2)
+                            .map(|b| f32::from(i16::from_le_bytes([b[0], b[1]])) / 32768.0)
+                            .collect();
                         if tx.send(mono).is_err() {
                             break; // consumer gone
                         }
                     }
-                    Ok(_) => {}
-                    Err(e) => {
-                        if pcm.try_recover(e, true).is_err() {
-                            tracing::error!("ALSA capture unrecoverable; stopping");
-                            break;
-                        }
-                    }
+                    Err(_) => break,
                 }
             }
+            let _ = child.kill();
         })?;
 
     match ready_rx.recv() {
@@ -199,6 +278,7 @@ async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
         args.close_mult,
         args.hangover_ms,
         args.min_speech_ms,
+        args.max_speech_ms,
         args.frame_ms,
     );
     let frame_size = (TARGET_RATE * args.frame_ms / 1000).max(1) as usize;
@@ -206,14 +286,79 @@ async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
 
     let mut frame_acc: Vec<i16> = Vec::with_capacity(frame_size);
     let mut last_heartbeat_pos: u64 = 0;
+    // Most recent capture-chunk RMS, surfaced in the heartbeat log so we can see
+    // what the VAD is actually hearing. Assigned at the top of every iteration
+    // before the heartbeat reads it.
+    let mut last_chunk_rms: f32;
+
+    // Two cascaded one-pole high-pass stages reject the 50/60 Hz mains hum that
+    // otherwise dominates the capture RMS (measured ~650 of hum masking speech).
+    // Applied to the f32 stream before both the ring (so ASR sees clean audio)
+    // and the VAD. `hp_cutoff == 0` disables filtering.
+    let hp_on = args.hp_cutoff > 0.0;
+    let mut hp1 = HighPass::new(args.hp_cutoff.max(1.0), TARGET_RATE as f32);
+    let mut hp2 = HighPass::new(args.hp_cutoff.max(1.0), TARGET_RATE as f32);
+    if hp_on {
+        tracing::info!(cutoff_hz = args.hp_cutoff, "high-pass (anti-hum) enabled");
+    }
+
+    // Half-duplex marker set by blazend-audio-out while the speaker is playing.
+    let speaker_marker = runtime_dir().join("speaker-busy");
+    // Push-to-talk / wake activation marker: the HAT-button watcher (and, once a
+    // working model exists, the wake-word detector) create this file to open one
+    // listen window. Jessica is DEAF by default — she only listens after her name
+    // or the button activates her. This is also what keeps ASR from ever being
+    // flooded: under heavy ASR the WM8960 I2S floor spikes into the speech band,
+    // so an always-listening VAD self-feeds a runaway loop. PTT removes that.
+    let activate_marker = runtime_dir().join("activate");
+
+    let mut listening = false; // deaf until activated by button/wake
+                               // While listening, give the user a window to start speaking; if no speech
+                               // arrives, go deaf again rather than sit open (and risk a noise trigger).
+    let mut listen_deadline: Option<std::time::Instant> = None;
+    const LISTEN_WINDOW: Duration = Duration::from_secs(8);
 
     // The capturer already delivers mono 16 kHz (plughw converted), so no
-    // resample step is needed — convert to i16 and feed the ring + VAD.
+    // resample step is needed — high-pass, convert to i16, feed the ring + VAD.
     while let Some(mono) = rx.recv().await {
-        let i16v: Vec<i16> = mono.iter().map(|&x| f32_to_i16(x)).collect();
+        let i16v: Vec<i16> = mono
+            .iter()
+            .map(|&x| {
+                let s = if hp_on { hp2.step(hp1.step(x)) } else { x };
+                f32_to_i16(s)
+            })
+            .collect();
+        last_chunk_rms = vad::rms_i16(&i16v);
         ring.push(&i16v);
 
+        // Activation: the button watcher / wake detector touches `activate` to
+        // open a listen window. Consume it and start (or extend) listening.
+        if activate_marker.exists() {
+            let _ = std::fs::remove_file(&activate_marker);
+            if !listening {
+                tracing::info!("activated (button/wake) — listening");
+            }
+            listening = true;
+            listen_deadline = Some(std::time::Instant::now() + LISTEN_WINDOW);
+        }
+        // Close the window if the user never started speaking in time.
+        if let Some(dl) = listen_deadline {
+            if std::time::Instant::now() >= dl {
+                listening = false;
+                listen_deadline = None;
+            }
+        }
+        // Suppress while Jessica speaks (speaker-busy) OR while not activated. The
+        // ring keeps filling for continuity.
+        let marker = speaker_marker.exists();
+        let suppressed = marker || !listening;
+        if suppressed {
+            frame_acc.clear();
+        }
         for &sample in &i16v {
+            if suppressed {
+                break;
+            }
             frame_acc.push(sample);
             if frame_acc.len() == frame_size {
                 if let Some(event) = vad.push_frame(&frame_acc) {
@@ -221,6 +366,9 @@ async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
                     match event {
                         VadEvent::Start => {
                             tracing::info!("vad.start");
+                            // Speech began within the window — cancel the no-speech
+                            // timeout so a long utterance isn't cut off.
+                            listen_deadline = None;
                             publisher
                                 .publish(EventEnvelope::new(
                                     "blazend-audio-in",
@@ -238,6 +386,14 @@ async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
                                     Event::VadEnd { duration_ms },
                                 ))
                                 .await?;
+                            // One utterance per activation: go deaf until the next
+                            // button press / wake. This also means the ASR + Bielik
+                            // CPU burst that follows can't spike the capture floor
+                            // and re-open the VAD (the runaway flood).
+                            listening = false;
+                            listen_deadline = None;
+                            frame_acc.clear();
+                            break;
                         }
                     }
                 }
@@ -249,7 +405,11 @@ async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
         let pos = ring.write_pos();
         if pos - last_heartbeat_pos >= TARGET_RATE as u64 {
             last_heartbeat_pos = pos;
-            tracing::debug!(noise_floor = vad.noise_floor(), "heartbeat");
+            tracing::info!(
+                noise_floor = vad.noise_floor(),
+                chunk_rms = last_chunk_rms,
+                "heartbeat"
+            );
             publisher
                 .publish(EventEnvelope::new(
                     "blazend-audio-in",

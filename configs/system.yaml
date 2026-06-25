@@ -7,15 +7,25 @@ hostname: blazen
 locale: pl_PL.UTF-8
 timezone: Europe/Warsaw
 
-# Bilingual prototype: Polish is the primary language; English is co-equal
-# (parity still required). See docs/13-LANGUAGES.md.
+# Polish-only mode (operator choice): Jessica listens and speaks Polish only.
+# English parity is intentionally disabled here; flip `enabled`/`pinned` back to
+# restore the bilingual default. See docs/13-LANGUAGES.md.
 languages:
-  enabled: [pl, en]                          # Polish first (primary), English second
-  default: pl                                # used when detection confidence is low
+  enabled: [pl]                              # Polish only
+  default: pl
   detection:
     min_confidence: 0.6
     fall_back_to_wake_hint: true
-  pinned: null                               # set by voice; pl | en | null
+  pinned: pl                                 # forced Polish (pl | en | null)
+
+# Startup self-introduction — spoken once when the pipeline comes up so a
+# screenless user hears the system is alive. Polish-first; uses the default
+# language above. delay_s gives TTS + audio-out time to subscribe first.
+startup_greeting:
+  enabled: true
+  delay_s: 8                                  # grace for TTS + audio-out to subscribe on boot
+  pl: "Cześć, tu Dżesika. Jestem gotowa do pomocy."
+  en: "Hi, I'm Jessica. I'm ready to help."
 
 # Persona — see docs/product/02-PERSONA-AND-WAKE.md.
 persona:

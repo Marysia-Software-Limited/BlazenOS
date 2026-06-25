@@ -8,9 +8,14 @@ User=blazen
 Group=blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 ExecStart=/usr/lib/blazen/bin/blazend-health
-RuntimeDirectory=blazen
-RuntimeDirectoryMode=0750
-Restart=always                                # watchdog must come back fast
+# NOTE: deliberately NO `RuntimeDirectory=blazen` here. /run/blazen is owned by
+# the long-lived peers (audio-in/orchestrator/…); health only needs RW access to
+# it (below). Declaring RuntimeDirectory on this watchdog made systemd give it a
+# PRIVATE /run/blazen under ProtectSystem=strict, which churned on every restart
+# and broke its state.json writes (EROFS/ENOENT). ReadWritePaths binds the shared
+# dir instead.
+# watchdog must come back fast
+Restart=always
 RestartSec=1
 NoNewPrivileges=yes
 ProtectSystem=strict

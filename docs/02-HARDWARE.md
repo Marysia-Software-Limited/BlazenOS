@@ -116,14 +116,22 @@ mics, the 3 status LEDs, and a button in one solder-free board.
 
 Because there is no monitor, the system communicates state out-of-band:
 
+**Per-phase LEDs.** The HAT's 3 APA102 RGB LEDs each track one stage of a
+turn, so you can watch it flow down the board (`blazend.led.PipelineLeds`,
+driven by the orchestrator over SPI):
+
+| LED | Phase  | off | active colours |
+|-----|--------|-----|----------------|
+| 0   | LISTEN | asleep | **green** = listening for wake · **blue** = capturing speech |
+| 1   | THINK  | idle | **magenta** = ASR / NLU / Bielik thinking |
+| 2   | SPEAK  | idle | **blue** = synthesising / speaking (TTS) |
+
+Faults override all three: **yellow** = degraded / reprompt, **red** = error /
+recovery mode (SSH already on). The identical contract is mirrored to
+`/run/blazen/led.json` (`leds: [...]`) for the headless/VM path. Other cues:
+
 | Signal      | Meaning                                       |
 |-------------|-----------------------------------------------|
-| LED off     | System asleep / not listening.                |
-| LED green   | Listening for wake word.                      |
-| LED blue    | Wake detected, capturing utterance.           |
-| LED magenta | Processing (ASR/LLM).                         |
-| LED yellow  | Reprompt — please repeat.                     |
-| LED red     | Error — recovery mode (SSH already on).       |
 | Short beep  | Wake confirmed (configurable; default off).   |
 | Long beep   | Falling into SSH recovery mode.               |
 | Voice tone  | Optional persona tone marking state changes.  |

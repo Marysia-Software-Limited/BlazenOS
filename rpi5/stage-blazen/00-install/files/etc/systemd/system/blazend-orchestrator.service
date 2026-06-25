@@ -1,8 +1,12 @@
 [Unit]
 Description=blazen_os pipeline orchestrator (Python)
 PartOf=blazend.target
-After=blazend-health.service blazend-audio-in.service blazend-wake.service
-Wants=blazend-health.service blazend-audio-in.service blazend-wake.service \
+# NOTE: blazend-wake intentionally omitted — the orchestrator's `Wants=` is what
+# actually starts the pipeline, so listing wake here would pull it up even though
+# it's not enabled. Wake is disabled until a real wake model exists (always-listen
+# mode, require_wake=false); see the enable list in 00-install/01-run-chroot.sh.
+After=blazend-health.service blazend-audio-in.service
+Wants=blazend-health.service blazend-audio-in.service \
       blazend-asr.service blazend-brain.service blazend-tts.service \
       blazend-audio-out.service
 
@@ -14,8 +18,6 @@ WorkingDirectory=/usr/lib/blazen
 Environment=PYTHONPATH=/usr/lib/blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.orchestrator
-RuntimeDirectory=blazen
-RuntimeDirectoryMode=0750
 Restart=on-failure
 RestartSec=2
 TimeoutStopSec=10
@@ -32,7 +34,8 @@ ProtectControlGroups=yes
 RestrictSUIDSGID=yes
 RestrictNamespaces=yes
 LockPersonality=yes
-MemoryDenyWriteExecute=no                     # llama.cpp JIT path needs this off
+# llama.cpp JIT path needs this off
+MemoryDenyWriteExecute=no
 SystemCallFilter=@system-service
 
 [Install]

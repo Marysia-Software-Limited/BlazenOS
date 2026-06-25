@@ -85,6 +85,25 @@ HAT button delimits its own held window as a push-to-talk fallback.
   the wrong colours). Cycle every colour to check wiring: `python -m
   blazend.led_hw`.
 
+## Startup greeting + capabilities (`system.yaml`)
+
+`startup_greeting` makes Jessica introduce herself once, spoken by the orchestrator
+when the pipeline comes up (so a screenless user hears the system is alive). It is
+**Polish-first** and uses `languages.default`:
+
+```yaml
+startup_greeting:
+  enabled: true
+  delay_s: 8          # grace for TTS + audio-out to subscribe before speaking
+  pl: "Cześć, tu Jessica. Jestem gotowa do pomocy."
+  en: "Hi, I'm Jessica. I'm ready to help."
+```
+
+**"What can you do?"** is a fast-path intent (`what_can_you_do` in
+`intents/system.yaml`, `action: say`) that speaks a canned bilingual capability
+summary instantly; deeper "how does X work?" follow-ups fall through to the brain,
+whose `llm.yaml` system prompt lists the same functions so it can explain + advise.
+
 ## Conversation engine — local LLM + cloud layers
 
 Freeform chat is **on-device first**: `blazend.assistant.localllm.LocalLlm`

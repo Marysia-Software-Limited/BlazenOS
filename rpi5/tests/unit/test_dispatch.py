@@ -34,6 +34,19 @@ def _disp(tmp_path):
     return IntentDispatcher(INTENTS, POLICY, SettingsStore(tmp_path / "settings.json"))
 
 
+def test_say_action_speaks_bilingual_response(tmp_path):
+    """The `say` action (capabilities / help) returns the spec's PL/EN text."""
+    intents = {"intents": [{
+        "name": "what_can_you_do", "action": "say",
+        "response": {"pl": "Jestem Jessica.", "en": "I'm Jessica."},
+    }]}
+    d = IntentDispatcher(intents, POLICY, SettingsStore(tmp_path / "s.json"))
+    pl = d.dispatch("what_can_you_do", {}, "pl")
+    en = d.dispatch("what_can_you_do", {}, "en")
+    assert pl.action == "applied" and pl.speak == "Jestem Jessica."
+    assert en.speak == "I'm Jessica."
+
+
 def test_volume_mutate_no_confirm(tmp_path):
     d = _disp(tmp_path)
     r = d.dispatch("volume_up", {}, "pl")

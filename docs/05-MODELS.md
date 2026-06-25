@@ -73,8 +73,9 @@ automatically. See [`12-ML-ACCELERATOR.md`](12-ML-ACCELERATOR.md).
 
 | Model                          | Size  | Pi 5 CPU TTFT | Pi 5 CPU tok/s | Hailo-10H TTFT | Hailo-10H tok/s | 16 GB default | 8 GB default |
 |--------------------------------|------:|--------------:|---------------:|---------------:|----------------:|---------------|--------------|
-| **Bielik-1.5B-v3.0-Instruct-Q4_K_M** | 1.0 GB | (warm ~2 s/turn) | — | n/a | n/a | Alt | **Yes (PL-first)** |
-| Bielik-4.5B-v3.0-Instruct-Q4_K_M | 2.9 GB | (warm ~42 s/turn on CPU) | — | TBD | TBD | **Yes (larger brain)** | Opt-in (slow on CPU) |
+| **Bielik-4.5B-v3.0-Instruct-Q6_K** | 3.9 GB | 2700 ms | **2.2** (measured) | TBD | TBD | **Yes** | **Yes (PL-first default)** |
+| Bielik-1.5B-v3.0-Instruct-Q4_K_M | 1.0 GB | 650 ms | **9.6** (measured) | — | n/a | Alt | **Snappy fallback** |
+| Bielik-4.5B-v3.0-Instruct-Q4_K_M | 2.9 GB | ~450 ms | ~3 (est) | — | TBD | Alt | Alt (smaller, faster than Q6_K) |
 | Qwen2.5-1.5B-Instruct-Q4_K_M   | 1.0 GB | 300 ms       | 18             | n/a (rare)     | n/a             | —             | Low-RAM fallback |
 | Qwen2.5-3B-Instruct-Q4_K_M     | 2.0 GB | 350 ms       | 12             | ~120 ms        | ~35             | Alt           | Alt |
 | Qwen2.5-7B-Instruct-Q4_K_M     | 4.5 GB | 650 ms       | 6              | ~250 ms        | ~18             | Opt-in (16 GB only) | — |
@@ -85,13 +86,19 @@ automatically. See [`12-ML-ACCELERATOR.md`](12-ML-ACCELERATOR.md).
 > **Decision (2026-06-22): switched the default to Bielik** (SpeakLeash,
 > Polish-first). Bielik v3-small is *built on Qwen2.5*, so it keeps Qwen's
 > English while lifting Polish sharply — Open PL LLM Leaderboard (Instruct,
-> 5-shot): **Bielik-4.5B 56.1 / Bielik-1.5B 41.4 vs Qwen2.5-3B 41.2**. The
-> **8 GB Pi 5 default is Bielik-1.5B** (warm ~2 s/turn, ~2 GB RAM, fluent
-> casual Polish, voice-appropriate short replies). **Bielik-4.5B is the
-> "larger brain"** (*"użyj większego mózgu"*) — best Polish that fits 8 GB
-> but **~42 s/turn on CPU**, so it's intended for the **16 GB reference or
-> the Hailo path**, not live CPU voice. GGUFs come from `second-state/…-GGUF`
-> (the speakleash repos ship only fp16/Q8). Small-model caveat: a 1.5B can
+> 5-shot): **Bielik-4.5B 56.1 / Bielik-1.5B 41.4 vs Qwen2.5-3B 41.2**.
+>
+> **Update (2026-06-24, measured on a real Pi 5 8 GB, no swap): the default
+> is Bielik-4.5B-v3.0 Q6_K** (the richer-Polish brain). Empirically it fits
+> in 8 GB with **~3 GB headroom** alongside Whisper-small + Piper (mmap,
+> `use_mlock: false`; the `VmHWM` peak reads ~7.3 GB but that over-counts
+> reclaimable mmap page-cache — real working set ≈ 3.9 GB). The catch is
+> **speed: ~2.2 tok/s on CPU** (multi-second replies) — slowness is
+> compute-bound, so 16 GB doesn't fix it; the **Hailo path** is the route to
+> a big-and-fast brain. **Bielik-1.5B-v3.0 Q4_K_M is the snappy fallback**
+> (**9.6 tok/s**, ~2 GB, fluent casual Polish) via *"użyj mniejszego mózgu" /
+> "use the smaller brain"*. GGUFs come from `second-state/…-GGUF` (the
+> speakleash repos ship only fp16/Q8). Small-model caveat: a 1.5B can
 > slip on facts (it called Kraków the capital) — factual/complex questions
 > escalate to Gemini per the routing rules. Qwen 2.5 stays in the catalogue
 > as an alternate; the 11B Bielik (Polish leaderboard champion, ~6.7 GB Q4)

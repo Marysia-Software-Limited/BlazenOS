@@ -63,6 +63,20 @@ fn voice_for<'a>(lang: &str, pl: &'a Path, en: &'a Path) -> &'a Path {
     }
 }
 
+/// Respell the assistant's name for the Polish voice so Piper pronounces it like
+/// the English "Jessica" (≈ "dżesika") instead of with Polish letter values.
+/// Longer forms are replaced before shorter ones so "Jessica" doesn't degrade to
+/// "Dżesica" via the "Jess" rule; both capitalised and lower-case forms (plus the
+/// vocative "Jessico" and short "Jess") are covered.
+fn polish_name_phonetics(text: &str) -> String {
+    text.replace("Jessica", "Dżesika")
+        .replace("jessica", "dżesika")
+        .replace("Jessico", "Dżesiko")
+        .replace("jessico", "dżesiko")
+        .replace("Jess", "Dżes")
+        .replace("jess", "dżes")
+}
+
 /// Run Piper on `text`, returning raw mono i16 PCM at the voice's sample rate.
 async fn synthesize(piper: &str, voice: &Path, text: &str) -> Result<Vec<i16>> {
     let mut child = tokio::process::Command::new(piper)
@@ -136,6 +150,14 @@ async fn run_real(publisher: &Publisher, args: &Args) -> Result<()> {
         }
         let lang = language.unwrap_or_else(|| "pl".into());
         let voice = voice_for(&lang, &args.voice_pl, &args.voice_en);
+        // On the Polish voice, spell the assistant's name phonetically so Piper
+        // says it like the English "Jessica" (≈ "dżesika") rather than reading
+        // "Jessica" with Polish letter values. English voice keeps "Jessica".
+        let say = if lang == "en" {
+            say
+        } else {
+            polish_name_phonetics(&say)
+        };
         match synthesize(&args.piper, voice, &say).await {
             Ok(pcm) if !pcm.is_empty() => {
                 ring.push(&pcm);
@@ -199,5 +221,19 @@ mod tests {
         assert_eq!(voice_for("en", pl, en), en);
         assert_eq!(voice_for("de", pl, en), pl); // unknown → Jessica's Polish voice
         assert_eq!(voice_name(pl), "pl_PL-gosia-medium");
+    }
+
+    #[test]
+    fn polish_name_is_respelled_phonetically() {
+        assert_eq!(
+            polish_name_phonetics("Cześć, tu Jessica. Jestem gotowa."),
+            "Cześć, tu Dżesika. Jestem gotowa."
+        );
+        assert_eq!(polish_name_phonetics("Tak, Jessico?"), "Tak, Dżesiko?");
+        assert_eq!(polish_name_phonetics("mówi jessica"), "mówi dżesika");
+        // "Jessica" must not degrade to "Dżesica" via the short-form rule.
+        assert!(!polish_name_phonetics("Jessica").contains("Dżesica"));
+        // Polish text without the name is untouched.
+        assert_eq!(polish_name_phonetics("Która godzina?"), "Która godzina?");
     }
 }

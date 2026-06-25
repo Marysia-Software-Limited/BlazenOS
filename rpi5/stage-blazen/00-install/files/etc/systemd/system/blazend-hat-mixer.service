@@ -1,0 +1,15 @@
+[Unit]
+Description=blazen_os WM8960 HAT mixer setup (capture + playback routing)
+PartOf=blazend.target
+After=sound.target
+Wants=sound.target
+# Must run before anything opens the card for capture/playback.
+Before=blazend-audio-in.service blazend-audio-out.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/blazen-hat-mixer.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=blazend.target

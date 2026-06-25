@@ -563,3 +563,34 @@ intents:
         - "(jess|jessico),? poka(ż|z) (to |mi )?na (tablecie|ipadzie|ekranie)"
     action: tool_call
     tool: fabric.route_display
+
+  # Capabilities / help — Jessica explains what she can do (Polish-first). The
+  # fast-path gives an instant summary; follow-up "how does X work?" questions
+  # fall through to the brain, whose system prompt also lists these functions.
+  - name: what_can_you_do
+    triggers:
+      pl:
+        - "co (potrafisz|umiesz|robisz|mo(ż|z)esz (zrobi(ć|c)|dla mnie zrobi(ć|c)))"
+        - "w czym (mo(ż|z)esz|mi) pomo(ż|z)esz"
+        - "jakie masz (funkcje|mo(ż|z)liwo(ś|s)ci)"
+        - "do czego s(ł|l)u(ż|z)ysz"
+        - "^(pomoc|pomó(ż|z) mi)$"
+      en:
+        - "what can you do"
+        - "what are your (functions|capabilities|features)"
+        - "how can you help( me)?"
+        - "what do you do"
+        - "^help$"
+    action: say
+    response:
+      pl: >-
+        Jestem Jessica, twój głosowy asystent. Potrafię budzić się na „Hej
+        Jessico", rozmawiać po polsku i angielsku, sprawdzać wiadomości i strony
+        przez Gemini, oraz zapamiętywać notatki i przypomnienia. Powiedz na
+        przykład „przypomnij mi o spotkaniu o piątej" albo „co nowego w
+        wiadomościach". Zapytaj o szczegóły dowolnej funkcji, a wyjaśnię.
+      en: >-
+        I'm Jessica, your voice assistant. I can wake on "Hey Jessica", chat in
+        Polish and English, check the news and websites via Gemini, and remember
+        notes and reminders. Try "remind me about my meeting at five" or "what's
+        new in the news". Ask me about any function and I'll explain.

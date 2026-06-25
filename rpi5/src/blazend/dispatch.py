@@ -117,6 +117,14 @@ class IntentDispatcher:
             sig = {"tts_interrupt": "tts_interrupt", "orchestrator_sleep": "sleep",
                    "orchestrator_resume": "resume"}[action]
             return DispatchResult(language=lang, action="signal", signal=sig)
+        if action == "say":
+            # Canned, bilingual spoken response carried by the intent spec
+            # (e.g. the capabilities/help intent). Polish-first.
+            resp = spec.get("response", {})
+            return DispatchResult(
+                _t(lang, str(resp.get("pl", "")), str(resp.get("en", ""))),
+                lang, "applied", data={"intent": name},
+            )
         return DispatchResult(language=lang, action="noop", data={"intent": name})
 
     # -- mutate + confirmation ---------------------------------------------

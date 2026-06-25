@@ -41,17 +41,21 @@ pub struct EnergyVad {
     close_mult: f32,
     hangover_frames: u32,
     min_speech_frames: u32,
+    max_speech_frames: u32,
     frame_ms: u32,
     state: State,
     run: u32,
     speech_frames: u32,
     noise_floor: f32,
+    warmup_frames: u32,
+    frames_seen: u32,
 }
 
 impl EnergyVad {
     /// `*_rms` are absolute floor thresholds (linear i16 RMS); `*_mult` scale
     /// the learned ambient floor above them. `*_ms` are wall-clock windows
     /// quantised to whole `frame_ms` frames (min 1).
+    #[allow(clippy::too_many_arguments)] // flat tuning knobs; a struct adds churn
     pub fn new(
         open_rms: f32,
         close_rms: f32,
@@ -59,6 +63,7 @@ impl EnergyVad {
         close_mult: f32,
         hangover_ms: u32,
         min_speech_ms: u32,
+        max_speech_ms: u32,
         frame_ms: u32,
     ) -> Self {
         let frame_ms = frame_ms.max(1);
@@ -69,11 +74,21 @@ impl EnergyVad {
             close_mult,
             hangover_frames: (hangover_ms / frame_ms).max(1),
             min_speech_frames: (min_speech_ms / frame_ms).max(1),
+            // Hard cap on a single utterance: even if the close threshold never
+            // trips (a noisy capture floor that stays above `close` keeps the
+            // VAD nominally "speaking" forever), force an `End` here so the
+            // segment always flushes to ASR. Bounds latency and prevents the
+            // multi-minute stuck-open utterances seen on the WM8960.
+            max_speech_frames: (max_speech_ms / frame_ms).max(1),
             frame_ms,
             state: State::Idle,
             run: 0,
             speech_frames: 0,
             noise_floor: 0.0,
+            // Spend the first ~500 ms learning the ambient floor before the VAD
+            // is ever allowed to open. See the warm-up note in `push_frame`.
+            warmup_frames: (500 / frame_ms).max(1),
+            frames_seen: 0,
         }
     }
 
@@ -95,6 +110,21 @@ impl EnergyVad {
         let rms = rms_i16(frame);
         match self.state {
             State::Idle => {
+                // Warm-up: spend the first ~500 ms learning the ambient floor
+                // before the VAD may open. Without this, a capture-start
+                // transient opens an utterance while `noise_floor` is still 0,
+                // which freezes `effective_close` at the bare `close_rms` —
+                // below the real ambient — so the utterance never ends (the
+                // observed `vad.start` with no matching `vad.end`).
+                if self.frames_seen < self.warmup_frames {
+                    self.frames_seen += 1;
+                    if self.noise_floor == 0.0 {
+                        self.noise_floor = rms; // seed at once, don't crawl from 0
+                    } else {
+                        self.noise_floor += (rms - self.noise_floor) * NOISE_ALPHA;
+                    }
+                    return None;
+                }
                 if rms > self.effective_open() {
                     self.run += 1;
                     if self.run >= self.min_speech_frames {
@@ -112,6 +142,17 @@ impl EnergyVad {
             }
             State::Speaking => {
                 self.speech_frames += 1;
+                // Safety net: force the utterance closed once it reaches the max
+                // length, regardless of energy. Without this a capture floor that
+                // never drops below `close` would keep the VAD open indefinitely
+                // and no segment would ever reach ASR.
+                if self.speech_frames >= self.max_speech_frames {
+                    let duration_ms = self.speech_frames * self.frame_ms;
+                    self.state = State::Idle;
+                    self.run = 0;
+                    self.speech_frames = 0;
+                    return Some(VadEvent::End { duration_ms });
+                }
                 if rms < self.effective_close() {
                     self.run += 1;
                     if self.run >= self.hangover_frames {
@@ -149,8 +190,9 @@ mod tests {
     }
 
     // Defaults mirror configs/audio.yaml: floors 1800/1100, mults 2.5/1.6.
+    // Large max_speech (10 s) so the force-close cap doesn't perturb these tests.
     fn vad() -> EnergyVad {
-        EnergyVad::new(1800.0, 1100.0, 2.5, 1.6, 300, 120, 20)
+        EnergyVad::new(1800.0, 1100.0, 2.5, 1.6, 300, 120, 10_000, 20)
     }
 
     #[test]
@@ -171,9 +213,18 @@ mod tests {
         }
     }
 
+    /// Push enough quiet frames to clear the warm-up window so the VAD is
+    /// allowed to open. Mirrors the real boot: learn ambient, then listen.
+    fn warm_up(v: &mut EnergyVad) {
+        for _ in 0..30 {
+            assert_eq!(v.push_frame(&frame(0)), None);
+        }
+    }
+
     #[test]
     fn speech_then_silence_brackets_an_utterance() {
         let mut v = vad();
+        warm_up(&mut v);
         let min_speech_frames = 6; // 120 / 20
         let mut started = false;
         for _ in 0..min_speech_frames {
@@ -198,9 +249,66 @@ mod tests {
     }
 
     #[test]
+    fn warmup_prevents_stuck_open_on_startup_floor() {
+        // Regression: a real capture starts with a non-trivial ambient floor.
+        // Before the warm-up, a start transient opened the VAD while
+        // noise_floor was still 0, freezing effective_close at the bare
+        // close_rms (below ambient) so the utterance never ended. With a low
+        // close_rms and a steady ambient above it, the VAD must learn the floor
+        // during warm-up and therefore never open on the ambient at all.
+        let mut v = EnergyVad::new(1800.0, 100.0, 2.5, 1.6, 300, 120, 10_000, 20);
+        let mut opened = false;
+        for _ in 0..300 {
+            // 5 s of a steady 700-RMS ambient (well above the 100 close floor).
+            if v.push_frame(&frame(700)).is_some() {
+                opened = true;
+            }
+        }
+        assert!(
+            !opened,
+            "steady ambient must not open the VAD (learned as noise floor)"
+        );
+        assert!(
+            v.noise_floor() > 500.0,
+            "floor learned: {}",
+            v.noise_floor()
+        );
+    }
+
+    #[test]
+    fn force_close_flushes_when_close_never_trips() {
+        // A noisy capture floor that stays above `close` would keep the VAD
+        // open forever. With max_speech = 200 ms (10 frames), the utterance must
+        // force-close so the segment still reaches ASR.
+        let mut v = EnergyVad::new(1800.0, 1100.0, 2.5, 1.6, 300, 120, 200, 20);
+        warm_up(&mut v);
+        // Open on speech.
+        let mut started = false;
+        for _ in 0..6 {
+            if v.push_frame(&frame(6000)) == Some(VadEvent::Start) {
+                started = true;
+            }
+        }
+        assert!(started, "should open on speech");
+        // Sustained loud audio (never below close) — must still force-close at
+        // the 10-frame cap rather than running forever.
+        let mut ended = None;
+        for _ in 0..40 {
+            if let Some(ev @ VadEvent::End { .. }) = v.push_frame(&frame(6000)) {
+                ended = Some(ev);
+                break;
+            }
+        }
+        match ended {
+            Some(VadEvent::End { duration_ms }) => assert!(duration_ms > 0),
+            other => panic!("expected forced End, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn adapts_threshold_to_ambient_noise() {
         // Low absolute floor so the adaptive part dominates.
-        let mut v = EnergyVad::new(1000.0, 600.0, 2.5, 1.6, 300, 120, 20);
+        let mut v = EnergyVad::new(1000.0, 600.0, 2.5, 1.6, 300, 120, 10_000, 20);
         // Settle the noise floor to ~1000 of room noise (no Start — it's below
         // effective_open the whole time).
         for _ in 0..120 {

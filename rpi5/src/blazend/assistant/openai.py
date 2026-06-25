@@ -55,7 +55,14 @@ class OpenAiClient:
         temperature: float = 0.4,
         transport: Transport | None = None,
     ):
-        self.api_key = api_key if api_key is not None else os.environ.get("OPENAI_API_KEY", "")
+        # CHAT_GPT_KEY is the appliance's preferred name for the escalation key
+        # (complex / news / knowledge questions the local Bielik punts upstream);
+        # OPENAI_API_KEY stays accepted as the conventional fallback.
+        self.api_key = (
+            api_key
+            if api_key is not None
+            else (os.environ.get("CHAT_GPT_KEY") or os.environ.get("OPENAI_API_KEY", ""))
+        )
         self.model = model or os.environ.get("OPENAI_MODEL") or DEFAULT_MODEL
         self.temperature = temperature
         self._transport = transport or _http_transport

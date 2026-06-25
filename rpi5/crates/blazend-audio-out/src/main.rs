@@ -155,6 +155,43 @@ async fn run_real(args: &Args) -> Result<()> {
 
     let queue: Queue = Arc::new(Mutex::new(VecDeque::new()));
     let stream = build_output_stream(&device, &config, sample_format, channels, queue.clone())?;
+
+    // Half-duplex marker: while the speaker has audio queued, hold a marker file
+    // so blazend-audio-in suppresses its VAD. The HAT mic + speaker share one
+    // board, so without this Jessica hears her own greeting and replies — they
+    // self-trigger the VAD and flood ASR. Radio/audiobook is a SEPARATE player
+    // (blazend-player) that does NOT set this marker, so the user can still barge
+    // in with "stop" over a stream. A ~400 ms tail covers the ALSA buffer drain.
+    {
+        let queue = queue.clone();
+        let marker = runtime_dir().join("speaker-busy");
+        let _ = std::fs::remove_file(&marker); // clear any stale marker from a crash
+        tokio::spawn(async move {
+            let mut marked = false;
+            let mut empty_since: Option<std::time::Instant> = None;
+            loop {
+                let busy = !queue.lock().unwrap().is_empty();
+                if busy {
+                    empty_since = None;
+                    if !marked {
+                        let _ = std::fs::File::create(&marker);
+                        marked = true;
+                    }
+                } else if marked {
+                    let now = std::time::Instant::now();
+                    match empty_since {
+                        None => empty_since = Some(now),
+                        Some(t) if now.duration_since(t).as_millis() >= 400 => {
+                            let _ = std::fs::remove_file(&marker);
+                            marked = false;
+                        }
+                        _ => {}
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(40)).await;
+            }
+        });
+    }
     stream.play()?;
 
     let ring = open_ring(ring_path()).await;

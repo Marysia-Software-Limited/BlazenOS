@@ -11,10 +11,13 @@ starts.
   the internet-radio stutter from the old `ffmpeg -f alsa` path and adds local
   recording playback; handles Shoutcast ICY. Python `StreamPlayer` spawns it.
   Verified on the HAT: Trójka plays with **0 underruns**.
-- **Bielik is the on-device LLM** (was Qwen 2.5 3B). Default **Bielik-1.5B-v3**
-  on 8 GB (~2 s/turn warm, fluent Polish); **Bielik-4.5B-v3** is the larger
-  brain for 16 GB / Hailo (~42 s/turn on CPU). See [`05-MODELS.md`](05-MODELS.md).
-  Demonstrated end-to-end: voice/text → Bielik → Piper → HAT speaker.
+- **Bielik is the on-device LLM** (was Qwen 2.5 3B). Default **Bielik-4.5B-v3
+  Q6_K** (richer Polish) — MEASURED on Pi 5 8 GB, no swap: fits with ~3 GB
+  headroom alongside Whisper-small + Piper, but **slow at ~2.2 tok/s** on CPU
+  (multi-second replies); for snappier latency use 16 GB / Hailo or demote to
+  **Bielik-1.5B-v3** (9.6 tok/s, ~2 GB — the comfortable fallback). See
+  [`05-MODELS.md`](05-MODELS.md). Demonstrated end-to-end: voice/text → Bielik →
+  Piper → HAT speaker.
 - **Hardware blocker found:** the WM8960 HAT **mic is marginal** on the
   mainline overlay (captures sub-bass rumble; usable only in a thin gain
   window) — see [`02-HARDWARE.md`](02-HARDWARE.md). Speaker/TTS path works.

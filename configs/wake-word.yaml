@@ -16,7 +16,7 @@ score_window_ms: 1000
 # Wake gating: Jessica only acts on speech heard within `conversation_window_s`
 # after a "Hej Jessico" (each acted-on utterance re-opens the window for
 # follow-ups). require_wake=false makes her always-listening (dev/testing).
-require_wake: true
+require_wake: false
 conversation_window_s: 20
 
 # Hands-free capture (S5 `blazend.voice.runner`). After a wake fires and the

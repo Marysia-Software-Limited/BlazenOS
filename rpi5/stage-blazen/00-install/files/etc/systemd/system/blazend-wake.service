@@ -9,9 +9,12 @@ Type=simple
 User=blazen
 Group=blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
+# Resolve the relative model defaults (models/wake/*.onnx) against the baked
+# model tree, and point the `ort` crate at the onnxruntime shared lib the venv
+# ships (without it the crate aborts on startup instead of falling back).
+WorkingDirectory=/var/lib/blazen
+Environment=ORT_DYLIB_PATH=/usr/lib/blazen/.venv/lib/python3.13/site-packages/onnxruntime/capi/libonnxruntime.so.1.27.0
 ExecStart=/usr/lib/blazen/bin/blazend-wake
-RuntimeDirectory=blazen
-RuntimeDirectoryMode=0750
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=yes

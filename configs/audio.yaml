@@ -3,28 +3,33 @@
 version: 1
 
 input:
-  device: default                     # ALSA name; reference HW = ReSpeaker 2-Mics Pi HAT
-                                      # (WM8960 codec @ i2c 0x1a, overlay wm8960-soundcard,
-                                      # ALSA card "wm8960soundcard"); USB mic fallback
+  device: plughw:CARD=wm8960soundcard,DEV=0   # ReSpeaker 2-Mics Pi HAT (WM8960
+                                      # codec @ i2c 0x1a, overlay wm8960-soundcard).
+                                      # blazen-hat-mixer enables the PGA→ADC path
+                                      # + sets +30 dB; without that the mics read
+                                      # ~100× too quiet. USB mic = override device.
   sample_rate_hz: 16000
   channels: 1                         # ASR-facing mono; the HAT captures 2 mics, downmixed upstream
   frame_ms: 20
   ring_buffer_seconds: 3
   pre_roll_ms: 500
+  high_pass_hz: 180                   # 2nd-order HP before ring+VAD; kills 50 Hz mains hum
 
-  # Energy VAD in blazend-audio-in brackets utterances for the ASR. It is
-  # self-calibrating: it learns the ambient noise floor and scales the
-  # thresholds off it — `effective_open = max(open_rms, noise_floor*open_mult)`.
-  # `*_rms` are absolute floors (safety net); `*_mult` add headroom above
-  # whatever the room actually is, so it works without per-install tuning.
-  # Mirror the blazend-audio-in CLI flags (--open-rms, --open-mult, …).
+  # Energy VAD in blazend-audio-in brackets utterances for the ASR. On the
+  # WM8960 HAT the resting floor is high but STABLE (~4-6k) — but only because
+  # blazend-audio-in runs at real-time priority on a dedicated core (CPU0); under
+  # CPU contention the capture xruns and the floor spikes into the speech band.
+  # Near-field speech reads ~18k, so FIXED thresholds (mult 1.0, no adaptive
+  # inflation) cleanly separate them. Mirror the blazend-audio-in CLI flags.
+  # Re-tune together with the +30 dB capture gain in blazen-hat-mixer.sh.
   vad:
-    open_rms: 1800                    # absolute floor for speech-start
-    close_rms: 1100                   # absolute floor for silence
-    open_mult: 2.5                    # speech-start = ambient × this (min open_rms)
-    close_mult: 1.6                   # silence = ambient × this (min close_rms)
-    hangover_ms: 300                  # trailing silence before vad.end
-    min_speech_ms: 150                # minimum speech before vad.start
+    open_rms: 9000                    # speech-start (loud near-field ~18k clears it)
+    close_rms: 6000                   # silence (resting floor ~4-6k sits below it)
+    open_mult: 1.0                    # fixed thresholds — floor is stable via RT sched
+    close_mult: 1.0
+    hangover_ms: 700                  # trailing silence before vad.end
+    min_speech_ms: 120                # minimum speech before vad.start
+    max_speech_ms: 4000               # force-close cap so a noisy stretch can't starve ASR
 
 output:
   device: vc4hdmi0                    # TEMPORARY: HDMI, no speaker on the ReSpeaker

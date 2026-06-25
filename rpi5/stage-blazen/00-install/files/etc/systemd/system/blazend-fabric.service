@@ -10,8 +10,6 @@ User=blazen
 Group=blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 ExecStart=/usr/lib/blazen/bin/blazend-fabric
-RuntimeDirectory=blazen
-RuntimeDirectoryMode=0750
 Restart=on-failure
 RestartSec=3
 

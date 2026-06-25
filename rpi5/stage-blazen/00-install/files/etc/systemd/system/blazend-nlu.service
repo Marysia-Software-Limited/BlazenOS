@@ -11,10 +11,10 @@ Group=blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 # Intents YAML ships to /etc/blazen/intents/system.yaml (default lookup).
 ExecStart=/usr/lib/blazen/bin/blazend-nlu
-RuntimeDirectory=blazen
-RuntimeDirectoryMode=0750
 Restart=on-failure
 RestartSec=2
+# Off the real-time capture core (CPU0).
+AllowedCPUs=1-3
 NoNewPrivileges=yes
 ProtectSystem=strict
 ReadWritePaths=/run/blazen

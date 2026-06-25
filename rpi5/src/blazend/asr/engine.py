@@ -72,13 +72,44 @@ def _to_float32(pcm: npt.NDArray[np.int16] | npt.NDArray[np.float32]) -> npt.NDA
     return pcm.astype(np.float32) / 32768.0
 
 
+def _resolve_model_dir(name: str) -> str:
+    """Map an `asr.yaml` model name to a **baked local CT2 directory** when one
+    exists, so faster-whisper loads it offline instead of trying to download it
+    from HuggingFace. A bare name like ``small`` otherwise sends faster-whisper
+    to the Hub — which on the appliance both has no network and, under the unit's
+    ``ProtectHome=yes`` sandbox, fails reading ``~/.cache/huggingface/token``.
+
+    Already-a-path names pass through. Search order: ``BLAZEN_MODELS_DIR`` (the
+    repo convention), the appliance bake locations, then ``<cwd>/models``. Falls
+    back to the bare name (dev machines with network) if nothing local matches.
+    """
+    if os.path.isdir(name):
+        return name
+    roots: list[str] = []
+    env = os.environ.get("BLAZEN_MODELS_DIR")
+    if env:
+        roots.append(env)
+    roots += [
+        "/var/lib/blazen/models",
+        "/usr/lib/blazen/models",
+        os.path.join(os.getcwd(), "models"),
+    ]
+    for root in roots:
+        candidate = os.path.join(root, "asr", name)
+        if os.path.isdir(candidate):
+            return candidate
+    return name
+
+
 class _FasterWhisperBackend:
     """Real backend. Imports faster-whisper lazily (CPU, int8)."""
 
     def __init__(self, model: str, compute_type: str, beam_size: int) -> None:
         from faster_whisper import WhisperModel
 
-        self._model = WhisperModel(model, device="cpu", compute_type=compute_type)
+        self._model = WhisperModel(
+            _resolve_model_dir(model), device="cpu", compute_type=compute_type
+        )
         self._beam_size = beam_size
 
     def run(self, pcm: npt.NDArray[np.float32], language: str | None) -> BackendResult:

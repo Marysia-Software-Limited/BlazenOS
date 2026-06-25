@@ -11,11 +11,19 @@ Group=blazen
 WorkingDirectory=/usr/lib/blazen
 Environment=PYTHONPATH=/usr/lib/blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
+Environment=BLAZEN_MODELS_DIR=/var/lib/blazen/models
+# faster-whisper loads the BAKED CT2 model under /var/lib/blazen/models/asr/
+# (engine.py resolves the name → local dir). HF_HUB_OFFLINE makes any stray Hub
+# lookup fail fast instead of hanging on the network / the ProtectHome sandbox
+# (~/.cache/huggingface is unreadable here). OMP cap leaves headroom for Bielik.
+Environment=HF_HUB_OFFLINE=1
+Environment=OMP_NUM_THREADS=2
 ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.asr
-RuntimeDirectory=blazen
-RuntimeDirectoryMode=0750
 Restart=on-failure
 RestartSec=3
+# Keep heavy transcription OFF the capture core (CPU0 is reserved for real-time
+# audio-in). nlu + Bielik are pinned to 1-3 too.
+AllowedCPUs=1-3
 NoNewPrivileges=yes
 ProtectSystem=strict
 ReadWritePaths=/run/blazen /var/lib/blazen

@@ -176,6 +176,28 @@ stage_payload() {
   done
   install -m 0755 "$core_rust/blazend-fabric" "$out/blazen-rust/blazend-fabric"
 
+  # Full offline stack: bake model weights + a pre-built aarch64 ML wheelhouse
+  # into the image so first boot needs no network. Opt-in via BLAZEN_BAKE_MODELS=1
+  # (default off keeps the lean <1 GB lazy-download image). Inputs come from the
+  # host repo: models/ (via `make models`) and wheelhouse/ (built on a native
+  # aarch64 host with `pip wheel "rpi5[runtime]" -w wheelhouse`).
+  if [ "${BLAZEN_BAKE_MODELS:-0}" = "1" ]; then
+    if [ -d "$REPO_ROOT/models" ]; then
+      log "baking model weights into image (BLAZEN_BAKE_MODELS=1): $(du -sh "$REPO_ROOT/models" | cut -f1)"
+      mkdir -p "$out/blazen-models"
+      cp -R "$REPO_ROOT/models/"* "$out/blazen-models/"
+    else
+      warn "BLAZEN_BAKE_MODELS=1 but $REPO_ROOT/models missing — run 'make models' first"
+    fi
+    if [ -d "$REPO_ROOT/wheelhouse" ] && [ -n "$(ls -A "$REPO_ROOT/wheelhouse" 2>/dev/null)" ]; then
+      log "baking ML wheelhouse into image: $(du -sh "$REPO_ROOT/wheelhouse" | cut -f1)"
+      mkdir -p "$out/blazen-wheels"
+      cp -R "$REPO_ROOT/wheelhouse/"* "$out/blazen-wheels/"
+    else
+      warn "BLAZEN_BAKE_MODELS=1 but $REPO_ROOT/wheelhouse missing — ML deps will lazy-install on first boot"
+    fi
+  fi
+
   # Dev flavour: drop the marker + SSH key that 01-run-chroot.sh keys off.
   # These live only in the staging payload and are deleted by the chroot
   # script (rm -rf $STAGE), so they never ship in the rootfs.

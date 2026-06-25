@@ -8,12 +8,30 @@ Type=simple
 User=blazen
 Group=blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
-ExecStart=/usr/lib/blazen/bin/blazend-audio-in
-RuntimeDirectory=blazen
-RuntimeDirectoryMode=0750
+# WM8960 ReSpeaker capture, tuned on real hardware (see docs/05-MODELS.md):
+#  --device …wm8960…   capture PCM (the HAT mic; blazen-hat-mixer enables the
+#                      PGA→ADC path + sets +30 dB so speech reads ~18k RMS).
+#  --hp-cutoff 180     2nd-order high-pass to kill 50 Hz mains hum that would
+#                      otherwise dominate the RMS and mask speech.
+#  --open/--close 9000/6000 (mult 1.0)  fixed thresholds: the codec's resting
+#                      floor sits ~4-6k, loud near-field speech ~18k. Mults are
+#                      1.0 (no adaptive inflation) because the floor is stable
+#                      ONLY thanks to the real-time scheduling below.
+#  --max-speech-ms 4000  force-close cap so a noisy stretch can't hold an
+#                      utterance open forever and starve ASR of segments.
+ExecStart=/usr/lib/blazen/bin/blazend-audio-in --device plughw:CARD=wm8960soundcard,DEV=0 --hp-cutoff 180 --open-rms 9000 --open-mult 1.0 --close-rms 6000 --close-mult 1.0 --hangover-ms 700 --min-speech-ms 120 --max-speech-ms 4000
 Restart=on-failure
 RestartSec=2
 SupplementaryGroups=audio
+# Real-time capture on a DEDICATED core. Without this, when ASR (ctranslate2)
+# and Bielik (llama.cpp) saturate the 4 cores the capture thread xruns and the
+# mic noise floor spikes from ~5k into the ~20k speech band — no VAD threshold
+# can separate speech from that. FIFO priority + pinning CPU0 to capture (and
+# the heavy services to CPU1-3, see their units) keeps the floor stable.
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=80
+Nice=-15
+AllowedCPUs=0
 NoNewPrivileges=yes
 ProtectSystem=strict
 ReadWritePaths=/run/blazen

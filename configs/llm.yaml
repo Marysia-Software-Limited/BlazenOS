@@ -7,7 +7,7 @@
 version: 1
 
 active_engine: auto                      # auto | cpu | hailo
-active_model: bielik-1.5b-v3-instruct-q4_k_m  # voice-mutable; Bielik (PL-first). 1.5B = ~2s/turn warm on 8GB CPU; 4.5B (~42s/turn) is the "larger brain" for 16GB/Hailo.
+active_model: bielik-4.5b-v3-instruct-q6_k  # voice-mutable; Bielik (PL-first). 4.5B Q6_K = richer Polish. MEASURED on Pi 5 8 GB, no swap: fits with ~3 GB headroom alongside Whisper-small + Piper (mmap, use_mlock:false), but SLOW (~2.2 tok/s → multi-second replies). For snappier latency use a 16 GB Pi / Hailo, or demote to bielik-1.5b-v3-instruct-q4_k_m (9.6 tok/s) via "use the smaller brain".
 
 # Sampling.
 temperature: 0.4
@@ -23,12 +23,12 @@ summarise_at_tokens: 3072
 keep_last_turns: 8
 
 system_prompt: |
-  You are Jessica (casual: Jess; Polish vocative: Jessico), a voice-first
-  personal assistant. You run on a Raspberry Pi 5 in the user's home.
-  The user hears you through a speaker; they cannot see a screen.
+  You are Dżesika (the Polish spelling of "Jessica" — always write your name
+  this way), a voice-first personal assistant. You run on a Raspberry Pi 5 in
+  the user's home. The user hears you through a speaker; they cannot see a screen.
 
-  LANGUAGE: reply in the same language the user used (Polish or English;
-  Polish is the primary language). If you can't tell, default to Polish.
+  LANGUAGE: always reply in Polish, regardless of the language of the
+  question. Never answer in English. This unit runs in Polish-only mode.
   Keep replies short — one or two sentences unless the user asks for
   detail. The casual register is the default ("ok", "jasne", "robi się"
   / "sure", "got it") — switch to formal only on request.
@@ -44,8 +44,18 @@ system_prompt: |
   research" — escalate to Gemini per the routing rules in
   docs/product/04-CONVERSATION-MODES.md.
 
-  IDENTITY: you are Jessica everywhere. Code-names like "blazen" or
-  "rachel" are developer terms — never use them with the user.
+  IDENTITY: your name is Dżesika (write it exactly so). Code-names like
+  "blazen", "rachel" or the English "Jessica" spelling are developer terms —
+  never use them with the user.
+
+  CAPABILITIES: when the user asks what you can do or how a feature
+  works, explain and advise plainly. Your functions: (1) wake on your
+  name "Dżesika" or the button on the device; (2) converse in Polish; (3)
+  check the news and websites via Gemini; (4) remember notes and set
+  reminders (with Polish/English time parsing); (5) adjust settings by
+  voice (e.g. volume) and switch the active language or brain size.
+  Offer a concrete example when it helps, and say plainly if something
+  is outside what you can do.
 
   PRIVACY: when the user asks about cloud calls, what's stored, or
   what you know about them — read it back honestly per
@@ -93,17 +103,36 @@ models:
       pi5_cpu_ttft_ms: 450
       pi5_cpu_tok_s: 8
     license: Apache-2.0
+  # Q6_K = the "biggest comfortable" 4.5B on an 8 GB Pi 5 with NO swap:
+  # ~3.9 GB weights + KV ≈ 4.6 GB resident, leaving headroom for ASR/TTS/OS.
+  # The 11B Bielik needs 16 GB (won't fit 8 GB RAM-only). perf backfilled
+  # from the on-device benchmark.
+  bielik-4.5b-v3-instruct-q6_k:
+    family: bielik
+    parameters_b: 4.5
+    cpu:
+      file: Bielik-4.5B-v3.0-Instruct-Q6_K.gguf
+      download_url: https://huggingface.co/second-state/Bielik-4.5B-v3.0-Instruct-GGUF/resolve/main/Bielik-4.5B-v3.0-Instruct-Q6_K.gguf
+      sha256: "4bfc04bdfc0307a6d83c86f519d98de3d8957d84470ccdcb027ef7c5d5731300"
+      size_mb: 3910
+      ram_mb: 4500            # MEASURED working set on Pi 5 8 GB: ~3.9 GB model +
+                              # KV/buffers. Coexists with Whisper-small + Piper with
+                              # ~3 GB free, no swap (VmHWM reads ~7.3 GB but that
+                              # over-counts reclaimable mmap page-cache).
+      pi5_cpu_ttft_ms: 2700   # MEASURED (Polish prompts)
+      pi5_cpu_tok_s: 2        # MEASURED ~2.2 tok/s — slow; 16 GB/Hailo for comfort
+    license: Apache-2.0
   bielik-1.5b-v3-instruct-q4_k_m:
     family: bielik
     parameters_b: 1.5
     cpu:
       file: Bielik-1.5B-v3.0-Instruct-Q4_K_M.gguf
       download_url: https://huggingface.co/second-state/Bielik-1.5B-v3.0-Instruct-GGUF/resolve/main/Bielik-1.5B-v3.0-Instruct-Q4_K_M.gguf
-      sha256: "<TBD>"
+      sha256: "ea9cc250a6c65718c290fd963d8e3237b924ccfc7632f20a6127bba5904a50d9"
       size_mb: 970
-      ram_mb: 1400
-      pi5_cpu_ttft_ms: 300
-      pi5_cpu_tok_s: 16
+      ram_mb: 2000            # MEASURED peak RSS on Pi 5 8 GB (n_ctx 4096)
+      pi5_cpu_ttft_ms: 650    # MEASURED (Polish prompts)
+      pi5_cpu_tok_s: 10       # MEASURED ~9.6 tok/s — the comfortable fallback
     license: Apache-2.0
   qwen2.5-3b-instruct-q4_k_m:
     family: qwen2.5
@@ -204,6 +233,7 @@ models:
     license: Apache-2.0
 
 allowed:
+  - bielik-4.5b-v3-instruct-q6_k
   - bielik-4.5b-v3-instruct-q4_k_m
   - bielik-1.5b-v3-instruct-q4_k_m
   - qwen2.5-3b-instruct-q4_k_m

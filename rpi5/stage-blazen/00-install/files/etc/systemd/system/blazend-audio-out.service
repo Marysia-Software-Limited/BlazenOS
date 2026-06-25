@@ -9,8 +9,6 @@ User=blazen
 Group=blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 ExecStart=/usr/lib/blazen/bin/blazend-audio-out
-RuntimeDirectory=blazen
-RuntimeDirectoryMode=0750
 Restart=on-failure
 RestartSec=2
 SupplementaryGroups=audio

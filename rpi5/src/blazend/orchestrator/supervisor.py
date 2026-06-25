@@ -19,7 +19,8 @@ from blazend.config import load as load_config
 from blazend.dispatch import IntentDispatcher, SettingsStore
 from blazend.events import Envelope, system_event
 from blazend.ipc import Publisher, Subscriber, runtime_dir
-from blazend.led import LedSimulator
+from blazend.led import PipelineLeds
+from blazend.led_hw import open_status_led
 from blazend.recovery import for_level as recovery_for_level
 from blazend.state import StateWriter
 
@@ -49,10 +50,12 @@ class Orchestrator:
         self._runtime_dir = runtime_dir_ or runtime_dir()
         self._peers = tuple(peers)
         self._state = StateWriter(self._runtime_dir / "state.json")
-        self._led = LedSimulator(self._runtime_dir / "led.json")
+        self._led = PipelineLeds(self._runtime_dir / "led.json")
+        self._hwled = open_status_led()  # APA102 on the HAT, or a no-op without SPI
         self._publisher = Publisher(self._runtime_dir / "orchestrator.sock")
         self._dispatcher = dispatcher if dispatcher is not None else self._build_dispatcher()
         self._default_lang = self._load_default_lang()
+        self._greeting = self._load_greeting()
         self._require_wake, self._wake_window_s = self._load_wake_gating()
         self._awake_until = 0.0  # loop-clock deadline; speech acts only before it
         self._stop = asyncio.Event()
@@ -78,6 +81,48 @@ class Orchestrator:
             return str(load_config("system").data.get("languages", {}).get("default", "pl"))
         except Exception:  # noqa: BLE001
             return "pl"
+
+    @staticmethod
+    def _load_greeting() -> tuple[bool, float, str, str]:
+        """Startup self-introduction (Polish-first). Spoken once when the
+        pipeline comes up so a screenless user hears the system is alive.
+        Configurable via system.yaml: startup_greeting.{enabled,delay_s,pl,en}."""
+        pl = "Cześć, tu Jessica. Jestem gotowa do pomocy."
+        en = "Hi, I'm Jessica. I'm ready to help."
+        enabled, delay = True, 5.0
+        try:
+            g = load_config("system").data.get("startup_greeting", {}) or {}
+            enabled = bool(g.get("enabled", True))
+            delay = float(g.get("delay_s", 5.0))
+            pl = str(g.get("pl", pl))
+            en = str(g.get("en", en))
+        except Exception:  # noqa: BLE001
+            pass
+        return enabled, delay, pl, en
+
+    async def _announce_greeting(self) -> None:
+        """Speak the startup self-introduction once, after a short grace so the
+        TTS + audio-out peers have subscribed to this socket."""
+        enabled, delay, pl, en = self._greeting
+        if not enabled:
+            return
+        await asyncio.sleep(delay)
+        lang = self._default_lang
+        text = en if lang == "en" else pl
+        log.info("speaking startup greeting (%s)", lang)
+        await self._publisher.publish(
+            Envelope(
+                topic="brain.reply",
+                source="blazend-orchestrator",
+                data={
+                    "language": lang,
+                    "text": text,
+                    "chunk": text,
+                    "final_": True,
+                    "action": "system.greeting",
+                },
+            )
+        )
 
     def _recovery_lang(self) -> str:
         """Effective language for a fault cue: a voice pin, else the default."""
@@ -105,14 +150,19 @@ class Orchestrator:
         """Bind sockets, connect to peers, react until interrupted."""
         await self._publisher.bind()
         await self._state.update({"v": 1, "ready": False, "units": {}})
-        self._led.write()  # initial state (off)
+        self._led.write()  # initial state (idle: listening)
+        self._hwled.set_pixels(self._led.leds)
         log.info("orchestrator bound at %s", self._publisher._socket_path)  # noqa: SLF001
 
         # Connect to every peer (idempotent; missing peers are retried lazily).
         for name in self._peers:
             asyncio.create_task(self._peer_loop(name))
 
+        # Speak a one-time self-introduction once the pipeline is up.
+        asyncio.create_task(self._announce_greeting())
+
         await self._stop.wait()
+        self._hwled.close()  # blank the LEDs + release SPI
         await self._publisher.close()
         for _, sub in self._subscribers:
             await sub.close()
@@ -191,7 +241,8 @@ class Orchestrator:
                 patch["recovery"] = recovery
         if self._led.observe(env.topic, env.data):
             self._led.write()
-            patch["led"] = self._led.color
+            self._hwled.set_pixels(self._led.leds)  # paint the 3 phase LEDs
+            patch["led"] = self._led.leds
         await self._state.update(patch)
         await self._publisher.publish(
             system_event(source="blazend-orchestrator", kind="observed", detail=env.topic)

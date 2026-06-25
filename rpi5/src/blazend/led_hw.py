@@ -75,17 +75,23 @@ class StatusLed(Protocol):
     color: str
 
     def set(self, color: str) -> None: ...
+    def set_pixels(self, colors: list[str]) -> None: ...
     def close(self) -> None: ...
 
 
 class NullStatusLed:
-    """No-op LED for the VM / dev host (no SPI). Tracks the colour for tests."""
+    """No-op LED for the VM / dev host (no SPI). Tracks state for tests."""
 
     def __init__(self, *, initial: str = OFF) -> None:
         self.color = initial
+        self.pixels: list[str] = [initial]
 
     def set(self, color: str) -> None:
         self.color = color
+
+    def set_pixels(self, colors: list[str]) -> None:
+        self.pixels = list(colors)
+        self.color = next((c for c in colors if c != OFF), OFF)
 
     def close(self) -> None:  # nothing to release
         self.color = OFF
@@ -121,6 +127,22 @@ class Apa102Led:
             return
         self.color = color
         self._paint(color)
+
+    def set_pixels(self, colors: list[str]) -> None:
+        """Paint a per-LED colour list — one entry per LED on the chain.
+
+        Used for the 3 pipeline-phase LEDs (LISTEN / THINK / SPEAK). Unknown
+        names and short/long lists are clamped to OFF / the chain length.
+        """
+        pixels = [RGB.get(c, RGB[OFF]) for c in colors[: self._count]]
+        pixels += [RGB[OFF]] * (self._count - len(pixels))
+        self.pixels = list(colors)
+        self.color = next((c for c in colors if c != OFF), OFF)
+        frame = apa102_frame(pixels, brightness=self._brightness, order=self._order)
+        try:
+            self._spi.writebytes(list(frame))  # type: ignore[attr-defined]
+        except Exception as exc:  # noqa: BLE001 — never let the LED kill the loop
+            log.warning("APA102 write failed (%s); status LED disabled", exc)
 
     def _paint(self, color: str) -> None:
         frame = apa102_frame(

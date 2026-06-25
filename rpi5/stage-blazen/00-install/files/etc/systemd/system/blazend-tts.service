@@ -8,9 +8,12 @@ Type=simple
 User=blazen
 Group=blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
+# Resolve the relative voice defaults (models/tts/*.onnx) against the baked
+# model tree, and put the venv's `piper` CLI on PATH (the unit defaults to the
+# bare name `piper`, which otherwise isn't found → synth fails with ENOENT).
+WorkingDirectory=/var/lib/blazen
+Environment=PATH=/usr/lib/blazen/.venv/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=/usr/lib/blazen/bin/blazend-tts
-RuntimeDirectory=blazen
-RuntimeDirectoryMode=0750
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=yes
