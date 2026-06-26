@@ -75,5 +75,11 @@ stations:
   - id: radio-nowy-swiat
     name: Radio Nowy Świat
     aliases: [radio nowy świat, radio nowy swiat, "nowy świat", "nowy swiat"]
-    url: "https://stream.rcs.revma.com/ypqt40u0x1zuv"
+    url: "https://go-audio.toya.net.pl/63214"     # probed 2026-06: audio/mpeg (old revma URL died)
+    tags: [independent, talk, music, pl]
+
+  - id: radio-357
+    name: Radio 357
+    aliases: [radio 357, "357", "trzysta pięćdziesiąt siedem", "radio trzysta pięćdziesiąt siedem"]
+    url: "https://n-11-21.dcs.redcdn.pl/sc/o2/radio357/live/radio357_pr.livx?preroll=0"  # audio/aac
     tags: [independent, talk, music, pl]

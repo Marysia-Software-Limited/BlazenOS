@@ -98,6 +98,12 @@ systemctl --global mask pipewire.socket pipewire-pulse.socket pipewire.service \
   pipewire-pulse.service wireplumber.service filter-chain.service 2>/dev/null || true
 echo "=== blazend chroot: wake disabled (no real model) + PipeWire masked ==="
 
+# Sudoers files must be 0440 root:root or sudo refuses to load them. The rule
+# itself (files/etc/sudoers.d/blazen-audio-out) lets the orchestrator hand the
+# HAT speaker between TTS and the radio player.
+chmod 0440 /etc/sudoers.d/blazen-audio-out 2>/dev/null || true
+echo "=== blazend chroot: audio-out sudoers rule installed (radio HAT hand-off) ==="
+
 # --- User + permissions ---------------------------------------------------
 #
 # SSH is ON by default in BOTH flavours (see docs/06-SSH-BOOTSTRAP.md). The

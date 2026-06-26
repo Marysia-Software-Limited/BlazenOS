@@ -22,8 +22,12 @@ Restart=on-failure
 RestartSec=2
 TimeoutStopSec=10
 
-# Hardening.
-NoNewPrivileges=yes
+# Hardening. NoNewPrivileges + RestrictSUIDSGID are intentionally OFF: the radio
+# HAT hand-off shells out to `sudo systemctl start/stop blazend-audio-out`
+# (single ALSA playback channel — see orchestrator/radio_control.py), allowed by
+# the narrow /etc/sudoers.d/blazen-audio-out rule. sudo is setuid, so it needs
+# both. The rest of the sandbox stays.
+NoNewPrivileges=no
 PrivateTmp=yes
 ProtectSystem=strict
 ReadWritePaths=/run/blazen /var/lib/blazen
@@ -31,7 +35,7 @@ ProtectHome=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
-RestrictSUIDSGID=yes
+RestrictSUIDSGID=no
 RestrictNamespaces=yes
 LockPersonality=yes
 # llama.cpp JIT path needs this off

@@ -21,6 +21,7 @@ from blazend.events import Envelope, system_event
 from blazend.ipc import Publisher, Subscriber, runtime_dir
 from blazend.led import PipelineLeds
 from blazend.led_hw import open_status_led
+from blazend.orchestrator.radio_control import RadioControl
 from blazend.recovery import for_level as recovery_for_level
 from blazend.state import StateWriter
 
@@ -58,6 +59,7 @@ class Orchestrator:
         self._greeting = self._load_greeting()
         self._require_wake, self._wake_window_s = self._load_wake_gating()
         self._awake_until = 0.0  # loop-clock deadline; speech acts only before it
+        self._radio = RadioControl()  # internet-radio playback (HAT hand-off with TTS)
         self._stop = asyncio.Event()
         self._subscribers: list[tuple[str, Subscriber]] = []
 
@@ -228,6 +230,21 @@ class Orchestrator:
                     }
                 # Keep the language pin authoritative in state (scenario 09).
                 patch["languages"] = {"pinned": self._dispatcher.pinned_language()}
+        # Radio: pause a playing stream the moment the user starts talking so the
+        # command (and the spoken reply) get the HAT speaker, then act on the
+        # brain's radio decision. `_radio.*` block (subprocess + systemctl) → run
+        # them off the event loop.
+        if env.topic == "vad.start" and self._radio.playing:
+            await asyncio.to_thread(self._radio.stop)
+        if env.topic == "brain.reply":
+            action = str(env.data.get("action", ""))
+            if action == "radio_play":
+                payload = env.data.get("payload", {}) or {}
+                await asyncio.to_thread(
+                    self._radio.play, str(payload.get("url", "")), str(payload.get("name", ""))
+                )
+            elif action == "radio_stop":
+                await asyncio.to_thread(self._radio.stop)
         if env.topic == "health.status":
             # Mirror the level into state on every verdict (the orchestrator is
             # the dominant state writer); recovery details only on a fault.

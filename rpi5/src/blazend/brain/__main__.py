@@ -42,6 +42,9 @@ def _reply_envelope(reply: Reply) -> Envelope:
             "chunk": reply.text,
             "final_": True,
             "action": reply.action,
+            # Carry the action payload (e.g. radio stream url + name) so the
+            # orchestrator can actually execute it, not just speak the reply.
+            "payload": reply.data,
         },
     )
 

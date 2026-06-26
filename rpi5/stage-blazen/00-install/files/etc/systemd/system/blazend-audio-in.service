@@ -13,13 +13,15 @@ Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 #                      PGA→ADC path + sets +30 dB so speech reads ~18k RMS).
 #  --hp-cutoff 180     2nd-order high-pass to kill 50 Hz mains hum that would
 #                      otherwise dominate the RMS and mask speech.
-#  --open/--close 9000/6000 (mult 1.0)  fixed thresholds: the codec's resting
-#                      floor sits ~4-6k, loud near-field speech ~18k. Mults are
-#                      1.0 (no adaptive inflation) because the floor is stable
-#                      ONLY thanks to the real-time scheduling below.
+#  --open/--close 6500/5500 (mult 1.0)  fixed thresholds: the codec's resting
+#                      floor sits ~5k, near-field speech ~7-22k. Mults are 1.0
+#                      (no adaptive inflation); the floor is stable thanks to the
+#                      real-time scheduling below. Push-to-talk (deaf until the
+#                      button/wake activates) means false opens can't flood ASR,
+#                      so the threshold can sit close to the floor for sensitivity.
 #  --max-speech-ms 4000  force-close cap so a noisy stretch can't hold an
 #                      utterance open forever and starve ASR of segments.
-ExecStart=/usr/lib/blazen/bin/blazend-audio-in --device plughw:CARD=wm8960soundcard,DEV=0 --hp-cutoff 180 --open-rms 9000 --open-mult 1.0 --close-rms 6000 --close-mult 1.0 --hangover-ms 700 --min-speech-ms 120 --max-speech-ms 4000
+ExecStart=/usr/lib/blazen/bin/blazend-audio-in --device plughw:CARD=wm8960soundcard,DEV=0 --hp-cutoff 180 --open-rms 6500 --open-mult 1.0 --close-rms 5500 --close-mult 1.0 --hangover-ms 700 --min-speech-ms 120 --max-speech-ms 4000
 Restart=on-failure
 RestartSec=2
 SupplementaryGroups=audio

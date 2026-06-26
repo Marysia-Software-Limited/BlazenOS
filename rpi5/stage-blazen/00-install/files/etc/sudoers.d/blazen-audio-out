@@ -1,0 +1,5 @@
+# Lets the orchestrator (running as `blazen`) hand the single HAT playback
+# channel between the TTS service and the radio stream player by stopping/
+# starting ONLY blazend-audio-out. See orchestrator/radio_control.py.
+# Installed 0440 root:root by 00-install/01-run-chroot.sh.
+blazen ALL=(root) NOPASSWD: /usr/bin/systemctl start blazend-audio-out, /usr/bin/systemctl stop blazend-audio-out, /usr/bin/systemctl restart blazend-audio-out
