@@ -282,7 +282,7 @@ async def test_brain_run_real_builds_engine_and_serves(monkeypatch):
         served["engine"] = engine
 
     monkeypatch.setattr(brain_main, "serve", fake_serve)
-    monkeypatch.setattr(brain_main, "LocalLlm", lambda: object())
+    monkeypatch.setattr(brain_main, "select_chat_llm", lambda: object())
     monkeypatch.setattr(brain_main, "OpenAiClient", lambda: object())
 
     await brain_main.run(mock=False)
@@ -290,18 +290,15 @@ async def test_brain_run_real_builds_engine_and_serves(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_brain_run_real_degrades_when_localllm_raises(monkeypatch):
-    """LocalLlm construction failure → llm=None, still serves (cloud fallback)."""
+async def test_brain_run_real_degrades_when_llm_unavailable(monkeypatch):
+    """The registry returns None (no backend) → still serves (cloud fallback)."""
     served: dict[str, object] = {}
 
     async def fake_serve(engine, **_kw) -> None:
         served["engine"] = engine
 
-    def boom() -> object:
-        raise RuntimeError("no binding")
-
     monkeypatch.setattr(brain_main, "serve", fake_serve)
-    monkeypatch.setattr(brain_main, "LocalLlm", boom)
+    monkeypatch.setattr(brain_main, "select_chat_llm", lambda: None)
     monkeypatch.setattr(brain_main, "OpenAiClient", lambda: object())
 
     await brain_main.run(mock=False)
@@ -320,7 +317,7 @@ async def test_brain_run_real_degrades_when_wake_config_unreadable(monkeypatch):
 
     monkeypatch.setattr(brain_main, "load", bad_load)
     monkeypatch.setattr(brain_main, "serve", fake_serve)
-    monkeypatch.setattr(brain_main, "LocalLlm", lambda: object())
+    monkeypatch.setattr(brain_main, "select_chat_llm", lambda: object())
     monkeypatch.setattr(brain_main, "OpenAiClient", lambda: object())
 
     await brain_main.run(mock=False)
