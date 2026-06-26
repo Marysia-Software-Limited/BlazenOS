@@ -46,6 +46,12 @@ Read top-to-bottom on first contact. Afterwards, re-read only what changed.
 |------|---------|
 | [`product/00-INDEX.md`](product/00-INDEX.md) | **Shared Jessica product spec** — read by both `blazen_os` (this project, Pi 5 appliance) and [`rachel`](../../rachel/) (mobile twin, iOS + Android). Source of truth for persona, intents, integrations, briefing, privacy, mobile platform + hardware choice. |
 
+## Findings (investigation reports)
+
+| File | Purpose |
+|------|---------|
+| [`findings/wake-word-wm8960.md`](findings/wake-word-wm8960.md) | **Wake word not viable on the WM8960 HAT mic** — Vosk/Whisper/embedding/DTW all fail to discriminate "Dżesika"; root cause is mic audio quality. Reproducible recipe for a better mic. |
+
 ## Document conventions
 
 - **Decisions** are recorded inline with a `> **Decision (YYYY-MM-DD):**` block.
