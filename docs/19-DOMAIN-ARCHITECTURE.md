@@ -100,6 +100,12 @@ voice-input (PTT activation); **led** → systems (status); **audioring** → vo
 (shared lib, used by output too); **`plnum.py`** (number→Polish words) → shared locale
 util, imported by both `dispatch` and TTS, never duplicated.
 
+> **Status (Phase 1 complete):** the Python modules above now live at
+> `rpi5/src/blazend/domains/<domain>/adapters/rpi5/…`; the `core/ports.py` per
+> domain hold the Port protocols. Only the shared contract/platform layer
+> (`config`, `events`, `ipc`) stays at the top of the `blazend` package. The Rust
+> adapter crates relocate under the domain tree in Phase 3.
+
 ## Program roadmap
 
 | Phase | Title | Center | Outcome |
