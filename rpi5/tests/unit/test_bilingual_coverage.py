@@ -1,9 +1,12 @@
-"""Tier 0 — bilingual EN+PL coverage invariants.
+"""Tier 0 — PL runtime + retained-EN-asset coverage invariants.
 
-See docs/13-LANGUAGES.md. Asserts that:
-  1. system.yaml enables both `en` and `pl`.
-  2. ASR default is multilingual (not the `.en`-only model).
-  3. TTS has a default voice for both `en` and `pl`.
+See docs/13-LANGUAGES.md (Decision 2026-06-27): the appliance runs Polish-only,
+but the EN assets are retained so re-enabling EN is a config flip. These tests
+enforce that split — Polish leads at runtime, EN stays present at the asset
+level. Asserts that:
+  1. system.yaml enables Polish (Polish leads; EN is deferred at runtime).
+  2. ASR default is multilingual (not the `.en`-only model), language pinned PL.
+  3. TTS has a default voice for both `en` and `pl` (EN asset retained).
   4. wake-word config lists both `hey_blazen_en` and `hey_blazen_pl`,
      and both are in the `active` list.
   5. Every fast-path intent that has user-facing voice triggers carries
@@ -29,20 +32,23 @@ def _load(p: Path):
     return yaml.safe_load(p.read_text())
 
 
-def test_system_enables_both_languages():
+def test_system_polish_only_runtime():
+    # Polish-only runtime (Decision 2026-06-27): PL leads, EN deferred. docs/13.
     data = _load(CFG / "system.yaml")
     langs = (data.get("languages") or {}).get("enabled") or []
-    assert "en" in langs and "pl" in langs, f"system.yaml: languages.enabled = {langs}"
+    assert langs and langs[0] == "pl", f"system.yaml: Polish must lead, got {langs}"
+    assert "en" not in langs, f"EN is deferred at runtime, got {langs}"
 
 
 def test_asr_default_is_multilingual():
     # Pi 5 16 GB ships `medium`; 8 GB variant ships `small`. Both are
-    # multilingual — `.en` defaults would fail the bilingual contract.
+    # multilingual — `.en` defaults would foreclose re-enabling EN.
     data = _load(CFG / "asr.yaml")
     assert data["active"] in {"small", "medium", "large-v3-turbo"}, (
         f"asr.yaml: default must be a multilingual Whisper model, got {data['active']!r}"
     )
-    assert data["language"] == "auto"
+    # Polish-only runtime pins the language to `pl`; `auto` is the bilingual mode.
+    assert data["language"] in {"auto", "pl"}
 
 
 def test_tts_voice_for_each_language():

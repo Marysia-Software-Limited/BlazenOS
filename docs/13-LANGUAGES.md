@@ -8,6 +8,19 @@ confirmation phrases — works in both. The voice-policy and configuration
 plumbing is language-tagged so additional languages plug in without code
 changes.
 
+> **Decision (2026-06-27):** the appliance now ships **Polish-only at
+> runtime** — `system.yaml languages.enabled: [pl]` and `asr.yaml language: pl`
+> (model `small`). This is a deliberate narrowing for daily Polish use and
+> on-device testing. **The English assets are retained, not deleted:** the
+> Lessac TTS voice, the EN wake models, the EN intent triggers, the EN engine
+> path, and the EN/mixed scenarios all stay in the tree and keep their tests
+> green. EN parity is therefore **deferred** — re-enabling it is a config flip
+> (`enabled: [pl, en]`, `asr.language: auto`), not a rebuild. Until then the
+> "every surface ships in both" rule below is enforced at the **asset** level
+> (configs/code keep their EN counterpart) but not at runtime (only PL is
+> active). This supersedes the runtime half of the 2026-06-14 decision; the
+> asset-parity half stands.
+>
 > **Decision (2026-06-14):** **Polish is the primary language** of the
 > prototype — it leads in config order (`languages.enabled: [pl, en]`),
 > defaults, docs, and examples. English remains a **co-equal,

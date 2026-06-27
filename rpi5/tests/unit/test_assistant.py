@@ -318,7 +318,8 @@ def test_engine_time_query_pl(tmp_path):
     a.awake = True
     r = a.route("która godzina", now=NOW)  # NOW = 14:00
     assert r.action == "time" and r.language == "pl"
-    assert "14:00" in r.text and "godzina" in r.text.lower()
+    # Polish time-words, not digits: 14:00 → "czternasta". See assistant/plnum.py.
+    assert "czternasta" in r.text.lower() and "godzina" in r.text.lower()
 
 
 def test_engine_time_query_en(tmp_path):

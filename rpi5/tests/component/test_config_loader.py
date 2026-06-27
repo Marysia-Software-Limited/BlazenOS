@@ -19,17 +19,19 @@ def repo_configs(monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_load_system(repo_configs: Path):
     cfg = ConfigLoader().load("system")
     assert cfg.get("version") == 1
-    assert "pl" in cfg.get("languages.enabled")
-    assert "en" in cfg.get("languages.enabled")
+    # Polish-only runtime (Decision 2026-06-27): EN deferred, assets retained.
+    # See docs/13-LANGUAGES.md.
+    assert cfg.get("languages.enabled") == ["pl"]
     assert cfg.get("ssh.enabled") is True   # on by default (pubkey-only); see docs/06
     assert cfg.get("telemetry.enabled") is False
 
 
 def test_load_asr_default_multilingual(repo_configs: Path):
     cfg = load("asr")
-    # Pi 5 16 GB default is multilingual `medium`.
-    assert cfg.get("active") == "medium"
-    assert cfg.get("language") == "auto"
+    # 8 GB baked default is multilingual `small`; language pinned to Polish
+    # (Polish-only runtime — EN deferred). See docs/13-LANGUAGES.md.
+    assert cfg.get("active") == "small"
+    assert cfg.get("language") == "pl"
 
 
 def test_load_llm_engine_safe(repo_configs: Path):
