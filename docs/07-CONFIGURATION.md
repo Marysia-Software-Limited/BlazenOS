@@ -60,8 +60,8 @@ low-sensitivity mic (see `vad` keys above).
 
 ## Hands-free voice runner (`wake-word.yaml`)
 
-The single-process hands-free loop (`blazend.voice.runner`, started by
-`scripts/voice-run.sh` / `python -m blazend.voice`) owns ASR → engine → Piper
+The single-process hands-free loop (`blazend.domains.voice_input.adapters.rpi5.voice.runner`, started by
+`scripts/voice-run.sh` / `python -m blazend.domains.voice_input.adapters.rpi5.voice`) owns ASR → engine → Piper
 in one process that reads the Rust audio ring directly — only `blazend-audio-in`
 and `blazend-wake` run alongside it, so there is no ALSA device contention. It
 subscribes to `wake.detected`, plays an acknowledgement, then captures a **fixed
@@ -83,7 +83,7 @@ HAT button delimits its own held window as a push-to-talk fallback.
   `BLAZEN_LED_COUNT` (default `3`), `BLAZEN_LED_BRIGHTNESS` (0–31, default `8`),
   `BLAZEN_LED_ORDER` (default `bgr`; set e.g. `rgb`/`grb` if a clone HAT shows
   the wrong colours). Cycle every colour to check wiring: `python -m
-  blazend.led_hw`.
+  blazend.domains.systems.adapters.rpi5.led_hw`.
 
 ## Startup greeting + capabilities (`system.yaml`)
 
@@ -106,7 +106,7 @@ whose `llm.yaml` system prompt lists the same functions so it can explain + advi
 
 ## Conversation engine — local LLM + cloud layers
 
-Freeform chat is **on-device first**: `blazend.assistant.localllm.LocalLlm`
+Freeform chat is **on-device first**: `blazend.domains.local_ai.adapters.rpi5.localllm.LocalLlm`
 loads the GGUF named by `llm.yaml active_model` (override `BLAZEN_LLM_MODEL`)
 and answers locally. Model files resolve to `<models>/llm/<active>/<file>`,
 where `<models>` is `BLAZEN_MODELS_DIR` (else `<repo>/models`) and `<file>` is
@@ -184,7 +184,7 @@ LLM, OpenAI and Gemini. See `docs/12-ML-ACCELERATOR.md` for the model on the CPU
 path; a body with no sentence break stays a single untitled note (the original
 behaviour).
 
-The embedder (`blazend.assistant.embeddings.Embedder`) loads the ONNX model
+The embedder (`blazend.domains.context.adapters.rpi5.embeddings.Embedder`) loads the ONNX model
 named by `embeddings.yaml active_model` via `onnxruntime` + a `tokenizers` fast
 tokenizer (both the `runtime` extra, imported lazily). Files resolve to
 `<models>/embeddings/<active>/{model.onnx,tokenizer.json}` — the layout

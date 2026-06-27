@@ -12,7 +12,7 @@ Code: [`rpi5/src/blazend/assistant/`](../rpi5/src/blazend/assistant/).
 ```bash
 make demo
 # or, non-interactive:
-python -m blazend.assistant --once "Hej Jessico, przypomnij mi o praniu za 5 sekund"
+python -m blazend.domains.ai_orchestrator.adapters.rpi5.assistant --once "Hej Jessico, przypomnij mi o praniu za 5 sekund"
 ```
 
 You type what you'd *say*; Jessica prints what she'd *speak*. Memory persists

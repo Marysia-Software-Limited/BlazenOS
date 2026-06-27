@@ -117,7 +117,7 @@ mics, the 3 status LEDs, and a button in one solder-free board.
 Because there is no monitor, the system communicates state out-of-band:
 
 **Per-phase LEDs.** The HAT's 3 APA102 RGB LEDs each track one stage of a
-turn, so you can watch it flow down the board (`blazend.led.PipelineLeds`,
+turn, so you can watch it flow down the board (`blazend.domains.systems.adapters.rpi5.led.PipelineLeds`,
 driven by the orchestrator over SPI):
 
 | LED | Phase  | off | active colours |
@@ -145,12 +145,12 @@ yellow→reprompt, red→error) — see `blazend/led.py`, the single colour cont
 On real hardware the **APA102 SPI driver** (`blazend/led_hw.py`) paints the same
 contract colour across the HAT's 3 on-board RGB LEDs over **SPI0**
 (`/dev/spidev0.0`, BCM10 MOSI / BCM11 SCLK; needs `dtparam=spi=on`). It is wired
-into the hands-free voice runner (`blazend.voice`), so the LEDs track the live
+into the hands-free voice runner (`blazend.domains.voice_input.adapters.rpi5.voice`), so the LEDs track the live
 pipeline state — green listening → blue capturing → magenta processing → green.
 The driver is **fail-soft**: with no SPI device (the VM / a dev host) it degrades
 to a no-op and `led.json` stays the status surface (and what Tier-3 scenarios
 assert on) — the headless/CPU path remains the contract. Verify the LEDs (and
-channel order) on a Pi with `python -m blazend.led_hw`, which cycles every
+channel order) on a Pi with `python -m blazend.domains.systems.adapters.rpi5.led_hw`, which cycles every
 colour. Tuning knobs (`BLAZEN_LED*`) are in
 [`07-CONFIGURATION.md`](07-CONFIGURATION.md).
 

@@ -10,7 +10,7 @@ This document is the contract for plugging in an optional ML accelerator
 and how the LLM-based conversation uses it.
 
 > **Note — text embeddings stay CPU-only.** Jessica's personal-memory recall
-> (`embeddings.yaml`, `blazend.assistant.embeddings`) runs a small sentence
+> (`embeddings.yaml`, `blazend.domains.context.adapters.rpi5.embeddings`) runs a small sentence
 > embedder (`multilingual-e5-small`, 384-dim) on `onnxruntime` CPU. It is light
 > enough (tens of ms per short text) that it does not need the accelerator, and
 > if the model/deps are absent the engine degrades to lexical note recall — so
@@ -100,7 +100,8 @@ The accelerator helps both. With Hailo-10H + Qwen2.5 3B:
               └────────fallback on error
 ```
 
-- `engine selector` is a small Python class in `blazend.brain.engine`.
+- the `engine selector` is the backend registry
+  `blazend.domains.ai_orchestrator.core.registry.select_chat_llm`.
 - The contract is identical (`generate_stream(prompt) -> iter[Token]`).
 - On Hailo error (HEF mismatch, OOM, driver fault) we fall back to CPU
   for the next utterance and re-test the device on the one after.

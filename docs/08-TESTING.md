@@ -21,7 +21,7 @@ embedded distro. The test pyramid is therefore deeper than usual.
 
 Python line coverage target is **≥ 80%** (`pytest --cov=blazend`), weighted
 toward **integration/e2e** rather than thin unit tests: the highest-value
-suites exercise the **voice loop** (`blazend.voice.runner` + the
+suites exercise the **voice loop** (`blazend.domains.voice_input.adapters.rpi5.voice.runner` + the
 `voice/__main__` wiring: wake → capture → ASR → brain → TTS, plus the
 `radio_play`/`radio_stop` and streamed-TTS paths) and the **unit entrypoints**
 (`*/__main__.py`) with all I/O (sockets, models, audio, subprocess, network)

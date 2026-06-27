@@ -241,7 +241,7 @@ AND WER ≤ 8% on the 50-line EN `commands` fixture set.
 ## M4 — Local LLM (CPU) + bilingual TTS
 
 - ✓ **Brain wired to the real engine (2026-06-12):** `blazend-brain` now
-  subscribes to `asr.final` and runs `blazend.assistant.engine.Assistant`
+  subscribes to `asr.final` and runs `blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine.Assistant`
   (name gate, memory/reminders, Gemini-backed Polish chat + news),
   publishing `brain.reply`; due reminders fire on a timer. Component test
   drives `asr.final → brain.reply` over real IPC (`rpi5/tests/component/
