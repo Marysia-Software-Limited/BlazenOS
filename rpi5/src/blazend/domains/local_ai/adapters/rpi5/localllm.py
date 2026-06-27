@@ -20,6 +20,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Protocol
 
+from blazend._paths import repo_root
 from blazend.config import Config, load
 
 
@@ -48,7 +49,7 @@ def models_root() -> Path:
     env = os.environ.get("BLAZEN_MODELS_DIR")
     if env:
         return Path(env)
-    return Path(__file__).resolve().parents[4] / "models"
+    return repo_root() / "models"
 
 
 def resolve_model_path(cfg: Config) -> Path | None:

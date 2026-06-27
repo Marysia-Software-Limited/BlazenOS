@@ -22,6 +22,7 @@ from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
+from blazend._paths import repo_root
 from blazend.config import Config, load
 
 
@@ -43,7 +44,7 @@ def models_root() -> Path:
     env = os.environ.get("BLAZEN_MODELS_DIR")
     if env:
         return Path(env)
-    return Path(__file__).resolve().parents[4] / "models"
+    return repo_root() / "models"
 
 
 def _deps_importable() -> bool:

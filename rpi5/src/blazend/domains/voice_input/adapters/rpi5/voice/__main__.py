@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 
+from blazend._paths import repo_root
 from blazend.config import load
 from blazend.domains.voice_input.adapters.rpi5.audio import RingReader
 from blazend.domains.voice_input.adapters.rpi5.voice.runner import (
@@ -30,7 +31,7 @@ from blazend.ipc import Subscriber, runtime_dir
 
 log = logging.getLogger("blazend.domains.voice_input.adapters.rpi5.voice")
 
-REPO = Path(__file__).resolve().parents[4]
+REPO = repo_root()
 _GPIO_CHIP = os.environ.get("BLAZEN_BUTTON_CHIP", "gpiochip0")
 _GPIO_LINE = os.environ.get("BLAZEN_BUTTON_LINE", "17")
 
