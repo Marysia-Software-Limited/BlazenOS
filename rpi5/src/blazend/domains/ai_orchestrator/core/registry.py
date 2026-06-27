@@ -1,6 +1,6 @@
 """Backend registry — pick the primary chat LLM the brain talks to.
 
-Centralizes the selection that was inlined in :mod:`blazend.brain.__main__`:
+Centralizes the selection that was inlined in :mod:`blazend.domains.ai_orchestrator.adapters.rpi5.brain.__main__`:
 prefer a reachable LAN Ollama box (dev GPU) when ``BLAZEN_LLM_OLLAMA_URL`` is set
 and answering, otherwise the on-device Bielik (``LocalLlm``). Returns the single
 *primary* backend; the cloud fallbacks (OpenAI / Gemini) sit behind the engine,
@@ -13,8 +13,8 @@ from __future__ import annotations
 import logging
 import os
 
-from blazend.assistant.localllm import LocalLlm
-from blazend.assistant.ollama import OllamaLlm
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.ollama import OllamaLlm
+from blazend.domains.local_ai.adapters.rpi5.localllm import LocalLlm
 from blazend.domains.local_ai.core.ports import LlmPort
 
 log = logging.getLogger("blazend.domains.ai_orchestrator.registry")

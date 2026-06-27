@@ -1,6 +1,6 @@
 """Tier 1 — the brain unit driving the real assistant engine over IPC.
 
-Binds a stand-in NLU publisher, runs `blazend.brain.serve()` against a
+Binds a stand-in NLU publisher, runs `blazend.domains.ai_orchestrator.adapters.rpi5.brain.serve()` against a
 keyless engine (so memory commands are deterministic, no network), and
 asserts that an `nlu.miss` produces the matching `brain.reply`.
 """
@@ -10,10 +10,10 @@ import asyncio
 
 import pytest
 
-from blazend.assistant.engine import Assistant
-from blazend.assistant.gemini import GeminiClient
-from blazend.assistant.memory import MemoryStore
-from blazend.brain.__main__ import serve
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import Assistant
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.gemini import GeminiClient
+from blazend.domains.ai_orchestrator.adapters.rpi5.brain.__main__ import serve
+from blazend.domains.context.adapters.rpi5.memory import MemoryStore
 from blazend.events import Envelope
 from blazend.ipc import Publisher, Subscriber
 

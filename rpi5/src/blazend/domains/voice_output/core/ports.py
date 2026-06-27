@@ -30,7 +30,7 @@ class PlaybackControlPort(Protocol):
 
 if TYPE_CHECKING:
     # Static conformance: the rpi5 radio controller must satisfy the port.
-    from blazend.orchestrator.radio_control import RadioControl
+    from blazend.domains.voice_output.adapters.rpi5.radio_control import RadioControl
 
     def _rpi5_playback_conforms(ctl: RadioControl) -> PlaybackControlPort:
         return ctl

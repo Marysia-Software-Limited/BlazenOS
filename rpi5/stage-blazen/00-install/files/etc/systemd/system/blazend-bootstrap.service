@@ -9,7 +9,7 @@ ConditionPathExists=/boot/blazen-firstboot
 Type=oneshot
 RemainAfterExit=no
 User=root
-ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.bootstrap
+ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.domains.systems.adapters.rpi5.bootstrap
 
 [Install]
 WantedBy=blazend.target

@@ -4,7 +4,7 @@
 # Starts only the two Rust units that own the mic + wake detection:
 #   blazend-audio-in   (real cpal capture → shared-memory ring)
 #   blazend-wake       (real openWakeWord "Hej Jessico" → wake.sock)
-# then the Python wake runner (`python -m blazend.voice`), which reads the
+# then the Python wake runner (`python -m blazend.domains.voice_input.adapters.rpi5.voice`), which reads the
 # ring for both wake- and button-triggered captures and does ASR → engine →
 # Piper itself. No asr/brain/tts/audio-out units here (the runner covers them),
 # so there's no ALSA contention.
@@ -77,5 +77,5 @@ log "starting blazend-wake (Hej Jessico → wake.sock)"
 ("$CARGO_TARGET/blazend-wake" >>"$RUN_DIR/wake.log" 2>&1) & PIDS+=($!)
 
 sleep 1.5  # let the ring + wake socket come up
-log "starting Python wake runner (blazend.voice) — logs at $RUN_DIR/runner.log"
-"$PY" -m blazend.voice 2>&1 | tee "$RUN_DIR/runner.log"
+log "starting Python wake runner (blazend.domains.voice_input.adapters.rpi5.voice) — logs at $RUN_DIR/runner.log"
+"$PY" -m blazend.domains.voice_input.adapters.rpi5.voice 2>&1 | tee "$RUN_DIR/runner.log"

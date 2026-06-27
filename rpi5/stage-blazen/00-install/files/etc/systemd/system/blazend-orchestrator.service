@@ -17,7 +17,7 @@ Group=blazen
 WorkingDirectory=/usr/lib/blazen
 Environment=PYTHONPATH=/usr/lib/blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
-ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.orchestrator
+ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.domains.systems.adapters.rpi5.orchestrator
 Restart=on-failure
 RestartSec=2
 TimeoutStopSec=10

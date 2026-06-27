@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from blazend.dispatch import DispatchResult
+from blazend.domains.ai_orchestrator.adapters.rpi5.dispatch import DispatchResult
+from blazend.domains.systems.adapters.rpi5.orchestrator import Orchestrator
 from blazend.events import Envelope, wake_detected
-from blazend.orchestrator import Orchestrator
 
 
 class _FakeDispatcher:

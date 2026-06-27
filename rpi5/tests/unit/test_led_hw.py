@@ -6,8 +6,8 @@ where SPI is enabled — these tests must stay hardware-free).
 """
 from __future__ import annotations
 
-from blazend import led, led_hw
-from blazend.led_hw import (
+from blazend.domains.systems.adapters.rpi5 import led, led_hw
+from blazend.domains.systems.adapters.rpi5.led_hw import (
     Apa102Led,
     NullStatusLed,
     apa102_frame,

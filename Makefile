@@ -127,7 +127,7 @@ dev: build ## Run the full blazend stack on the dev host (no VM; fastest iterati
 
 .PHONY: demo
 demo: venv ## Jessica prototype REPL (name + Polish chat + Gemini news + memory/reminders)
-	cd rpi5 && BLAZEN_DATA_DIR=$${BLAZEN_DATA_DIR:-$(REPO_ROOT)/vm-runs/jessica-data} $(PY) -m blazend.assistant
+	cd rpi5 && BLAZEN_DATA_DIR=$${BLAZEN_DATA_DIR:-$(REPO_ROOT)/vm-runs/jessica-data} $(PY) -m blazend.domains.ai_orchestrator.adapters.rpi5.assistant
 
 # -------- cross-host sync (git via GitHub origin; see docs/16-SYNC-PROTOCOL.md) --------
 # Canonical hub: git@github.com:Marysia-Software-Limited/BlazenOS.git (branch main).

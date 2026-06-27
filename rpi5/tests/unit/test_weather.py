@@ -1,7 +1,11 @@
 """Tier 0 — the Open-Meteo weather client (offline; injected HTTP transport)."""
 from __future__ import annotations
 
-from blazend.assistant.weather import Place, WeatherClient, describe_code
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.weather import (
+    Place,
+    WeatherClient,
+    describe_code,
+)
 
 
 def _client(*, forecast=None, geo=None):

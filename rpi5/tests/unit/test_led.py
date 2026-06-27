@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import json
 
-from blazend import led
-from blazend.led import LedSimulator
+from blazend.domains.systems.adapters.rpi5 import led
+from blazend.domains.systems.adapters.rpi5.led import LedSimulator
 
 
 def test_color_for_mapping():

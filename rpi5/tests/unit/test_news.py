@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from blazend.assistant.news import NewsClient, NewsError, parse_titles
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.news import (
+    NewsClient,
+    NewsError,
+    parse_titles,
+)
 
 REPO = Path(__file__).resolve().parents[3]
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from blazend.state import StateWriter
+from blazend.domains.systems.adapters.rpi5.state import StateWriter
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-"""Unit tests for the Polish-first ASR engine (`blazend.asr.engine`).
+"""Unit tests for the Polish-first ASR engine (`blazend.domains.voice_input.adapters.rpi5.asr.engine`).
 
 No model is loaded — a fake `WhisperBackend` is injected, so these run offline
 in `make test-fast`. PL + EN parity per CLAUDE.md §8.
@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from blazend.asr.engine import (
+from blazend.domains.voice_input.adapters.rpi5.asr.engine import (
     BackendResult,
     Transcriber,
     coerce_language,

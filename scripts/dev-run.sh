@@ -127,13 +127,13 @@ launch_rust blazend-audio-out  $AUDIO_OUT_ARGS
 launch_rust blazend-wake       $WAKE_ARGS
 launch_rust blazend-tts        $TTS_ARGS
 launch_rust blazend-health
-launch_py   blazend.asr        $ASR_ARGS
+launch_py   blazend.domains.voice_input.adapters.rpi5.asr        $ASR_ARGS
 launch_rust blazend-nlu                              # routes asr.final → nlu.intent via jessica-core
-launch_py   blazend.brain                            # real engine: memory/reminders + Gemini chat/news
+launch_py   blazend.domains.ai_orchestrator.adapters.rpi5.brain                            # real engine: memory/reminders + Gemini chat/news
 
 # Orchestrator last — it connects to peers.
 sleep 1
-launch_py   blazend.orchestrator
+launch_py   blazend.domains.systems.adapters.rpi5.orchestrator
 
 log "stack up. Live state file:  $BLAZEN_RUNTIME_DIR/state.json"
 log "Tail a unit:                 tail -F $RUN_DIR/<unit>.log"

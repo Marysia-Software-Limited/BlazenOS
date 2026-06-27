@@ -14,11 +14,11 @@ from pathlib import Path
 
 import pytest
 
-import blazend.asr.__main__ as asr_main
-import blazend.assistant.__main__ as assistant_main
-import blazend.bootstrap.__main__ as bootstrap_main
-import blazend.brain.__main__ as brain_main
-import blazend.orchestrator.__main__ as orch_main
+import blazend.domains.ai_orchestrator.adapters.rpi5.assistant.__main__ as assistant_main
+import blazend.domains.ai_orchestrator.adapters.rpi5.brain.__main__ as brain_main
+import blazend.domains.systems.adapters.rpi5.bootstrap.__main__ as bootstrap_main
+import blazend.domains.systems.adapters.rpi5.orchestrator.__main__ as orch_main
+import blazend.domains.voice_input.adapters.rpi5.asr.__main__ as asr_main
 from blazend.events import Envelope
 from blazend.ipc import Publisher
 
@@ -50,7 +50,7 @@ class FakePublisher:
 
 
 # ---------------------------------------------------------------------------
-# blazend.asr.__main__
+# blazend.domains.voice_input.adapters.rpi5.asr.__main__
 # ---------------------------------------------------------------------------
 
 
@@ -153,7 +153,7 @@ class _OneShotSub:
 @pytest.mark.asyncio
 async def test_asr_real_loop_transcribes_and_publishes(monkeypatch, tmp_path):
     """`_real_loop`: vad.start/vad.end → transcribe → asr.final published."""
-    import blazend.asr.engine as engine
+    import blazend.domains.voice_input.adapters.rpi5.asr.engine as engine
 
     monkeypatch.setattr(engine, "Transcriber", _FakeTranscriber)
     monkeypatch.setattr(asr_main, "runtime_dir", lambda: tmp_path)
@@ -213,7 +213,7 @@ async def test_brain_connect_nlu_returns_subscriber(tmp_path):
 @pytest.mark.asyncio
 async def test_asr_real_loop_no_text_emits_error(monkeypatch, tmp_path):
     """An empty transcript → an `error` envelope (asr.no_text)."""
-    import blazend.asr.engine as engine
+    import blazend.domains.voice_input.adapters.rpi5.asr.engine as engine
 
     class _Empty(_FakeTranscriber):
         def transcribe(self, pcm, sample_rate):  # noqa: ANN001
@@ -242,7 +242,7 @@ async def test_asr_real_loop_no_text_emits_error(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# blazend.brain.__main__
+# blazend.domains.ai_orchestrator.adapters.rpi5.brain.__main__
 # ---------------------------------------------------------------------------
 
 
@@ -337,7 +337,7 @@ def test_brain_main_invokes_run(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# blazend.orchestrator.__main__
+# blazend.domains.systems.adapters.rpi5.orchestrator.__main__
 # ---------------------------------------------------------------------------
 
 
@@ -365,7 +365,7 @@ def test_orchestrator_main_runs_and_returns(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# blazend.bootstrap.__main__
+# blazend.domains.systems.adapters.rpi5.bootstrap.__main__
 # ---------------------------------------------------------------------------
 
 
@@ -406,7 +406,7 @@ def test_bootstrap_seeds_etc_and_self_disables(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# blazend.assistant.__main__ (the Jessica REPL)
+# blazend.domains.ai_orchestrator.adapters.rpi5.assistant.__main__ (the Jessica REPL)
 # ---------------------------------------------------------------------------
 
 

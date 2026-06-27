@@ -9,15 +9,15 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from blazend.assistant import wake
-from blazend.assistant.embeddings import EmbedderError
-from blazend.assistant.engine import Assistant, detect_lang
-from blazend.assistant.gemini import GeminiClient, GeminiError
-from blazend.assistant.localllm import LocalLlm
-from blazend.assistant.memory import MemoryStore
-from blazend.assistant.news import NewsClient
-from blazend.assistant.openai import OpenAiClient
-from blazend.assistant.timeparse import parse_when
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant import wake
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import Assistant, detect_lang
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.gemini import GeminiClient, GeminiError
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.news import NewsClient
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.openai import OpenAiClient
+from blazend.domains.context.adapters.rpi5.embeddings import EmbedderError
+from blazend.domains.context.adapters.rpi5.memory import MemoryStore
+from blazend.domains.context.adapters.rpi5.timeparse import parse_when
+from blazend.domains.local_ai.adapters.rpi5.localllm import LocalLlm
 
 NOW = datetime(2026, 6, 12, 14, 0, 0)
 REPO = Path(__file__).resolve().parents[3]
@@ -142,7 +142,7 @@ def test_engine_news_grounded_with_key(tmp_path):
 
 
 def test_engine_news_falls_back_to_rss_when_gemini_errors(tmp_path):
-    from blazend.assistant.news import NewsClient
+    from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.news import NewsClient
 
     def boom(_url, _body):  # Gemini transport that fails (e.g. 429/billing)
         raise GeminiError("Gemini HTTP 429: credits depleted")
@@ -162,7 +162,7 @@ def test_engine_news_falls_back_to_rss_when_gemini_errors(tmp_path):
 
 
 def test_engine_news_short_error_when_all_unavailable(tmp_path):
-    from blazend.assistant.news import NewsClient, NewsError
+    from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.news import NewsClient, NewsError
 
     class _DeadNews(NewsClient):
         def headlines(self, lang, limit=None):
@@ -227,7 +227,7 @@ def test_engine_radio_does_not_reach_llm(tmp_path, monkeypatch):
 
 
 def _weather_client(*, temp=18.0, feels=17.0, code=3, wind=12.0, geo=None):
-    from blazend.assistant.weather import WeatherClient
+    from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.weather import WeatherClient
 
     def transport(url):
         if "geocoding-api" in url:

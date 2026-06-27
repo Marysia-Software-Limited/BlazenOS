@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
+from blazend.domains.systems.adapters.rpi5.led import GREEN, RED, YELLOW, color_for
+from blazend.domains.systems.adapters.rpi5.recovery import for_level
 from blazend.events import Envelope, health_status
-from blazend.led import GREEN, RED, YELLOW, color_for
-from blazend.recovery import for_level
 
 
 def test_for_level_polish_first_default():
@@ -48,7 +48,7 @@ class _FakePublisher:
 
 @pytest.mark.asyncio
 async def test_orchestrator_announces_recovery(tmp_path):
-    from blazend.orchestrator.supervisor import Orchestrator
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import Orchestrator
 
     orch = Orchestrator(runtime_dir_=tmp_path, dispatcher=None)
     orch._publisher = _FakePublisher()  # type: ignore[assignment]

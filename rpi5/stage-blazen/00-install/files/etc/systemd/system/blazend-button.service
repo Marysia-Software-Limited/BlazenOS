@@ -11,7 +11,7 @@ Environment=PYTHONPATH=/usr/lib/blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 # gpiomon needs the gpio character device; blazen is in the gpio group.
 SupplementaryGroups=gpio
-ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.button
+ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.domains.voice_input.adapters.rpi5.button
 Restart=on-failure
 RestartSec=2
 # Pin off the real-time capture core (CPU0), like the other helpers. The button

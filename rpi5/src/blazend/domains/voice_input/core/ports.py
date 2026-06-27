@@ -7,12 +7,12 @@ whose contract with the rest of the system is the **IPC event bus** (``audio.fra
 
 The one Python-level seam is ASR: ``AsrBackendPort`` is the existing
 ``WhisperBackend`` Protocol (faster-whisper today; a GPU/Orin or OS-speech backend
-later), injected into ``blazend.asr.engine.Transcriber``. The Transcriber's own
+later), injected into ``blazend.domains.voice_input.adapters.rpi5.asr.engine.Transcriber``. The Transcriber's own
 output crosses to the mind as the ``asr.final`` event.
 """
 
 from __future__ import annotations
 
-from blazend.asr.engine import WhisperBackend as AsrBackendPort
+from blazend.domains.voice_input.adapters.rpi5.asr.engine import WhisperBackend as AsrBackendPort
 
 __all__ = ["AsrBackendPort"]

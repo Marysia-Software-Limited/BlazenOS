@@ -1,5 +1,5 @@
 """Tier 1 — production seams (PiperSink, StreamPlayer, build_runner) and the
-``python -m blazend.voice`` entrypoint wiring, all driven with fakes.
+``python -m blazend.domains.voice_input.adapters.rpi5.voice`` entrypoint wiring, all driven with fakes.
 
 No real subprocess, ALSA, SPI, sockets, models, or network: every I/O boundary
 is monkeypatched so the orchestration runs deterministically on a dev host.
@@ -13,10 +13,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import blazend.voice.__main__ as voice_main
+import blazend.domains.voice_input.adapters.rpi5.voice.__main__ as voice_main
+from blazend.domains.voice_input.adapters.rpi5.voice import runner as runner_mod
+from blazend.domains.voice_input.adapters.rpi5.voice.runner import (
+    PiperSink,
+    StreamPlayer,
+    build_runner,
+)
 from blazend.events import Envelope
-from blazend.voice import runner as runner_mod
-from blazend.voice.runner import PiperSink, StreamPlayer, build_runner
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -264,7 +268,7 @@ async def test_main_processes_a_wake_event_then_exits_cleanly(monkeypatch, tmp_p
         r = real_build(**kw)
         # Make the captured utterance a deterministic, deaf transcript so the
         # route is cheap and never blocks; speaking is recorded above.
-        from blazend.asr.engine import Transcript
+        from blazend.domains.voice_input.adapters.rpi5.asr.engine import Transcript
 
         class _T:
             language_mode = "auto"

@@ -20,12 +20,12 @@ from pathlib import Path
 
 import pytest
 
-from blazend.assistant.engine import Assistant
-from blazend.assistant.gemini import GeminiClient
-from blazend.assistant.memory import MemoryStore
-from blazend.brain.__main__ import serve
 from blazend.config import load as load_config
-from blazend.dispatch import IntentDispatcher, SettingsStore
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import Assistant
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.gemini import GeminiClient
+from blazend.domains.ai_orchestrator.adapters.rpi5.brain.__main__ import serve
+from blazend.domains.ai_orchestrator.adapters.rpi5.dispatch import IntentDispatcher, SettingsStore
+from blazend.domains.context.adapters.rpi5.memory import MemoryStore
 from blazend.events import Envelope
 from blazend.ipc import Publisher, Subscriber
 

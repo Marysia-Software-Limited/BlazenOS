@@ -16,7 +16,7 @@ Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 # "set GEMINI_API_KEY / a local model" reply. Points at the real bake location
 # (same tree the embeddings + memory vector store use).
 Environment=BLAZEN_MODELS_DIR=/var/lib/blazen/models
-ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.brain
+ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.domains.ai_orchestrator.adapters.rpi5.brain
 Restart=on-failure
 RestartSec=3
 # model warm-up

@@ -11,13 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from blazend.assistant.localllm import (
+from blazend.config import load
+from blazend.domains.local_ai.adapters.rpi5.localllm import (
     LlmError,
     LocalLlm,
     _LlamaCppBackend,
     resolve_model_path,
 )
-from blazend.config import load
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -194,7 +194,7 @@ def test_ensure_backend_raises_without_active_model(monkeypatch):
 
         return Config(name="llm", data={}, sources=[])
 
-    monkeypatch.setattr("blazend.assistant.localllm.load", fake_load)
+    monkeypatch.setattr("blazend.domains.local_ai.adapters.rpi5.localllm.load", fake_load)
     llm = LocalLlm()
     assert llm.available is False
     with pytest.raises(LlmError, match="no active_model"):

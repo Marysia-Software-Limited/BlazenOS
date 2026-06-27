@@ -83,7 +83,7 @@ def test_cross_language_state_propagation():
         # reconnect-with-backoff loop, which is fine.
         orch_log = runtime / "orch.log"
         orch = subprocess.Popen(
-            [sys.executable, "-m", "blazend.orchestrator"],
+            [sys.executable, "-m", "blazend.domains.systems.adapters.rpi5.orchestrator"],
             env=env,
             stdout=orch_log.open("w"),
             stderr=subprocess.STDOUT,

@@ -1,6 +1,6 @@
 """Tier 1 — the hands-free voice runner (S5) over its injected seams.
 
-Drives :class:`blazend.voice.runner.VoiceRunner` with a fake `wake.detected`
+Drives :class:`blazend.domains.voice_input.adapters.rpi5.voice.runner.VoiceRunner` with a fake `wake.detected`
 source, a real pre-filled shared-memory ring, and fake ASR/TTS backends, so the
 whole wake → capture → transcribe → route → speak chain runs deterministically
 with no audio hardware. The engine is keyless (offline, deterministic paths).
@@ -15,15 +15,15 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from blazend import led
-from blazend.asr.engine import Transcript
-from blazend.assistant.engine import Assistant
-from blazend.assistant.gemini import GeminiClient
-from blazend.assistant.localllm import LocalLlm
-from blazend.assistant.memory import MemoryStore
-from blazend.audio import RingReader, RingWriter
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import Assistant
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.gemini import GeminiClient
+from blazend.domains.context.adapters.rpi5.memory import MemoryStore
+from blazend.domains.local_ai.adapters.rpi5.localllm import LocalLlm
+from blazend.domains.systems.adapters.rpi5 import led
+from blazend.domains.voice_input.adapters.rpi5.asr.engine import Transcript
+from blazend.domains.voice_input.adapters.rpi5.audio import RingReader, RingWriter
+from blazend.domains.voice_input.adapters.rpi5.voice.runner import NullRadio, VoiceRunner
 from blazend.events import Envelope
-from blazend.voice.runner import NullRadio, VoiceRunner
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -402,7 +402,7 @@ class _ScriptedBrain:
 
 @pytest.mark.asyncio
 async def test_voice_note_play_plays_each_stored_wav(tmp_path):
-    from blazend.assistant.engine import Reply
+    from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import Reply
 
     ring = _ring_with_speech(tmp_path)
     sink = FakeSink()
@@ -425,7 +425,7 @@ async def test_voice_note_play_plays_each_stored_wav(tmp_path):
 
 @pytest.mark.asyncio
 async def test_error_reply_is_spoken_not_streamed(tmp_path):
-    from blazend.assistant.engine import Reply
+    from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import Reply
 
     ring = _ring_with_speech(tmp_path)
     sink = FakeSink()
@@ -451,7 +451,7 @@ async def test_error_reply_is_spoken_not_streamed(tmp_path):
 
 @pytest.mark.asyncio
 async def test_fire_due_reminders_speaks_each(tmp_path):
-    from blazend.assistant.engine import Reply
+    from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import Reply
 
     ring = _ring_with_speech(tmp_path)
     sink = FakeSink()
@@ -480,7 +480,7 @@ async def test_fire_due_reminders_speaks_each(tmp_path):
 async def test_streamed_path_survives_tts_failure_midstream(tmp_path):
     """A speak() that raises inside on_sentence must not kill the stream — the
     next sentence still drives on_sentence (warning logged, loop continues)."""
-    from blazend.assistant.engine import Reply
+    from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import Reply
 
     ring = _ring_with_speech(tmp_path)
 
@@ -606,7 +606,7 @@ async def test_reminder_loop_ticks_and_fires(tmp_path):
 
     We monkeypatch the wait timeout down so a tick lands inside the test window,
     exercising the loop's TimeoutError (no-stop) branch."""
-    from blazend.assistant.engine import Reply
+    from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import Reply
 
     ring = _ring_with_speech(tmp_path)
     sink = FakeSink()
@@ -634,7 +634,7 @@ async def test_reminder_loop_ticks_and_fires(tmp_path):
 
     stop = asyncio.Event()
     wake = FakeWake([])
-    import blazend.voice.runner as rmod
+    import blazend.domains.voice_input.adapters.rpi5.voice.runner as rmod
 
     orig = rmod.asyncio.wait_for
     rmod.asyncio.wait_for = _fast_wait_for  # type: ignore[assignment]
@@ -683,8 +683,8 @@ async def test_wake_loop_breaks_when_stop_already_set(tmp_path):
 @pytest.mark.asyncio
 async def test_ring_capturer_reads_window_after_start(tmp_path):
     """RingCapturer (production seam): captures samples written during capture."""
-    from blazend.audio import RingWriter
-    from blazend.voice.runner import RingCapturer
+    from blazend.domains.voice_input.adapters.rpi5.audio import RingWriter
+    from blazend.domains.voice_input.adapters.rpi5.voice.runner import RingCapturer
 
     path = tmp_path / "live-ring.shm"
     with RingWriter(path) as writer:

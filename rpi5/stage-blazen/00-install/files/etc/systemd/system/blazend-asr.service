@@ -18,7 +18,7 @@ Environment=BLAZEN_MODELS_DIR=/var/lib/blazen/models
 # (~/.cache/huggingface is unreadable here). OMP cap leaves headroom for Bielik.
 Environment=HF_HUB_OFFLINE=1
 Environment=OMP_NUM_THREADS=2
-ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.asr
+ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.domains.voice_input.adapters.rpi5.asr
 Restart=on-failure
 RestartSec=3
 # Keep heavy transcription OFF the capture core (CPU0 is reserved for real-time

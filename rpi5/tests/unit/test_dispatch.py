@@ -1,7 +1,7 @@
 """Tier 0 — intent dispatch + the voice-policy confirmation grammar (M5)."""
 from __future__ import annotations
 
-from blazend.dispatch import IntentDispatcher, SettingsStore
+from blazend.domains.ai_orchestrator.adapters.rpi5.dispatch import IntentDispatcher, SettingsStore
 
 INTENTS = {"intents": [
     {"name": "volume_up", "action": "mutate", "mutate": {"key": "audio.volume", "delta": 10}},
@@ -138,8 +138,8 @@ def test_languages_list_tool(tmp_path):
 
 
 def test_orchestrator_mirrors_language_pin(tmp_path):
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import Orchestrator
     from blazend.events import Envelope
-    from blazend.orchestrator.supervisor import Orchestrator
 
     disp = _disp(tmp_path)
     orch = Orchestrator(runtime_dir_=tmp_path, dispatcher=disp)
@@ -152,8 +152,8 @@ def test_orchestrator_mirrors_language_pin(tmp_path):
 
 
 def test_orchestrator_dispatches_nlu_intent(tmp_path):
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import Orchestrator
     from blazend.events import Envelope
-    from blazend.orchestrator.supervisor import Orchestrator
 
     orch = Orchestrator(runtime_dir_=tmp_path, dispatcher=_disp(tmp_path))
     reply = orch._dispatch_intent(

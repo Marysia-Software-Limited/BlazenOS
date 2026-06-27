@@ -16,9 +16,9 @@ from datetime import datetime
 import numpy as np
 import pytest
 
-from blazend.assistant.embeddings import Embedder, EmbedderError, _OnnxBackend
-from blazend.assistant.memory import MemoryStore
 from blazend.config import Config
+from blazend.domains.context.adapters.rpi5.embeddings import Embedder, EmbedderError, _OnnxBackend
+from blazend.domains.context.adapters.rpi5.memory import MemoryStore
 
 NOW = datetime(2026, 6, 12, 14, 0, 0)
 

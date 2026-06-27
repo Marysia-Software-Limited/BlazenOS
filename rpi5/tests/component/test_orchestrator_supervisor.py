@@ -17,13 +17,13 @@ from pathlib import Path
 
 import pytest
 
+from blazend.domains.systems.adapters.rpi5.orchestrator import Orchestrator
 from blazend.events import (
     Envelope,
     system_event,
     wake_detected,
 )
 from blazend.ipc import Publisher
-from blazend.orchestrator import Orchestrator
 
 
 @pytest.fixture

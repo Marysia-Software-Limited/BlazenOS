@@ -1,4 +1,4 @@
-"""Unit tests for the shared-memory audio ring (`blazend.audio`).
+"""Unit tests for the shared-memory audio ring (`blazend.domains.voice_input.adapters.rpi5.audio`).
 
 Exercises the Python writer/reader pair; the byte layout must match the Rust
 `blazend-audio-in` `ring.rs` producer (header magic/version/fields).
@@ -8,7 +8,12 @@ from __future__ import annotations
 
 import numpy as np
 
-from blazend.audio import HEADER_BYTES, MAGIC, RingReader, RingWriter
+from blazend.domains.voice_input.adapters.rpi5.audio import (
+    HEADER_BYTES,
+    MAGIC,
+    RingReader,
+    RingWriter,
+)
 
 
 def test_header_and_roundtrip(tmp_path):

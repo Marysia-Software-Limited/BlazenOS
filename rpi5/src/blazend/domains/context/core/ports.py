@@ -13,8 +13,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 
-from blazend.assistant.embeddings import EmbedderLike as EmbedderPort
-from blazend.assistant.memory import Note, Reminder
+from blazend.domains.context.adapters.rpi5.embeddings import EmbedderLike as EmbedderPort
+from blazend.domains.context.adapters.rpi5.memory import Note, Reminder
 
 __all__ = ["EmbedderPort", "MemoryStorePort"]
 
@@ -44,7 +44,7 @@ class MemoryStorePort(Protocol):
 
 if TYPE_CHECKING:
     # Static conformance: the rpi5 JSON store must satisfy the port.
-    from blazend.assistant.memory import MemoryStore
+    from blazend.domains.context.adapters.rpi5.memory import MemoryStore
 
     def _rpi5_store_conforms(store: MemoryStore) -> MemoryStorePort:
         return store

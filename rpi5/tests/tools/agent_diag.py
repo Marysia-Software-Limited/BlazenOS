@@ -30,15 +30,19 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 
-from blazend.asr.engine import Transcriber, Transcript
-from blazend.assistant.embeddings import Embedder
-from blazend.assistant.engine import Assistant, Reply, detect_lang
-from blazend.assistant.gemini import GeminiClient
-from blazend.assistant.localllm import LocalLlm
-from blazend.assistant.memory import MemoryStore
-from blazend.assistant.openai import OpenAiClient
 from blazend.config import load
-from blazend.voice.runner import PiperSink
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import (
+    Assistant,
+    Reply,
+    detect_lang,
+)
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.gemini import GeminiClient
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.openai import OpenAiClient
+from blazend.domains.context.adapters.rpi5.embeddings import Embedder
+from blazend.domains.context.adapters.rpi5.memory import MemoryStore
+from blazend.domains.local_ai.adapters.rpi5.localllm import LocalLlm
+from blazend.domains.voice_input.adapters.rpi5.asr.engine import Transcriber, Transcript
+from blazend.domains.voice_input.adapters.rpi5.voice.runner import PiperSink
 
 # ---- logging -------------------------------------------------------------
 _COLORS = {
@@ -196,7 +200,9 @@ class _DiagSink:
 
 # ---- build the instrumented brain ----------------------------------------
 def _build(data_dir: Path, *, use_llm: bool, speak: bool) -> tuple[Assistant, _DiagSink]:
-    from blazend.voice.__main__ import _voices  # reuse the real voice resolver
+    from blazend.domains.voice_input.adapters.rpi5.voice.__main__ import (
+        _voices,  # reuse the real voice resolver
+    )
 
     real_mem = MemoryStore(data_dir / "memory.json")
     embedder = Embedder()
@@ -225,13 +231,13 @@ def _preflight(data_dir: Path, *, use_llm: bool, speak: bool) -> None:
     asr = load("asr")
     _log("CFG", "ASR model=%s lang=%s", asr.get("active", "?"), asr.get("language", "auto"))
     llm_cfg = load("llm")
-    from blazend.assistant.localllm import resolve_model_path
+    from blazend.domains.local_ai.adapters.rpi5.localllm import resolve_model_path
     mp = resolve_model_path(llm_cfg)
     _log("CFG", "LLM model=%s path=%s exists=%s use_llm=%s",
          llm_cfg.get("active_model"), mp, mp.exists() if mp else False, use_llm)
     emb = Embedder()
     _log("CFG", "Embedder available=%s model=%s", emb.available, emb.name)
-    from blazend.voice.__main__ import _voices
+    from blazend.domains.voice_input.adapters.rpi5.voice.__main__ import _voices
     voices = _voices()
     for lang, path in voices.items():
         _log("CFG", "TTS voice[%s]=%s exists=%s", lang, Path(path).name, Path(path).exists())
@@ -328,10 +334,10 @@ async def _run_live(
     led: object,
     radio: object,
 ) -> None:
-    from blazend.audio import RingReader
+    from blazend.domains.systems.adapters.rpi5.led import BLUE, GREEN, MAGENTA, OFF, RED
+    from blazend.domains.voice_input.adapters.rpi5.audio import RingReader
+    from blazend.domains.voice_input.adapters.rpi5.voice.runner import RingCapturer
     from blazend.ipc import Subscriber, runtime_dir
-    from blazend.led import BLUE, GREEN, MAGENTA, OFF, RED
-    from blazend.voice.runner import RingCapturer
 
     def set_led(color: str, meaning: str) -> None:
         led.set(color)  # type: ignore[attr-defined]
@@ -403,8 +409,8 @@ def main() -> int:
     brain, sink = _build(data_dir, use_llm=use_llm, speak=speak)
 
     if args.live:
-        from blazend.led_hw import open_status_led
-        from blazend.voice.runner import StreamPlayer
+        from blazend.domains.systems.adapters.rpi5.led_hw import open_status_led
+        from blazend.domains.voice_input.adapters.rpi5.voice.runner import StreamPlayer
         capture_s = float(load("wake-word").get("capture_window_s", 4.5))
         out = os.environ.get("PTT_OUT", "plughw:CARD=wm8960soundcard,DEV=0")
         led = open_status_led()

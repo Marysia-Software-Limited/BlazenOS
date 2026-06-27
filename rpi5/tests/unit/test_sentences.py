@@ -1,7 +1,7 @@
 """Tier 0 — the incremental sentence slicer for streaming TTS."""
 from __future__ import annotations
 
-from blazend.assistant.sentences import SentenceSlicer
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.sentences import SentenceSlicer
 
 
 def _feed_all(chunks: list[str]) -> list[str]:

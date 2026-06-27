@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from blazend.assistant.localllm import LocalLlm
 from blazend.domains.ai_orchestrator.core import registry
 from blazend.domains.ai_orchestrator.core.registry import select_chat_llm
+from blazend.domains.local_ai.adapters.rpi5.localllm import LocalLlm
 
 REPO = Path(__file__).resolve().parents[3]
 

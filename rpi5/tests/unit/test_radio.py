@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from blazend.assistant.radio import RadioDirectory
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.radio import RadioDirectory
 
 REPO = Path(__file__).resolve().parents[3]
 
