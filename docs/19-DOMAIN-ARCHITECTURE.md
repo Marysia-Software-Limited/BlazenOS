@@ -131,4 +131,10 @@ ships only after that doc is updated and the maintainer approves.
 >   (`registry.select_chat_llm` + the engine's cloud fallback) into one ordered
 >   first-available list. `select_local_only` encodes the no-outbound-cloud guarantee.
 >
-> The `blazend-ipc` hardening and the `jessica-ffi` widening are the remaining Phase 2 work.
+> The **`blazend-ipc` contract** was hardened alongside: the read path now fails
+> closed on a foreign protocol version (`EventEnvelope::require_current`); the
+> publisher drops oversized events instead of putting a frame on the wire that would
+> crash every subscriber; the broadcast write is full-or-drop (a short `try_write` can
+> no longer split a frame mid-message); and `Event::topic()` + a `Topic::ALL`-vs-schema
+> test guard the hand-written topic mappings against drift. The `jessica-ffi` widening
+> is the remaining Phase 2 work.

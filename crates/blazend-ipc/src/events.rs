@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::PROTOCOL_VERSION;
+use crate::{IpcError, Result, PROTOCOL_VERSION};
 
 /// Every IPC message is wrapped in this envelope.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,6 +31,20 @@ impl EventEnvelope {
             ts_ms,
             source: source.into(),
             event,
+        }
+    }
+
+    /// Reject an envelope this build can't speak. Fail-closed: a peer on a
+    /// different protocol version yields [`IpcError::VersionMismatch`]
+    /// rather than being silently mis-decoded. Called on the read path.
+    pub fn require_current(self) -> Result<Self> {
+        if self.v == PROTOCOL_VERSION {
+            Ok(self)
+        } else {
+            Err(IpcError::VersionMismatch {
+                got: self.v,
+                expected: PROTOCOL_VERSION,
+            })
         }
     }
 }
@@ -67,6 +81,24 @@ pub enum Topic {
 }
 
 impl Topic {
+    /// Every topic variant, in declaration order. Used to check the
+    /// hand-written enum against the `configs/_schema/events/` schemas.
+    pub const ALL: [Topic; 13] = [
+        Topic::AudioFrame,
+        Topic::WakeDetected,
+        Topic::VadStart,
+        Topic::VadEnd,
+        Topic::AsrPartial,
+        Topic::AsrFinal,
+        Topic::NluIntent,
+        Topic::NluMiss,
+        Topic::BrainReply,
+        Topic::TtsFrame,
+        Topic::SystemEvent,
+        Topic::HealthStatus,
+        Topic::Error,
+    ];
+
     /// Canonical string form (used as the JSON tag).
     pub fn as_str(self) -> &'static str {
         match self {
@@ -211,6 +243,26 @@ pub enum Event {
     },
 }
 
+impl Event {
+    /// The [`Topic`] this event is published under — the typed counterpart
+    /// of the serde `topic` tag written on the wire.
+    pub fn topic(&self) -> Topic {
+        match self {
+            Event::WakeDetected { .. } => Topic::WakeDetected,
+            Event::VadStart => Topic::VadStart,
+            Event::VadEnd { .. } => Topic::VadEnd,
+            Event::AsrFinal { .. } => Topic::AsrFinal,
+            Event::NluIntent { .. } => Topic::NluIntent,
+            Event::NluMiss { .. } => Topic::NluMiss,
+            Event::BrainReply { .. } => Topic::BrainReply,
+            Event::TtsFrame { .. } => Topic::TtsFrame,
+            Event::SystemEvent { .. } => Topic::SystemEvent,
+            Event::HealthStatus { .. } => Topic::HealthStatus,
+            Event::Error { .. } => Topic::Error,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -237,5 +289,97 @@ mod tests {
     fn topic_strings_are_stable() {
         assert_eq!(Topic::WakeDetected.as_str(), "wake.detected");
         assert_eq!(Topic::AsrFinal.as_str(), "asr.final");
+    }
+
+    #[test]
+    fn every_topic_has_a_schema() {
+        // Tie the hand-written `Topic` enum directly to the schema source of
+        // truth: every variant must have a `configs/_schema/events/<topic>.
+        // schema.json`. Guards against adding a topic without its schema (and
+        // vice-versa) until typed code-gen replaces the enum (M2).
+        let schema_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../configs/_schema/events");
+        for t in Topic::ALL {
+            let schema = schema_dir.join(format!("{}.schema.json", t.as_str()));
+            assert!(
+                schema.is_file(),
+                "no schema for topic {} (expected {})",
+                t.as_str(),
+                schema.display()
+            );
+        }
+    }
+
+    #[test]
+    fn event_topic_matches_the_serde_wire_tag() {
+        // For each event, the typed `topic()` must equal the `topic` tag
+        // actually serialised — the two hand-maintained mappings can't drift.
+        let cases = [
+            Event::WakeDetected {
+                model: "m".into(),
+                score: 0.5,
+                language: "pl".into(),
+            },
+            Event::VadStart,
+            Event::VadEnd { duration_ms: 1 },
+            Event::AsrFinal {
+                language: "pl".into(),
+                text: "t".into(),
+                confidence: 0.9,
+            },
+            Event::NluIntent {
+                intent: "i".into(),
+                language: "pl".into(),
+                params: Default::default(),
+                transcript: "t".into(),
+            },
+            Event::NluMiss {
+                language: "pl".into(),
+                transcript: "t".into(),
+            },
+            Event::BrainReply {
+                chunk: "c".into(),
+                final_: true,
+                language: None,
+                text: None,
+            },
+            Event::TtsFrame {
+                voice: "v".into(),
+                samples: 1,
+            },
+            Event::SystemEvent {
+                kind: "ready".into(),
+                detail: None,
+            },
+            Event::HealthStatus {
+                level: "ok".into(),
+                unit: "system".into(),
+                detail: "d".into(),
+                action: "none".into(),
+            },
+            Event::Error {
+                code: "c".into(),
+                message: "m".into(),
+                hint: None,
+            },
+        ];
+        for ev in cases {
+            let value = serde_json::to_value(&ev).unwrap();
+            let tag = value.get("topic").unwrap().as_str().unwrap();
+            assert_eq!(tag, ev.topic().as_str(), "topic drift for {ev:?}");
+        }
+    }
+
+    #[test]
+    fn require_current_rejects_a_foreign_protocol_version() {
+        let mut env = EventEnvelope::new("u", 1, Event::VadStart);
+        assert!(env.clone().require_current().is_ok());
+        env.v = PROTOCOL_VERSION + 1;
+        let err = env.require_current().unwrap_err();
+        assert!(matches!(
+            err,
+            crate::IpcError::VersionMismatch { got, expected }
+                if got == PROTOCOL_VERSION + 1 && expected == PROTOCOL_VERSION
+        ));
     }
 }

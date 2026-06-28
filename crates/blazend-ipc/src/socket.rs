@@ -66,7 +66,23 @@ impl Publisher {
                             Ok(b) => b,
                             Err(e) => { tracing::error!(error = %e, "encode failed"); continue; }
                         };
-                        subscribers.retain_mut(|s| broadcast_one(s, &payload).is_ok());
+                        // Never put a frame on the wire the receiver must
+                        // reject: an oversized payload would fail every
+                        // subscriber's read and take the consumers down with
+                        // it. Drop it here and keep the bus alive.
+                        if payload.len() > crate::codec::MAX_FRAME_BYTES {
+                            tracing::error!(
+                                bytes = payload.len(),
+                                topic = envelope.event.topic().as_str(),
+                                "dropping oversized event",
+                            );
+                            continue;
+                        }
+                        // Frame once (length prefix + payload), then fan out.
+                        let mut framed = Vec::with_capacity(4 + payload.len());
+                        framed.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+                        framed.extend_from_slice(&payload);
+                        subscribers.retain_mut(|s| broadcast_one(s, &framed).is_ok());
                     }
                 }
             }
@@ -86,13 +102,21 @@ impl Publisher {
     }
 }
 
-fn broadcast_one(stream: &mut UnixStream, payload: &[u8]) -> std::io::Result<()> {
-    // Tiny payloads + non-blocking try_write. If a peer can't keep up we
-    // drop it (subscribers.retain_mut in the caller).
-    let len = (payload.len() as u32).to_be_bytes();
-    stream.try_write(&len)?;
-    stream.try_write(payload)?;
-    Ok(())
+fn broadcast_one(stream: &mut UnixStream, framed: &[u8]) -> std::io::Result<()> {
+    // Non-blocking single write of the whole frame. `try_write` may write
+    // fewer bytes than asked when the kernel send buffer is nearly full; a
+    // short write here would split a frame mid-message and desync the peer
+    // for good. Treat any partial/blocked write as "can't keep up" and let
+    // the caller drop the subscriber (subscribers.retain_mut) — the same
+    // backpressure policy as a hard error, but without corrupting the wire.
+    match stream.try_write(framed) {
+        Ok(n) if n == framed.len() => Ok(()),
+        Ok(_) => Err(std::io::Error::new(
+            std::io::ErrorKind::WouldBlock,
+            "short write — subscriber behind",
+        )),
+        Err(e) => Err(e),
+    }
 }
 
 /// A subscriber: connects to a publisher socket and yields envelopes.
@@ -113,7 +137,10 @@ impl Subscriber {
         let Some(Frame { payload }) = frame else {
             return Ok(None);
         };
-        Ok(Some(serde_json::from_slice(&payload)?))
+        let env: EventEnvelope = serde_json::from_slice(&payload)?;
+        // Fail-closed on a peer speaking a different protocol version rather
+        // than silently mis-decoding it.
+        Ok(Some(env.require_current()?))
     }
 }
 
@@ -156,6 +183,28 @@ mod tests {
             Event::SystemEvent { kind, .. } => assert_eq!(kind, "ready"),
             other => panic!("wrong event: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn subscriber_rejects_foreign_protocol_version() {
+        let dir = tempfile_dir();
+        let sock = dir.join("ver.sock");
+        let publisher = Publisher::bind(&sock).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        let mut sub = Subscriber::connect(&sock).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+        // A peer stamped with a protocol version this build can't speak.
+        let mut env = EventEnvelope::new("test", 1, Event::VadStart);
+        env.v = crate::PROTOCOL_VERSION + 1;
+        publisher.publish(env).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let err = tokio::time::timeout(std::time::Duration::from_secs(1), sub.next())
+            .await
+            .expect("recv timed out")
+            .unwrap_err();
+        assert!(matches!(err, crate::IpcError::VersionMismatch { .. }));
     }
 
     fn tempfile_dir() -> PathBuf {
