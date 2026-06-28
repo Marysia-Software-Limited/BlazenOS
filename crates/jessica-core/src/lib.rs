@@ -16,12 +16,14 @@
 
 pub mod context;
 pub mod intent;
+pub mod routing;
 
 // Re-export the fabric types so mobile consumers only need to depend
 // on this crate, not blazend-fabric directly.
 pub use blazend_fabric::{Fact, FactType, PeerInfo, PeerKind, SyncLog, SyncMergeOutcome};
 pub use context::{InMemoryStore, MemoryStore, Note, Reminder, ReminderCategory};
 pub use intent::{IntentMatch, IntentRouter};
+pub use routing::{Backend, RoutePlan};
 
 /// Crate-wide error type.
 #[derive(Debug, thiserror::Error)]
