@@ -119,3 +119,11 @@ util, imported by both `dispatch` and TTS, never duplicated.
 One phase at a time, `make test-fast` green between each. Phase 4 is the load-bearing
 decision: it deliberately moves the orchestrator (today Python-mandated) into Rust, and
 ships only after that doc is updated and the maintainer approves.
+
+> **Status (Phase 2 in progress):** the portable **context** mind types landed in
+> `crates/jessica-core/src/context.rs` — `Note`, `Reminder`, `ReminderCategory`, the
+> `MemoryStore` trait (the Rust mirror of the Python `MemoryStorePort`), and an
+> `InMemoryStore` reference impl mobile cores reuse. Joins the pre-existing `intent`
+> router as the second mind leg; **routing** types, the `blazend-ipc` hardening, and the
+> `jessica-ffi` widening are the remaining Phase 2 work. The Python store stays the Pi's
+> sibling adapter behind the same port; JSON shapes are kept interchangeable.

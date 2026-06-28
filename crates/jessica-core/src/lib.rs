@@ -14,11 +14,13 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
 
+pub mod context;
 pub mod intent;
 
 // Re-export the fabric types so mobile consumers only need to depend
 // on this crate, not blazend-fabric directly.
 pub use blazend_fabric::{Fact, FactType, PeerInfo, PeerKind, SyncLog, SyncMergeOutcome};
+pub use context::{InMemoryStore, MemoryStore, Note, Reminder, ReminderCategory};
 pub use intent::{IntentMatch, IntentRouter};
 
 /// Crate-wide error type.
