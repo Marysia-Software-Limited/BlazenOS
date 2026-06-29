@@ -60,6 +60,11 @@ blazend-ipc     = { path = "../../domains/blazend-ipc" }
 blazend-fabric  = { path = "../../domains/blazend-fabric" }
 jessica-core    = { path = "../../domains/jessica-core" }
 
+# Appliance-internal shared lib: the audio ring buffer, used by both body
+# domains (voice-input + voice-output). Pathed from the workspace root so a
+# member's location never changes how it depends on this.
+blazend-audioring = { path = "blazend-audioring" }
+
 [profile.release]
 opt-level = 3
 lto = "thin"

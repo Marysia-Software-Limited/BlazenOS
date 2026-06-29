@@ -12,7 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 blazend-ipc        = { workspace = true }
-blazend-audioring  = { path = "../blazend-audioring" }
+blazend-audioring  = { workspace = true }
 tokio              = { workspace = true }
 anyhow             = { workspace = true }
 tracing            = { workspace = true }
