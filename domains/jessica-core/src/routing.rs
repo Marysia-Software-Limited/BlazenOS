@@ -59,6 +59,17 @@ impl Backend {
             Backend::Gemini => "gemini",
         }
     }
+
+    /// The canonical wire name — distinct per backend, matching the serde form
+    /// and the `brain.request` schema's `backend` enum.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Backend::Local => "local",
+            Backend::Ollama => "ollama",
+            Backend::OpenAi => "openai",
+            Backend::Gemini => "gemini",
+        }
+    }
 }
 
 /// An ordered chat-escalation policy: try each backend in turn; the first

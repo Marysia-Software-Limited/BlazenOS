@@ -1,0 +1,21 @@
+[package]
+workspace = "../../crates"  # workspace root lives at rpi5/crates/ (members are outside it)
+name = "blazend-mind"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Conversation mind for blazen_os: nlu.miss → brain.request via the shared jessica-core Mind (persona + context + backend selection). The ML glue runs the model."
+
+[[bin]]
+name = "blazend-mind"
+path = "src/main.rs"
+
+[dependencies]
+blazend-ipc        = { workspace = true }
+jessica-core       = { workspace = true }
+tokio              = { workspace = true }
+anyhow             = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap               = { workspace = true }

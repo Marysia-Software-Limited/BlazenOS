@@ -20,6 +20,7 @@ members = [
   "../voice-output/blazend-player",
   # ai-orchestrator
   "../ai-orchestrator/blazend-nlu",
+  "../ai-orchestrator/blazend-mind",
   # systems
   "../systems/blazend-health",
 ]
