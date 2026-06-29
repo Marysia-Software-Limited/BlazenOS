@@ -1,18 +1,18 @@
 [package]
-name = "blazend-wake"
+workspace = "../../crates"  # workspace root lives at rpi5/crates/ (members are outside it)
+name = "blazend-audio-in"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Wake-word detection (openWakeWord via ONNX Runtime) for blazen_os."
+description = "Microphone capture + VAD feed for blazen_os."
 
 [[bin]]
-name = "blazend-wake"
+name = "blazend-audio-in"
 path = "src/main.rs"
 
 [dependencies]
 blazend-ipc        = { workspace = true }
-blazend-audioring  = { workspace = true }
 tokio              = { workspace = true }
 serde              = { workspace = true }
 serde_json         = { workspace = true }
@@ -20,7 +20,6 @@ anyhow             = { workspace = true }
 tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
 clap               = { workspace = true }
-# load-dynamic: dlopen the onnxruntime .so at runtime (ORT_DYLIB_PATH) — no
-# build-time download/link; reuses the onnxruntime the Python venv ships.
-ort                = { version = "=2.0.0-rc.10", default-features = false, features = ["load-dynamic", "ndarray"] }
-ndarray            = "0.16"
+alsa               = { workspace = true }
+crossbeam-channel  = { workspace = true }
+blazend-audioring  = { workspace = true }

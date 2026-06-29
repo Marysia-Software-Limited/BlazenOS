@@ -10,7 +10,7 @@ This document is the map.
 
 | Surface       | Lives in                                       | Stack                                                     | Status |
 |---------------|------------------------------------------------|------------------------------------------------------------|--------|
-| Pi 5 appliance| [`rpi5/src/blazend/`](../rpi5/src/blazend/), [`rpi5/crates/blazend-*`](../rpi5/crates/), [`scripts/`](../scripts/), [`rpi5/stage-blazen/`](../rpi5/stage-blazen/) | Python + Rust, Raspberry Pi OS Lite, voice-first, no GUI    | M0 scaffolding |
+| Pi 5 appliance| [`rpi5/src/blazend/`](../rpi5/src/blazend/), [`rpi5/<domain>/blazend-*`](../rpi5/crates/), [`scripts/`](../scripts/), [`rpi5/stage-blazen/`](../rpi5/stage-blazen/) | Python + Rust, Raspberry Pi OS Lite, voice-first, no GUI    | M0 scaffolding |
 | Android app   | [`android/`](../android/)                      | Kotlin 2.0 + Jetpack Compose + AGP 8.7, minSdk 30           | M0 scaffolding |
 | iOS app       | [`ios/`](../ios/)                              | Swift 6.0 + SwiftUI + XcodeGen, iOS 17+                     | M0 scaffolding |
 
@@ -110,7 +110,7 @@ that step runs on the maintainer's Mac.
 ## 6. Where the Pi 5 stack lives
 
 - **Pi 5 appliance** is a self-contained project under `rpi5/` —
-  `rpi5/src/blazend/` (Python), `rpi5/crates/blazend-*` (appliance Rust
+  `rpi5/src/blazend/` (Python), `rpi5/<domain>/blazend-*` (appliance Rust
   workspace at `rpi5/crates/Cargo.toml`), `rpi5/stage-blazen/`
   (pi-gen overlay), and `rpi5/tests/` (Tier 0-3 scenarios + fixtures).
 - **`configs/`, `scripts/`, `docs/`** stay at the repo root — they're

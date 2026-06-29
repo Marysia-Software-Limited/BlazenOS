@@ -91,7 +91,7 @@ Bulk audio is too heavy for the JSON socket, so PCM rides a **shared-memory
 ring buffer** while the socket carries only markers. `blazend-audio-in` (Rust)
 is the single producer; `blazend-asr` (Python) is a reader.
 
-- **Ring implementation:** `rpi5/crates/blazend-audioring/` (Rust
+- **Ring implementation:** `rpi5/voice-input/blazend-audioring/` (Rust
   `RingWriter`/`RingReader` + `LinearResampler`) and its byte-identical Python
   twin `rpi5/src/blazend/audio/__init__.py`.
 - **Layout** (little-endian, both sides must agree):

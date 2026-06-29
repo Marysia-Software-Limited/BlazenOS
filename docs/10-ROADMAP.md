@@ -272,7 +272,7 @@ matcher on the CPU engine.
   `IntentRouter` over `configs/intents/system.yaml`, publishing
   `nlu.intent`. Same crate as the iOS/Android apps (via `jessica-ffi`) —
   one source of truth, no Python copy. Unit + IPC integration tests cover
-  EN and PL (`rpi5/crates/blazend-nlu`).
+  EN and PL (`rpi5/ai-orchestrator/blazend-nlu`).
 - ✓ **Intent dispatch + confirmation grammar (2026-06-12):** the
   orchestrator acts on `nlu.intent` via `blazend/dispatch.py` — looks up
   each intent's `action`/`mutate`/`tool` from `configs/intents/system.yaml`,

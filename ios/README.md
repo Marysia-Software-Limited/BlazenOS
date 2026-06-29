@@ -51,7 +51,7 @@ blazen_os/ios/
 | Shared intent YAML catalogue         | `configs/intents/`                             |
 | Product spec (PL+EN, shared w/ Android)| `docs/product/`                              |
 | Android twin                         | `android/`                                     |
-| Pi 5 appliance                       | `rpi5/src/blazend/`, `rpi5/crates/blazend-*`, `scripts/` |
+| Pi 5 appliance                       | `rpi5/src/blazend/`, `rpi5/<domain>/blazend-*`, `scripts/` |
 
 The Rust workspace lives at `crates/Cargo.toml`. The iOS `JessicaCore`
 Swift package currently ships a **pure-Swift placeholder** so the app

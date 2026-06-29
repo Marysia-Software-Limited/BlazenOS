@@ -6,15 +6,22 @@
 
 [workspace]
 resolver = "2"
+# Members live under the domain tree (rpi5/<domain>/); this manifest stays
+# the appliance workspace root so the build (cd rpi5/crates) + target dir are
+# unchanged. See docs/19-DOMAIN-ARCHITECTURE.md.
 members = [
-  "blazend-audioring",
-  "blazend-audio-in",
-  "blazend-audio-out",
-  "blazend-wake",
-  "blazend-tts",
-  "blazend-health",
-  "blazend-nlu",
-  "blazend-player",
+  # voice-input
+  "../voice-input/blazend-audioring",
+  "../voice-input/blazend-audio-in",
+  "../voice-input/blazend-wake",
+  # voice-output
+  "../voice-output/blazend-audio-out",
+  "../voice-output/blazend-tts",
+  "../voice-output/blazend-player",
+  # ai-orchestrator
+  "../ai-orchestrator/blazend-nlu",
+  # systems
+  "../systems/blazend-health",
 ]
 
 [workspace.package]
@@ -63,7 +70,7 @@ jessica-core    = { path = "../../domains/jessica-core" }
 # Appliance-internal shared lib: the audio ring buffer, used by both body
 # domains (voice-input + voice-output). Pathed from the workspace root so a
 # member's location never changes how it depends on this.
-blazend-audioring = { path = "blazend-audioring" }
+blazend-audioring = { path = "../voice-input/blazend-audioring" }
 
 [profile.release]
 opt-level = 3

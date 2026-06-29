@@ -1,24 +1,22 @@
 [package]
-name = "blazend-audio-in"
+workspace = "../../crates"  # workspace root lives at rpi5/crates/ (members are outside it)
+name = "blazend-audio-out"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Microphone capture + VAD feed for blazen_os."
+description = "Speaker playback + mixer for blazen_os."
 
 [[bin]]
-name = "blazend-audio-in"
+name = "blazend-audio-out"
 path = "src/main.rs"
 
 [dependencies]
 blazend-ipc        = { workspace = true }
 tokio              = { workspace = true }
-serde              = { workspace = true }
-serde_json         = { workspace = true }
 anyhow             = { workspace = true }
 tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
 clap               = { workspace = true }
-alsa               = { workspace = true }
-crossbeam-channel  = { workspace = true }
+cpal               = { workspace = true }
 blazend-audioring  = { workspace = true }

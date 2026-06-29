@@ -1,4 +1,5 @@
 [package]
+workspace = "../../crates"  # workspace root lives at rpi5/crates/ (members are outside it)
 name = "blazend-audioring"
 version.workspace = true
 edition.workspace = true

@@ -1,5 +1,5 @@
 """Shared-memory audio ring buffer — Python side of the Rust `blazend-audio-in`
-contract (`rpi5/crates/blazend-audio-in/src/ring.rs`).
+contract (`rpi5/voice-input/blazend-audio-in/src/ring.rs`).
 
 The Rust capture unit is the single producer; `blazend-asr` (and, later, other
 consumers) read the i16 mono PCM here while `vad.start` / `vad.end` markers

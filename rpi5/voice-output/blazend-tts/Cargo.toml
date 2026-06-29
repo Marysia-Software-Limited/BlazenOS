@@ -1,21 +1,21 @@
 [package]
-name = "blazend-audio-out"
+workspace = "../../crates"  # workspace root lives at rpi5/crates/ (members are outside it)
+name = "blazend-tts"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Speaker playback + mixer for blazen_os."
+description = "Piper TTS wrapper for blazen_os."
 
 [[bin]]
-name = "blazend-audio-out"
+name = "blazend-tts"
 path = "src/main.rs"
 
 [dependencies]
 blazend-ipc        = { workspace = true }
+blazend-audioring  = { workspace = true }
 tokio              = { workspace = true }
 anyhow             = { workspace = true }
 tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
 clap               = { workspace = true }
-cpal               = { workspace = true }
-blazend-audioring  = { workspace = true }

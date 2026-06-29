@@ -1,18 +1,19 @@
 [package]
-name = "blazend-tts"
+workspace = "../../crates"  # workspace root lives at rpi5/crates/ (members are outside it)
+name = "blazend-nlu"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Piper TTS wrapper for blazen_os."
+description = "Fast-path intent router for blazen_os: routes asr.final → nlu.intent using the shared jessica-core crate."
 
 [[bin]]
-name = "blazend-tts"
+name = "blazend-nlu"
 path = "src/main.rs"
 
 [dependencies]
 blazend-ipc        = { workspace = true }
-blazend-audioring  = { workspace = true }
+jessica-core       = { workspace = true }
 tokio              = { workspace = true }
 anyhow             = { workspace = true }
 tracing            = { workspace = true }

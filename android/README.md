@@ -50,7 +50,7 @@ blazen_os/android/
 | Shared intent YAML catalogue         | `configs/intents/`                             |
 | Product spec (PL+EN, shared with iOS)| `docs/product/`                                |
 | iOS twin                             | `ios/`                                         |
-| Pi 5 appliance                       | `rpi5/src/blazend/`, `rpi5/crates/blazend-*`, `scripts/` |
+| Pi 5 appliance                       | `rpi5/src/blazend/`, `rpi5/<domain>/blazend-*`, `scripts/` |
 
 The Rust workspace lives at `crates/Cargo.toml` (one workspace root for the
 whole repo). The Android `:core` module currently ships a **hand-written
