@@ -141,13 +141,13 @@ util, imported by both `dispatch` and TTS, never duplicated.
 
 ## Program roadmap
 
-Phases 1–2 are complete. Phase 3 onward executes the cores-at-root direction.
+Phases 1–3 are complete. Phase 4 onward continues the cores-at-root direction.
 
 | Phase | Title | Center | Outcome |
 |-------|-------|--------|---------|
-| **1** ✅ | Domain-ize the Pi | Python | 6-domain tree, ports extracted, appliance green *(landed under `rpi5/src/blazend/domains/`; Phase 3 hoists the portable parts to root)* |
+| **1** ✅ | Domain-ize the Pi | Python | 6-domain tree, ports extracted, appliance green *(Python under `rpi5/src/blazend/domains/`; its portable cores migrate to root in Phase 4)* |
 | **2** ✅ | Rust contract + core foundation | Rust | `jessica-core` grew portable mind types (intent, context, routing); `blazend-ipc` hardened; `jessica-ffi` widened |
-| **3** | Establish the root `domains/` library tree | Rust | The shared cores (`blazend-ipc`, `blazend-fabric`, `jessica-core`, `jessica-ffi`) move from `crates/` into `domains/<domain>/`; the Pi adapter crates move from `rpi5/crates/` into `rpi5/<domain>/`. Workspaces re-rooted, **binary names unchanged**, appliance green |
+| **3** ✅ | Establish the root `domains/` library tree | Rust | The shared cores (`blazend-ipc`, `blazend-fabric`, `jessica-core`, `jessica-ffi`) moved from `crates/` into the repo-root **`domains/`** workspace; the 8 Pi adapter crates moved from `rpi5/crates/` into `rpi5/<domain>/`. Crate/binary names unchanged; appliance green |
 | **4** | Migrate the mind Python→Rust *(gated)* | Rust | orchestrator routing + context model move out of the Pi's Python and into the root `domains/` cores; the Pi keeps only ML glue + adapters. **Revises §6 of [`14-RUST-PYTHON-SPLIT.md`](14-RUST-PYTHON-SPLIT.md) — needs sign-off** |
 | **5** | Cross-platform + cross-device | Rust everywhere | `android/` and `ios/` implement their domain adapters against the **same** root cores; `blazend-fabric` `sync_fact` → one personality |
 
@@ -155,9 +155,18 @@ One phase at a time, `make test-fast` green between each. Phase 4 is the load-be
 decision: it deliberately moves the orchestrator (today Python-mandated) into Rust, and
 ships only after that doc is updated and the maintainer approves.
 
-### Phase 3 — execution notes
+> **Status (Phase 3 complete, 2026-06-29):** the shared cores are flat under
+> `domains/<crate>` (names unchanged; `jessica-core` stays one bundle — a per-domain
+> split is deferred to Phase 4). The appliance crates live under
+> `rpi5/{voice-input,voice-output,ai-orchestrator,systems}/<crate>`; the appliance
+> Cargo workspace **manifest stays at `rpi5/crates/Cargo.toml`** (a thin virtual
+> manifest — each member carries `package.workspace = "../../crates"`), so
+> `cd rpi5/crates && cargo … --workspace` and the `rpi5/crates/target/` packaging path
+> are unchanged. Verified by `cargo build/test/clippy/fmt` on both workspaces + `make lint`.
 
-The move is mechanical and low-risk because it is a **source relocation, not a rewrite**:
+### Phase 3 — execution notes (record)
+
+The move was mechanical and low-risk because it was a **source relocation, not a rewrite**:
 binary names, runtime behaviour, and the event contract are untouched.
 
 - **Root `domains/` workspace.** The shared-core Cargo workspace at `crates/` becomes the

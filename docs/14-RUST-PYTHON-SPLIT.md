@@ -74,7 +74,7 @@ Cross-language safety is enforced by the wire format, not by FFI.
   `configs/_schema/events/<topic>.schema.json`. The schema is the
   authoritative source.
 - **Generators:**
-  - Rust types: `crates/blazend-ipc/build.rs` runs `typify` against the
+  - Rust types: `domains/blazend-ipc/build.rs` runs `typify` against the
     schemas and emits `events.rs`.
   - Python types: `scripts/gen-event-types.py` runs `datamodel-code-generator`
     and emits `src/blazend/events/_generated.py`.
@@ -120,11 +120,11 @@ shared core; nothing under `rpi5/` is built into the mobile apps.
 
 ```
 blazen_os/
-├── crates/                      # SHARED CORE Cargo workspace (all 3 platforms)
+├── domains/                     # SHARED CORE Cargo workspace — portable domain libs (all 3 platforms)
 │   ├── Cargo.toml
-│   ├── blazend-ipc/             # IPC wire / event envelope (lib)
-│   ├── blazend-fabric/          # CRDT sync log (lib + appliance binary)
-│   ├── jessica-core/            # intent router + fabric re-export (was jessica-mobile-core)
+│   ├── blazend-ipc/             # IPC wire / event envelope (lib) — contract
+│   ├── blazend-fabric/          # CRDT sync log (lib + appliance binary) — context
+│   ├── jessica-core/            # intent + routing + memory model — mind
 │   └── jessica-ffi/             # C ABI + JNI over jessica-core (iOS/Android)
 ├── configs/                     # shared contract + appliance config
 │   ├── _schema/events/          #   authoritative JSON Schemas (shared)
@@ -135,31 +135,35 @@ blazen_os/
 ├── rpi5/                        # ── Raspberry Pi 5 APPLIANCE PROJECT ──
 │   ├── Makefile                 #   forwards to the root orchestrator
 │   ├── pyproject.toml
-│   ├── src/blazend/             #   Python: orchestrator, asr, brain, config, events, ipc
-│   ├── crates/                  #   appliance Cargo workspace (audio-in/out, wake, tts, health)
-│   │   └── Cargo.toml           #   path-depends on ../../crates (one-directional)
+│   ├── src/blazend/domains/     #   Python adapters by domain (orchestrator, asr, brain, ...)
+│   ├── voice-input/             #   Rust adapters: blazend-audio-in, blazend-wake, blazend-audioring
+│   ├── voice-output/            #   Rust adapters: blazend-audio-out, blazend-tts, blazend-player
+│   ├── ai-orchestrator/         #   Rust adapter: blazend-nlu
+│   ├── systems/                 #   Rust adapter: blazend-health
+│   ├── crates/                  #   appliance Cargo workspace manifest only (members under the dirs above)
+│   │   └── Cargo.toml           #   path-depends on ../../domains (one-directional)
 │   ├── stage-blazen/            #   pi-gen overlay
 │   └── tests/                   #   unit + component + scenarios + fixtures
 ├── Makefile                     # root: cross-host sync + build/test orchestration
 └── ...
 ```
 
-Two Cargo workspaces — `crates/` (core) and `rpi5/crates/` (appliance) —
+Two Cargo workspaces — `domains/` (shared core) and `rpi5/crates/` (appliance) —
 plus the Python tree under `rpi5/src/`. The appliance depends on the core
-**one-directionally** (`blazend-ipc` etc. by path); the core never depends
-back. The shared `configs/` and `crates/` stay at the repo root so the in-repo
-`ios/` and `android/` trees reference them at a stable path. The root
-`Makefile` orchestrates both workspaces and the venv; `rpi5/Makefile`
-forwards the appliance targets up.
+**one-directionally** (`blazend-ipc` etc. by path → `../../domains`); the core
+never depends back. The shared `configs/` and `domains/` stay at the repo root so
+the in-repo `ios/` and `android/` trees reference them at a stable path. The
+appliance crates live under `rpi5/<domain>/` but the workspace manifest stays at
+`rpi5/crates/Cargo.toml` (each member carries `package.workspace = "../../crates"`),
+so the build invocations and `rpi5/crates/target/` are unchanged. The root
+`Makefile` orchestrates both workspaces and the venv; `rpi5/Makefile` forwards the
+appliance targets up.
 
-> **Target direction (decided 2026-06-29):** the tree above is reorganized
-> **by capability domain** — the shared cores under `crates/` become a
-> repo-root `domains/<domain>/` library tree (the common libraries), and the
-> appliance's Rust adapters (`rpi5/crates/*`) and Python adapters
-> (`rpi5/src/blazend/domains/*`) move under `rpi5/<domain>/`. The
-> one-directional dependency, the two-workspace build, the binary names, and
-> this Python/Rust split are all **unchanged** — only the directory grouping
-> moves. The move is **Phase 3**; canonical model in
+> **Organized by capability domain (Phase 3 complete, 2026-06-29):** the shared
+> cores are the portable domain libraries at the repo root (`domains/`); the Pi's
+> Rust + Python adapters live under `rpi5/`. The one-directional dependency, the
+> two-workspace build, the binary names, and this Python/Rust split are all
+> **unchanged** — it was a directory regrouping. Canonical model:
 > [`19-DOMAIN-ARCHITECTURE.md`](19-DOMAIN-ARCHITECTURE.md).
 
 ---
@@ -246,7 +250,7 @@ Image builds fail if either drifts.
 
 - A `tests/unit/test_event_schemas.py` test loads every schema, generates
   examples, and round-trips them through Python's parser. The Rust side
-  has `crates/blazend-ipc/tests/schema_roundtrip.rs`. Both must pass.
+  has `domains/blazend-ipc/tests/schema_roundtrip.rs`. Both must pass.
 
 ---
 

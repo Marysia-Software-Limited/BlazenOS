@@ -28,9 +28,9 @@ Whenever the user says "rules changed" or you modify a doc, refresh these.
 - **One-line:** monorepo for the **Jessica** voice-first assistant —
   Raspberry Pi 5 appliance ([`rpi5/`](rpi5/)), native Android
   ([`android/`](android/)), native iOS ([`ios/`](ios/)), and a shared
-  Rust core ([`crates/jessica-core`](crates/jessica-core/),
-  [`crates/jessica-ffi`](crates/jessica-ffi/), [`crates/blazend-ipc`](crates/blazend-ipc/),
-  [`crates/blazend-fabric`](crates/blazend-fabric/)). Pi 5 is **16 GB
+  Rust core ([`domains/jessica-core`](domains/jessica-core/),
+  [`domains/jessica-ffi`](domains/jessica-ffi/), [`domains/blazend-ipc`](domains/blazend-ipc/),
+  [`domains/blazend-fabric`](domains/blazend-fabric/)). Pi 5 is **16 GB
   reference**, 8 GB supported secondary; optional Hailo accelerator on
   the LLM path. Fully on-device ML across all three surfaces. SSH on
   the Pi is **on by default** (pubkey-only, no shipped credential). See
@@ -40,25 +40,23 @@ Whenever the user says "rules changed" or you modify a doc, refresh these.
   trees ship Kotlin and Swift placeholders that exercise the shared
   Rust API contract end-to-end. No bootable Pi image and no signed
   mobile builds yet.
-- **Monorepo layout (current, 2026-06-11):** the repo root holds the
-  **shared core** common to all three platforms — `crates/` (Rust:
+- **Monorepo layout (current, 2026-06-29):** the codebase is organized
+  **by capability domain** — a domain is a **portable core library at the
+  repo root** plus **per-platform adapters**. The repo root holds
+  **`domains/`** (the shared Rust cores common to all three platforms:
   `blazend-ipc`, `blazend-fabric`, `jessica-core`, `jessica-ffi`),
   `configs/` (shared contract + appliance config), `docs/`, `scripts/`.
-  The **Raspberry Pi 5 appliance** is a self-contained project under
-  **`rpi5/`** (Python `rpi5/src/blazend`, appliance crates
-  `rpi5/crates/*`, `rpi5/stage-blazen`, `rpi5/tests`). The
-  `android/` and `ios/` trees consume `crates/` + `configs/`. Full tree
-  in [`docs/14-RUST-PYTHON-SPLIT.md`](docs/14-RUST-PYTHON-SPLIT.md) §4
-  and [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md).
-- **Layout direction (decided 2026-06-29):** the codebase is organized
-  **by capability domain** — each domain is a **portable core library at
-  the repo root** (`domains/<domain>/`) plus **per-platform adapters**
-  under `rpi5/` / `android/` / `ios/`. Device-independent code is a shared
-  root library; only platform-specific code lives under a platform dir.
-  The shared cores (`crates/`) and the Pi adapters (`rpi5/crates/`,
-  `rpi5/src/blazend/domains/`) relocate into that tree in **Phase 3** —
-  binary names and behaviour unchanged. Canonical:
-  [`docs/19-DOMAIN-ARCHITECTURE.md`](docs/19-DOMAIN-ARCHITECTURE.md).
+  The **Raspberry Pi 5 appliance** under **`rpi5/`** holds only Pi
+  adapters: Python at `rpi5/src/blazend/domains/<domain>/`, Rust at
+  `rpi5/<domain>/<crate>` (`voice-input`, `voice-output`,
+  `ai-orchestrator`, `systems`) whose Cargo workspace manifest stays at
+  `rpi5/crates/Cargo.toml`, plus `rpi5/stage-blazen`, `rpi5/tests`. The
+  `android/` and `ios/` trees consume `domains/` + `configs/`. Only
+  platform-specific code lives under a platform dir; device-independent
+  code is a shared root library. Canonical + full tree:
+  [`docs/19-DOMAIN-ARCHITECTURE.md`](docs/19-DOMAIN-ARCHITECTURE.md),
+  [`docs/14-RUST-PYTHON-SPLIT.md`](docs/14-RUST-PYTHON-SPLIT.md) §4,
+  [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md).
 - **Five things that must always be true:**
   1. The system is usable with **zero peripherals beyond a USB mic + speaker**.
      If a change forces a keyboard/monitor for daily use, reject it.
@@ -93,8 +91,8 @@ Whenever the user says "rules changed" or you modify a doc, refresh these.
   7. **Native per platform on mobile.** [`android/`](android/) is
      Kotlin + Compose; [`ios/`](ios/) is Swift + SwiftUI. They share
      business logic via the Rust mobile core
-     ([`crates/jessica-core`](crates/jessica-core/) +
-     [`crates/jessica-ffi`](crates/jessica-ffi/)), and ML is the OS's
+     ([`domains/jessica-core`](domains/jessica-core/) +
+     [`domains/jessica-ffi`](domains/jessica-ffi/)), and ML is the OS's
      job (Apple Speech / Foundation Models on iOS, Google Speech /
      Gemini Nano on Android). See
      [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md) and
@@ -190,14 +188,14 @@ VM). Surface only the failures.
      blazend-* unit and let the IPC contract carry the call.
    - **Mobile surfaces:** any business logic that the Pi 5 also needs,
      or that's worth sharing across iOS+Android, goes into
-     `crates/jessica-core/`. UI and ML-glue go in Kotlin
+     `domains/jessica-core/`. UI and ML-glue go in Kotlin
      (`android/`) and Swift (`ios/`). Don't reimplement a Rust crate
      in Kotlin or Swift.
 8. **When you add a new IPC event:** add the JSON Schema under
    `configs/_schema/events/` and regenerate types in both languages via
    `make gen-events`. The schema is the source of truth, not the
    hand-written Python or Rust type.
-9. **When you add a new FFI function** (`crates/jessica-ffi/`): update
+9. **When you add a new FFI function** (`domains/jessica-ffi/`): update
    the matching Kotlin `external fun` in
    `android/core/.../JessicaCoreNative.kt` AND the Swift seam in
    `ios/JessicaCore/Sources/JessicaCore/JessicaFFI.swift` in the same

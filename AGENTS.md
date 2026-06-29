@@ -51,8 +51,8 @@ tool-specific operational notes; when they disagree with this file, the
 10. **Native per platform on mobile.** The Android tree ([`android/`](android/))
     is Kotlin + Jetpack Compose. The iOS tree ([`ios/`](ios/)) is Swift +
     SwiftUI. They share business logic via the Rust crates
-    [`crates/jessica-core/`](crates/jessica-core/) and
-    [`crates/jessica-ffi/`](crates/jessica-ffi/) — see
+    [`domains/jessica-core/`](domains/jessica-core/) and
+    [`domains/jessica-ffi/`](domains/jessica-ffi/) — see
     [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md). No third
     UI stack enters the mobile core; no business logic gets re-implemented
     in Swift or Kotlin if it can live in Rust.
@@ -60,9 +60,10 @@ tool-specific operational notes; when they disagree with this file, the
     at the repo root** (under `domains/`) plus **per-platform adapters** under
     `rpi5/` / `android/` / `ios/`. Device-independent code (routing, memory,
     intent, the IPC contract) is a shared root library; only platform-specific
-    code lives under a platform dir. The shared cores currently at `crates/`
-    and the Pi adapters at `rpi5/crates/` move into that tree in **Phase 3** —
-    this is the decided target, see
+    code lives under a platform dir. The shared cores live in `domains/`; the Pi
+    Rust adapters in `rpi5/<domain>/<crate>` (workspace manifest at
+    `rpi5/crates/Cargo.toml`); the Pi Python adapters under
+    `rpi5/src/blazend/domains/`. See
     [`docs/19-DOMAIN-ARCHITECTURE.md`](docs/19-DOMAIN-ARCHITECTURE.md).
 
 ---

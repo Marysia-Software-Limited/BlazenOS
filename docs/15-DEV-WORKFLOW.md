@@ -6,8 +6,8 @@
 - The native Android app ([`android/`](../android/)) — Kotlin + Compose.
 - The native iOS app ([`ios/`](../ios/)) — Swift + SwiftUI.
 
-Plus the shared Rust mobile core ([`crates/jessica-core`](../crates/jessica-core/),
-[`crates/jessica-ffi`](../crates/jessica-ffi/)).
+Plus the shared Rust mobile core ([`domains/jessica-core`](../domains/jessica-core/),
+[`domains/jessica-ffi`](../domains/jessica-ffi/)).
 
 This doc fixes the **canonical workflow** across all three surfaces.
 

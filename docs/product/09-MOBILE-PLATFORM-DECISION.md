@@ -10,7 +10,7 @@ This doc records the decision and why.
 > **Decision (2026-06-12, supersedes 2026-06-11):** **Fully native
 > per platform** — Swift + SwiftUI for iOS, Kotlin + Jetpack Compose
 > for Android. **Business logic shared as a Rust core**
-> (`crates/jessica-core/`) exposed via a clean C ABI (Swift
+> (`domains/jessica-core/`) exposed via a clean C ABI (Swift
 > Package on iOS, AAR via JNI on Android). The mobile work moves
 > from `rachel/` (Flutter) to two new projects:
 > - `/Users/beret/dev/jessica-ios/` (SwiftUI + Xcode)
@@ -48,12 +48,12 @@ outweigh quarters of lag on the actual feature surface.
 ## 0a. Shared Rust core
 
 Native UI per platform, but business logic stays shared. (These shared crates
-relocate from `crates/` into the repo-root `domains/<domain>/` library tree in
-Phase 3 — see [`../19-DOMAIN-ARCHITECTURE.md`](../19-DOMAIN-ARCHITECTURE.md);
-names and the FFI contract are unchanged.)
+now live in the repo-root `domains/` workspace — Phase 3, see
+[`../19-DOMAIN-ARCHITECTURE.md`](../19-DOMAIN-ARCHITECTURE.md); names and the FFI
+contract are unchanged.)
 
 ```
-crates/                                                  # in blazen_os repo
+domains/                                                 # in blazen_os repo
   blazend-ipc           (existing)
   blazend-fabric        (existing — used by Pi appliance + mobile)
   jessica-core   (NEW)

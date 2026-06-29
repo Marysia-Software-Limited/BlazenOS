@@ -10,7 +10,7 @@ This document is the map.
 
 | Surface       | Lives in                                       | Stack                                                     | Status |
 |---------------|------------------------------------------------|------------------------------------------------------------|--------|
-| Pi 5 appliance| [`rpi5/src/blazend/`](../rpi5/src/blazend/), [`rpi5/<domain>/blazend-*`](../rpi5/crates/), [`scripts/`](../scripts/), [`rpi5/stage-blazen/`](../rpi5/stage-blazen/) | Python + Rust, Raspberry Pi OS Lite, voice-first, no GUI    | M0 scaffolding |
+| Pi 5 appliance| [`rpi5/src/blazend/`](../rpi5/src/blazend/), [`rpi5/<domain>/blazend-*`](../rpi5/), [`scripts/`](../scripts/), [`rpi5/stage-blazen/`](../rpi5/stage-blazen/) | Python + Rust, Raspberry Pi OS Lite, voice-first, no GUI    | M0 scaffolding |
 | Android app   | [`android/`](../android/)                      | Kotlin 2.0 + Jetpack Compose + AGP 8.7, minSdk 30           | M0 scaffolding |
 | iOS app       | [`ios/`](../ios/)                              | Swift 6.0 + SwiftUI + XcodeGen, iOS 17+                     | M0 scaffolding |
 
@@ -21,10 +21,14 @@ it provides the **shared core** and the **shared docs**.
 ## 2. The shared core
 
 ```
-crates/
-├── jessica-core/   # Pure Rust, no platform deps.
-│   ├── src/lib.rs         #   - SyncLog, Fact (CRDT), IntentRouter
-│   └── src/intent.rs      #   - Regex intent matcher + YAML parser
+domains/            # repo-root shared-core workspace — portable domain libraries
+├── blazend-ipc/    # IPC wire / event envelope — contract
+├── blazend-fabric/ # CRDT sync log — context
+├── jessica-core/   # Pure Rust, no platform deps. — mind
+│   ├── src/lib.rs         #   - SyncLog/Fact re-export, MemoryStore, RoutePlan, IntentRouter
+│   ├── src/intent.rs      #   - Regex intent matcher + YAML parser
+│   ├── src/context.rs     #   - Note/Reminder/MemoryStore (the memory model)
+│   └── src/routing.rs     #   - Backend/RoutePlan (chat escalation policy)
 └── jessica-ffi/           # C ABI + JNI bridge over jessica-core.
     ├── src/lib.rs         #   - extern "C" entry points (cbindgen-tracked)
     ├── src/jni_bridge.rs  #   - Java_os_blazen_jessica_core_* (Android)
@@ -42,17 +46,16 @@ Three artifacts ship to three consumers from the same Rust source:
 
 The Pi 5 appliance does NOT consume `jessica-ffi` directly. The
 appliance workspace at `rpi5/crates/Cargo.toml` path-depends on
-`../../crates`, so the appliance uses the same `jessica-core` crate
+`../../domains`, so the appliance uses the same `jessica-core` crate
 for any shared business logic, and `blazend-fabric` for the sync log
 on the wire.
 
-> **Direction (decided 2026-06-29):** these shared crates are the **portable
-> cores of their domains** and relocate from `crates/` into a repo-root
-> `domains/<domain>/` library tree in **Phase 3** (`blazend-ipc` → contract,
-> `blazend-fabric` + the memory model → context, the intent/routing types →
-> ai-orchestrator). The mobile build scripts re-point at the new paths; the FFI
-> contract and shipped artifacts are unchanged. See
-> [`19-DOMAIN-ARCHITECTURE.md`](19-DOMAIN-ARCHITECTURE.md).
+> **Organized by capability domain (Phase 3 complete, 2026-06-29):** these
+> shared crates are the **portable cores of their domains**, hoisted to the
+> repo-root `domains/` workspace (flat; crate names unchanged). The intent/
+> routing/memory types stay bundled in `jessica-core` for now — a per-domain
+> split is deferred to Phase 4. The FFI contract and shipped artifacts are
+> unchanged. See [`19-DOMAIN-ARCHITECTURE.md`](19-DOMAIN-ARCHITECTURE.md).
 
 ## 3. The contract
 
@@ -115,10 +118,11 @@ that step runs on the maintainer's Mac.
   (pi-gen overlay), and `rpi5/tests/` (Tier 0-3 scenarios + fixtures).
 - **`configs/`, `scripts/`, `docs/`** stay at the repo root — they're
   the cross-implementation contract that mobile reads too.
-- **Two Cargo workspaces, one-directional:** `crates/Cargo.toml`
+- **Two Cargo workspaces, one-directional:** `domains/Cargo.toml`
   (shared core — `jessica-core`, `jessica-ffi`, `blazend-ipc`,
-  `blazend-fabric`) and `rpi5/crates/Cargo.toml` (appliance — depends
-  on the shared workspace via path). Mobile consumes only `crates/`.
+  `blazend-fabric`) and `rpi5/crates/Cargo.toml` (appliance — members under
+  `rpi5/<domain>/`, depends on the shared workspace via path). Mobile
+  consumes only `domains/`.
 - **`/docs/product/`** stays the shared cross-implementation spec.
   Updates here ripple to every surface.
 

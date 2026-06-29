@@ -9,8 +9,8 @@ The LLM runs on the Pi 5 CPU by default; an optional Raspberry Pi AI HAT+ (Hailo
 > **Monorepo mobile twins:** native iOS ([`ios/`](ios/), SwiftUI) and
 > Android ([`android/`](android/), Jetpack Compose) live alongside the
 > Pi 5 appliance in this repo. They share the Rust mobile core
-> ([`crates/jessica-core`](crates/jessica-core/),
-> [`crates/jessica-ffi`](crates/jessica-ffi/)). The Flutter prototype at
+> ([`domains/jessica-core`](domains/jessica-core/),
+> [`domains/jessica-ffi`](domains/jessica-ffi/)). The Flutter prototype at
 > [`../rachel/`](../rachel/) is a **reference implementation of the
 > cross-platform contract**, not the shipping product. See
 > [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md) and
@@ -112,32 +112,34 @@ blazen_os/
 │   ├── vm/                  #   QEMU/VM-specific configs
 │   └── _schema/events/      #   JSON Schemas for IPC events (cross-language contract)
 ├── scripts/                 # shared tooling: flash, bootstrap, run-vm, mobile FFI build
-├── crates/                  # SHARED CORE Cargo workspace (all 3 platforms)
-│   ├── blazend-ipc/         #   IPC wire / event envelope (lib)
-│   ├── blazend-fabric/      #   CRDT sync log (lib + appliance binary)
-│   ├── jessica-core/        #   intent router + fabric re-export
+├── domains/                 # SHARED CORE Cargo workspace — portable domain libs (all 3 platforms)
+│   ├── blazend-ipc/         #   IPC wire / event envelope (lib) — contract
+│   ├── blazend-fabric/      #   CRDT sync log (lib + appliance binary) — context
+│   ├── jessica-core/        #   intent + routing + memory model — mind
 │   └── jessica-ffi/         #   C ABI + JNI over jessica-core (iOS/Android)
-├── android/                 # ── Native Android app (Kotlin + Jetpack Compose)
-├── ios/                     # ── Native iOS app (SwiftUI + JessicaCore Swift Package)
-└── rpi5/                    # ── Raspberry Pi 5 APPLIANCE PROJECT ──
+├── android/                 # ── Native Android app (Kotlin + Jetpack Compose) + domain adapters
+├── ios/                     # ── Native iOS app (SwiftUI + JessicaCore Swift Package) + domain adapters
+└── rpi5/                    # ── Raspberry Pi 5 APPLIANCE — Pi domain adapters ──
     ├── Makefile             #   forwards to the root orchestrator
     ├── pyproject.toml       #   Python project metadata + tooling
-    ├── src/blazend/         #   Python: orchestrator, asr, brain, config, ...
-    ├── crates/              #   appliance Cargo workspace (audio-in/out, wake, tts, health)
+    ├── src/blazend/domains/ #   Python adapters by domain (orchestrator, asr, brain, ...)
+    ├── voice-input/         #   Rust adapters: blazend-audio-in, blazend-wake, blazend-audioring
+    ├── voice-output/        #   Rust adapters: blazend-audio-out, blazend-tts, blazend-player
+    ├── ai-orchestrator/     #   Rust adapter: blazend-nlu
+    ├── systems/             #   Rust adapter: blazend-health
+    ├── crates/              #   appliance Cargo workspace manifest (members under the dirs above)
     ├── stage-blazen/        #   pi-gen overlay (installs everything into the image)
     └── tests/               #   scenarios, harness, audio fixtures (Tier 0-3)
 ```
 
-The in-repo `ios/` and `android/` trees consume `crates/` (Rust core via
+The in-repo `ios/` and `android/` trees consume `domains/` (Rust core via
 `jessica-ffi`) and `configs/` (shared contract); they never touch `rpi5/`.
 
-> **Layout direction (decided 2026-06-29):** the codebase is moving to a
-> **by-domain** organization — the shared cores under `crates/` become a
-> repo-root `domains/<domain>/` library tree (the common libraries), and each
-> platform (`rpi5/`, `android/`, `ios/`) keeps only its own adapters. Binary
-> names, behaviour, and the Python/Rust split are unchanged; it's a directory
-> regrouping, executed in Phase 3. See
-> [`docs/19-DOMAIN-ARCHITECTURE.md`](docs/19-DOMAIN-ARCHITECTURE.md).
+> **Organized by capability domain** (see
+> [`docs/19-DOMAIN-ARCHITECTURE.md`](docs/19-DOMAIN-ARCHITECTURE.md)): a domain
+> is a **portable core library at the repo root** (`domains/`) plus
+> **per-platform adapters** under `rpi5/` / `android/` / `ios/`. Only
+> platform-specific code lives under a platform dir.
 
 ---
 
@@ -173,8 +175,8 @@ make flash DEVICE=/dev/disk4    # writes the same image to SD card
 |----------------------------|------------------------------------------------------|
 | [`android/`](android/)     | Native Android app — Kotlin 2.0, Compose, AGP 8.7, minSdk 30, target 35. Two modules: `:app`, `:core`. |
 | [`ios/`](ios/)             | Native iOS app — Swift 6.0, SwiftUI strict concurrency, iOS 17.0+, XcodeGen-driven project. Two targets: `Jessica`, `JessicaCore` (Swift Package). |
-| [`crates/jessica-core`](crates/jessica-core/) | Shared business logic — intent router, sync log (CRDT), adapter contracts. Pure Rust, no platform deps. |
-| [`crates/jessica-ffi`](crates/jessica-ffi/) | C ABI (cbindgen → `jessica_ffi.h` → `JessicaFFI.xcframework`) + JNI (`libjessica_ffi.so`). |
+| [`domains/jessica-core`](domains/jessica-core/) | Shared business logic — intent router, sync log (CRDT), adapter contracts. Pure Rust, no platform deps. |
+| [`domains/jessica-ffi`](domains/jessica-ffi/) | C ABI (cbindgen → `jessica_ffi.h` → `JessicaFFI.xcframework`) + JNI (`libjessica_ffi.so`). |
 
 Mobile dev rig is **paul** (Linux) — see
 [`docs/15-DEV-WORKFLOW.md`](docs/15-DEV-WORKFLOW.md). iOS final build /

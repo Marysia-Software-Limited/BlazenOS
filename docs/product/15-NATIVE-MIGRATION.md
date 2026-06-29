@@ -7,7 +7,7 @@ This doc is the concrete migration plan from the Flutter scaffold
 > **Decision (2026-06-12):** Drop Flutter as the shipping mobile
 > stack. New shipping projects: `ios/` (Swift + SwiftUI),
 > `android/` (Kotlin + Compose). Shared business logic moves
-> into `crates/jessica-core` + `crates/jessica-ffi` in the
+> into `domains/jessica-core` + `domains/jessica-ffi` in the
 > blazen_os repo. `rachel/` remains as the **reference
 > implementation** of the contract — used to verify the Rust port
 > behaves identically on the Dart side.
@@ -17,7 +17,7 @@ This doc is the concrete migration plan from the Flutter scaffold
 >
 > - Step 1 — repo layout shipped at `/Users/beret/dev/ios/` and
 >   `/Users/beret/dev/android/`.
-> - Step 2 — `crates/jessica-core` + `crates/jessica-ffi`
+> - Step 2 — `domains/jessica-core` + `domains/jessica-ffi`
 >   exist; cargo workspace builds clean, 3 FFI tests + 6 router
 >   tests + 8 fabric tests green; cbindgen emits a clean
 >   `include/jessica_ffi.h`; `scripts/build-ios-xcframework.sh` and
@@ -81,7 +81,7 @@ spec (same pattern as `rachel/`).
 
 ## 2. Shared Rust crates
 
-### `crates/jessica-core`
+### `domains/jessica-core`
 
 Pure Rust, no platform deps. Exposes a single `JessicaCore`
 opaque type with methods:
@@ -127,7 +127,7 @@ Tests round-trip:
   facts the existing `blazend-fabric` tests use — CRDT outcomes must
   match exactly.
 
-### `crates/jessica-ffi`
+### `domains/jessica-ffi`
 
 Crate type `staticlib` + `cdylib`. Two output modes:
 
