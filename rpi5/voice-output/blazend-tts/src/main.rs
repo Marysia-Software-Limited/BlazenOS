@@ -137,6 +137,7 @@ async fn run_real(publisher: &Publisher, args: &Args) -> Result<()> {
             final_,
             language,
             text,
+            ..
         } = env.event
         else {
             continue;

@@ -1,25 +1,26 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://blazen.os/events/brain.reply",
-  "title": "brain.reply",
+  "$id": "https://blazen.os/events/brain.request",
+  "title": "brain.request",
   "type": "object",
   "required": ["v", "ts_ms", "source", "topic", "data"],
   "properties": {
     "v": { "type": "integer", "const": 1 },
     "ts_ms": { "type": "integer", "minimum": 0 },
     "source": { "type": "string", "minLength": 1 },
-    "topic": { "type": "string", "const": "brain.reply" },
+    "topic": { "type": "string", "const": "brain.request" },
     "data": {
       "type": "object",
-      "required": ["chunk", "final_"],
+      "required": ["request_id", "language", "prompt"],
       "properties": {
-        "chunk": { "type": "string" },
-        "final_": { "type": "boolean" },
+        "request_id": { "type": "string", "minLength": 1 },
         "language": { "type": "string", "enum": ["en", "pl"] },
-        "text": { "type": "string" },
-        "request_id": { "type": "string" },
-        "action": { "type": "string" },
-        "payload": { "type": "object" }
+        "prompt": { "type": "string" },
+        "system": { "type": "string" },
+        "backend": {
+          "type": "string",
+          "enum": ["local", "ollama", "openai", "gemini"]
+        }
       },
       "additionalProperties": false
     }

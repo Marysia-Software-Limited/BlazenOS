@@ -68,6 +68,8 @@ pub enum Topic {
     NluIntent,
     /// No fast-path intent matched — route to the conversational brain.
     NluMiss,
+    /// The Rust mind asks the Python ML glue to run the model.
+    BrainRequest,
     /// LLM streaming reply chunk.
     BrainReply,
     /// Streamed TTS audio chunk.
@@ -83,7 +85,7 @@ pub enum Topic {
 impl Topic {
     /// Every topic variant, in declaration order. Used to check the
     /// hand-written enum against the `configs/_schema/events/` schemas.
-    pub const ALL: [Topic; 13] = [
+    pub const ALL: [Topic; 14] = [
         Topic::AudioFrame,
         Topic::WakeDetected,
         Topic::VadStart,
@@ -92,6 +94,7 @@ impl Topic {
         Topic::AsrFinal,
         Topic::NluIntent,
         Topic::NluMiss,
+        Topic::BrainRequest,
         Topic::BrainReply,
         Topic::TtsFrame,
         Topic::SystemEvent,
@@ -110,6 +113,7 @@ impl Topic {
             Topic::AsrFinal => "asr.final",
             Topic::NluIntent => "nlu.intent",
             Topic::NluMiss => "nlu.miss",
+            Topic::BrainRequest => "brain.request",
             Topic::BrainReply => "brain.reply",
             Topic::TtsFrame => "tts.frame",
             Topic::SystemEvent => "system.event",
@@ -184,6 +188,26 @@ pub enum Event {
         transcript: String,
     },
 
+    /// The Rust mind (`blazend-mind`) asks the Python ML glue to run the
+    /// model. The glue answers with a `brain.reply` carrying the same
+    /// `request_id`. The mind builds `prompt` + `system` (persona + injected
+    /// context); the glue only runs inference — no routing or memory.
+    #[serde(rename = "brain.request")]
+    BrainRequest {
+        /// Correlates the eventual `brain.reply`.
+        request_id: String,
+        /// Language tag: `"en"` | `"pl"`.
+        language: String,
+        /// User prompt (the transcript to answer).
+        prompt: String,
+        /// System / persona + injected-context prompt.
+        #[serde(default)]
+        system: Option<String>,
+        /// Backend hint (`"local"` | `"ollama"` | `"openai"` | `"gemini"`).
+        #[serde(default)]
+        backend: Option<String>,
+    },
+
     /// LLM streaming reply token.
     #[serde(rename = "brain.reply")]
     BrainReply {
@@ -197,6 +221,9 @@ pub enum Event {
         /// Full reply text (when not streamed chunk-by-chunk).
         #[serde(default)]
         text: Option<String>,
+        /// Correlates back to the originating [`Event::BrainRequest`].
+        #[serde(default)]
+        request_id: Option<String>,
     },
 
     /// TTS chunk written to audio-out.
@@ -254,6 +281,7 @@ impl Event {
             Event::AsrFinal { .. } => Topic::AsrFinal,
             Event::NluIntent { .. } => Topic::NluIntent,
             Event::NluMiss { .. } => Topic::NluMiss,
+            Event::BrainRequest { .. } => Topic::BrainRequest,
             Event::BrainReply { .. } => Topic::BrainReply,
             Event::TtsFrame { .. } => Topic::TtsFrame,
             Event::SystemEvent { .. } => Topic::SystemEvent,
@@ -337,11 +365,19 @@ mod tests {
                 language: "pl".into(),
                 transcript: "t".into(),
             },
+            Event::BrainRequest {
+                request_id: "r1".into(),
+                language: "pl".into(),
+                prompt: "p".into(),
+                system: None,
+                backend: None,
+            },
             Event::BrainReply {
                 chunk: "c".into(),
                 final_: true,
                 language: None,
                 text: None,
+                request_id: None,
             },
             Event::TtsFrame {
                 voice: "v".into(),
