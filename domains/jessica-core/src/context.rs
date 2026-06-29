@@ -146,6 +146,22 @@ impl InMemoryStore {
         Self::default()
     }
 
+    /// Load from a Python-compatible `memory.json`.
+    ///
+    /// The keys `notes` / `reminders` / `profile` / `seq` line up
+    /// field-for-field with the Pi's `MemoryStore` JSON; extra keys (e.g.
+    /// `voice_notes`) are ignored. A missing file yields an empty store; a
+    /// malformed file is an error. This is the read side of the "one
+    /// personality" memory — the same bytes the Python store persists.
+    pub fn load_json(path: &std::path::Path) -> std::io::Result<Self> {
+        match std::fs::read_to_string(path) {
+            Ok(s) => serde_json::from_str(&s)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::new()),
+            Err(e) => Err(e),
+        }
+    }
+
     fn next_id(&mut self, prefix: &str) -> String {
         self.seq += 1;
         format!("{prefix}-{}", self.seq)
@@ -312,6 +328,40 @@ mod tests {
         assert_eq!(n.id, "note-3");
         let back = serde_json::to_string(&n).unwrap();
         assert!(back.contains("\"kind\":\"note_created\""));
+    }
+
+    #[test]
+    fn loads_python_memory_json_shape() {
+        // A representative on-device memory.json, including a `voice_notes`
+        // key the Rust store doesn't model (must be ignored, not rejected).
+        let json = r#"{
+          "notes": [
+            {"id":"note-1","text":"kup mleko","created":"2026-06-28T10:00:00","title":"zakupy","kind":"note_created"}
+          ],
+          "reminders": [
+            {"id":"rem-1","text":"lek","due":"2026-06-29T12:00:00","created":"2026-06-29T08:00:00","fired":false,"category":"alarm","kind":"reminder_created"}
+          ],
+          "voice_notes": [
+            {"id":"vn-1","audio_path":"/x.wav","created":"2026-06-28T10:00:00","duration_s":1.0,"transcript":"","kind":"voice_note_created"}
+          ],
+          "profile": {"name": {"value":"Paweł","set":"2026-06-28T09:00:00","kind":"profile_set"}},
+          "seq": 3
+        }"#;
+        let s: InMemoryStore = serde_json::from_str(json).unwrap();
+        assert_eq!(s.notes().len(), 1);
+        assert_eq!(s.notes()[0].title, "zakupy");
+        assert_eq!(s.pending().len(), 1);
+        assert_eq!(s.get_profile("name").as_deref(), Some("Paweł"));
+        // seq carried, so a fresh add continues the sequence (note-4).
+        let mut s = s;
+        assert_eq!(s.add_note("x", "", "2026-06-29T10:00:00").id, "note-4");
+    }
+
+    #[test]
+    fn load_json_missing_file_is_empty() {
+        let p = std::path::Path::new("/nonexistent/blazen/memory.json");
+        let s = InMemoryStore::load_json(p).unwrap();
+        assert!(s.notes().is_empty());
     }
 
     #[test]

@@ -63,6 +63,15 @@ fn plan_turn(
     }
 }
 
+/// Where the Pi persists memory (mirrors the Python `context.data_dir()`):
+/// `$BLAZEN_DATA_DIR/memory.json`, else `<runtime>/data/memory.json`.
+fn memory_path() -> PathBuf {
+    if let Ok(d) = std::env::var("BLAZEN_DATA_DIR") {
+        return PathBuf::from(d).join("memory.json");
+    }
+    runtime_dir().join("data").join("memory.json")
+}
+
 /// Connect to the NLU publisher (`nlu.miss` / `nlu.intent`), retrying.
 async fn connect_nlu(nlu_sock: &Path) -> Subscriber {
     loop {
@@ -78,11 +87,11 @@ async fn run(
     nlu_sock: PathBuf,
     mind_sock: PathBuf,
     mind: Mind,
-    store: InMemoryStore,
+    mem_path: PathBuf,
 ) -> anyhow::Result<()> {
     let plan = RoutePlan::default_chat();
     let publisher = Publisher::bind(&mind_sock).await?;
-    tracing::info!(socket = ?publisher.socket_path, "mind online");
+    tracing::info!(socket = ?publisher.socket_path, memory = ?mem_path, "mind online");
     let mut sub = connect_nlu(&nlu_sock).await;
     tracing::info!(nlu = ?nlu_sock, "mind subscribed to nlu.miss");
     let seq = AtomicU64::new(0);
@@ -92,6 +101,12 @@ async fn run(
             transcript,
         } = env.event
         {
+            // Load context fresh each turn so notes/name the Python side
+            // writes are reflected without a restart.
+            let store = InMemoryStore::load_json(&mem_path).unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "memory load failed; using empty store");
+                InMemoryStore::new()
+            });
             let request_id = format!("mind-{}", seq.fetch_add(1, Ordering::Relaxed));
             let req = plan_turn(
                 &mind,
@@ -126,13 +141,11 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
     let _args = Args::parse();
-    // Context store is empty for now; JSON persistence (parity with the Python
-    // memory.json) lands in the next step, giving the mind the user's name + notes.
     run(
         runtime_dir().join("nlu.sock"),
         runtime_dir().join("mind.sock"),
         Mind::new(),
-        InMemoryStore::new(),
+        memory_path(),
     )
     .await
 }
