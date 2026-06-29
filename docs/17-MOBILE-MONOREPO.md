@@ -46,6 +46,14 @@ appliance workspace at `rpi5/crates/Cargo.toml` path-depends on
 for any shared business logic, and `blazend-fabric` for the sync log
 on the wire.
 
+> **Direction (decided 2026-06-29):** these shared crates are the **portable
+> cores of their domains** and relocate from `crates/` into a repo-root
+> `domains/<domain>/` library tree in **Phase 3** (`blazend-ipc` → contract,
+> `blazend-fabric` + the memory model → context, the intent/routing types →
+> ai-orchestrator). The mobile build scripts re-point at the new paths; the FFI
+> contract and shipped artifacts are unchanged. See
+> [`19-DOMAIN-ARCHITECTURE.md`](19-DOMAIN-ARCHITECTURE.md).
+
 ## 3. The contract
 
 Three things are **identical** across all surfaces:

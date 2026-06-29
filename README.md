@@ -131,6 +131,14 @@ blazen_os/
 The in-repo `ios/` and `android/` trees consume `crates/` (Rust core via
 `jessica-ffi`) and `configs/` (shared contract); they never touch `rpi5/`.
 
+> **Layout direction (decided 2026-06-29):** the codebase is moving to a
+> **by-domain** organization — the shared cores under `crates/` become a
+> repo-root `domains/<domain>/` library tree (the common libraries), and each
+> platform (`rpi5/`, `android/`, `ios/`) keeps only its own adapters. Binary
+> names, behaviour, and the Python/Rust split are unchanged; it's a directory
+> regrouping, executed in Phase 3. See
+> [`docs/19-DOMAIN-ARCHITECTURE.md`](docs/19-DOMAIN-ARCHITECTURE.md).
+
 ---
 
 ## Quick start (developer machine, no Pi needed)

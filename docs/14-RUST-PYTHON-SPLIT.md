@@ -152,6 +152,16 @@ back. The shared `configs/` and `crates/` stay at the repo root so the in-repo
 `Makefile` orchestrates both workspaces and the venv; `rpi5/Makefile`
 forwards the appliance targets up.
 
+> **Target direction (decided 2026-06-29):** the tree above is reorganized
+> **by capability domain** — the shared cores under `crates/` become a
+> repo-root `domains/<domain>/` library tree (the common libraries), and the
+> appliance's Rust adapters (`rpi5/crates/*`) and Python adapters
+> (`rpi5/src/blazend/domains/*`) move under `rpi5/<domain>/`. The
+> one-directional dependency, the two-workspace build, the binary names, and
+> this Python/Rust split are all **unchanged** — only the directory grouping
+> moves. The move is **Phase 3**; canonical model in
+> [`19-DOMAIN-ARCHITECTURE.md`](19-DOMAIN-ARCHITECTURE.md).
+
 ---
 
 ## 5. Build & toolchain

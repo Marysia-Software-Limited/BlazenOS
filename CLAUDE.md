@@ -40,8 +40,8 @@ Whenever the user says "rules changed" or you modify a doc, refresh these.
   trees ship Kotlin and Swift placeholders that exercise the shared
   Rust API contract end-to-end. No bootable Pi image and no signed
   mobile builds yet.
-- **Monorepo layout (2026-06-11):** the repo root holds the **shared
-  core** common to all three platforms — `crates/` (Rust:
+- **Monorepo layout (current, 2026-06-11):** the repo root holds the
+  **shared core** common to all three platforms — `crates/` (Rust:
   `blazend-ipc`, `blazend-fabric`, `jessica-core`, `jessica-ffi`),
   `configs/` (shared contract + appliance config), `docs/`, `scripts/`.
   The **Raspberry Pi 5 appliance** is a self-contained project under
@@ -50,6 +50,15 @@ Whenever the user says "rules changed" or you modify a doc, refresh these.
   `android/` and `ios/` trees consume `crates/` + `configs/`. Full tree
   in [`docs/14-RUST-PYTHON-SPLIT.md`](docs/14-RUST-PYTHON-SPLIT.md) §4
   and [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md).
+- **Layout direction (decided 2026-06-29):** the codebase is organized
+  **by capability domain** — each domain is a **portable core library at
+  the repo root** (`domains/<domain>/`) plus **per-platform adapters**
+  under `rpi5/` / `android/` / `ios/`. Device-independent code is a shared
+  root library; only platform-specific code lives under a platform dir.
+  The shared cores (`crates/`) and the Pi adapters (`rpi5/crates/`,
+  `rpi5/src/blazend/domains/`) relocate into that tree in **Phase 3** —
+  binary names and behaviour unchanged. Canonical:
+  [`docs/19-DOMAIN-ARCHITECTURE.md`](docs/19-DOMAIN-ARCHITECTURE.md).
 - **Five things that must always be true:**
   1. The system is usable with **zero peripherals beyond a USB mic + speaker**.
      If a change forces a keyboard/monitor for daily use, reject it.

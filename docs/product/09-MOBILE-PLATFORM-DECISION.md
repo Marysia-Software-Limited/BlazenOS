@@ -47,7 +47,10 @@ outweigh quarters of lag on the actual feature surface.
 
 ## 0a. Shared Rust core
 
-Native UI per platform, but business logic stays shared:
+Native UI per platform, but business logic stays shared. (These shared crates
+relocate from `crates/` into the repo-root `domains/<domain>/` library tree in
+Phase 3 — see [`../19-DOMAIN-ARCHITECTURE.md`](../19-DOMAIN-ARCHITECTURE.md);
+names and the FFI contract are unchanged.)
 
 ```
 crates/                                                  # in blazen_os repo

@@ -56,6 +56,14 @@ tool-specific operational notes; when they disagree with this file, the
     [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md). No third
     UI stack enters the mobile core; no business logic gets re-implemented
     in Swift or Kotlin if it can live in Rust.
+11. **Organized by capability domain.** A domain is a **portable core library
+    at the repo root** (under `domains/`) plus **per-platform adapters** under
+    `rpi5/` / `android/` / `ios/`. Device-independent code (routing, memory,
+    intent, the IPC contract) is a shared root library; only platform-specific
+    code lives under a platform dir. The shared cores currently at `crates/`
+    and the Pi adapters at `rpi5/crates/` move into that tree in **Phase 3** —
+    this is the decided target, see
+    [`docs/19-DOMAIN-ARCHITECTURE.md`](docs/19-DOMAIN-ARCHITECTURE.md).
 
 ---
 
