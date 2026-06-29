@@ -3,7 +3,7 @@
 Native Android implementation of the **Jessica** voice-first assistant.
 Lives inside the `blazen_os` monorepo at `android/`, side-by-side with the
 iOS app (`ios/`), the Pi 5 appliance (`rpi5/`), and the shared Rust core
-(`crates/jessica-core`, `crates/jessica-ffi`).
+(`domains/jessica-core`, `domains/jessica-ffi`).
 
 | Item              | Choice                                       |
 |-------------------|----------------------------------------------|
@@ -14,7 +14,7 @@ iOS app (`ios/`), the Pi 5 appliance (`rpi5/`), and the shared Rust core
 | Target / Compile  | **35** (Android 15) — Compose 1.7 baseline; flip to 36 for AICore Gemini Nano |
 | Languages (PL+EN) | Polish is the development default (`pl`); English ships day-1 |
 | ML stack          | openWakeWord (TFLite/NNAPI) + Google on-device Speech + Gemini Nano (AICore) + Android `TextToSpeech` |
-| Shared core       | `crates/jessica-core/` (Rust) via `libjessica_ffi.so` (JNI) |
+| Shared core       | `domains/jessica-core/` (Rust) via `libjessica_ffi.so` (JNI) |
 
 ## Repo layout
 
@@ -45,8 +45,8 @@ blazen_os/android/
 
 | Concern                              | Lives in                                       |
 |--------------------------------------|------------------------------------------------|
-| Intent router, sync log (CRDT)       | `crates/jessica-core/`                  |
-| C ABI + JNI bridge                   | `crates/jessica-ffi/`                          |
+| Intent router, sync log (CRDT)       | `domains/jessica-core/`                  |
+| C ABI + JNI bridge                   | `domains/jessica-ffi/`                          |
 | Shared intent YAML catalogue         | `configs/intents/`                             |
 | Product spec (PL+EN, shared with iOS)| `docs/product/`                                |
 | iOS twin                             | `ios/`                                         |

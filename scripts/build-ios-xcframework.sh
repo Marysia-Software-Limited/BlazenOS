@@ -20,7 +20,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CRATE="$ROOT/crates/jessica-ffi"
+CRATE="$ROOT/domains/jessica-ffi"
 BUILD="$ROOT/build/jessica-ffi"
 HEADER="$CRATE/include/jessica_ffi.h"
 
@@ -68,9 +68,9 @@ build_target aarch64-apple-ios
 build_target aarch64-apple-ios-sim
 (( HAS_X64_SIM == 1 )) && build_target x86_64-apple-ios
 
-DEV_LIB="$ROOT/crates/target/aarch64-apple-ios/release/libjessica_ffi.a"
-SIM_ARM_LIB="$ROOT/crates/target/aarch64-apple-ios-sim/release/libjessica_ffi.a"
-SIM_X64_LIB="$ROOT/crates/target/x86_64-apple-ios/release/libjessica_ffi.a"
+DEV_LIB="$ROOT/domains/target/aarch64-apple-ios/release/libjessica_ffi.a"
+SIM_ARM_LIB="$ROOT/domains/target/aarch64-apple-ios-sim/release/libjessica_ffi.a"
+SIM_X64_LIB="$ROOT/domains/target/x86_64-apple-ios/release/libjessica_ffi.a"
 
 # Lipo the simulator slices into a single .a when both are present.
 SIM_LIB="$BUILD/libjessica_ffi-sim.a"

@@ -19,7 +19,7 @@ log "pulling $HOST:$SRC -> $REPO_ROOT/"
 # prevents stomping on macOS-side WIP that paul hasn't seen yet.
 rsync -avz --update \
   --exclude='.venv/' \
-  --exclude='crates/target/' \
+  --exclude='target/' \
   --exclude='vm-images/' \
   --exclude='models/' \
   --exclude='_test_projects/' \

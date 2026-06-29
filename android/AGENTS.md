@@ -15,12 +15,12 @@ Defers to the monorepo-level [`/AGENTS.md`](../AGENTS.md) and
    `res/values/strings.xml` and `res/values-pl/strings.xml`. A change that
    adds only the English copy is incomplete.
 3. **Shared core stays Rust.** Intent routing, sync log, adapter
-   contracts — `crates/jessica-core/`. The Kotlin port in `:core`
+   contracts — `domains/jessica-core/`. The Kotlin port in `:core`
    exists for M0 only and is a temporary stand-in. Do not extend the
    business logic there; extend the Rust crate and re-bind.
 4. **JNI signatures are the contract.** External-fun signatures in
    `core/src/main/kotlin/os/blazen/jessica/core/JessicaCoreNative.kt`
-   MUST match `crates/jessica-ffi/src/jni_bridge.rs` byte-for-byte. If
+   MUST match `domains/jessica-ffi/src/jni_bridge.rs` byte-for-byte. If
    you change one side, regenerate / hand-edit the other in the same
    commit.
 5. **Min SDK 30, target 35.** No version drift without an explicit

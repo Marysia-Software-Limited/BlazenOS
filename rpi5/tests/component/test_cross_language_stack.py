@@ -54,7 +54,7 @@ def test_cross_language_state_propagation():
     wake = _binary("blazend-wake")
     health = _binary("blazend-health")
     if wake is None or health is None:
-        pytest.skip("Rust binaries not built — run `make rust` or `cd crates && cargo build` first")
+        pytest.skip("Rust binaries not built — run `make rust` or `cd domains && cargo build` first")
 
     runtime = Path(tempfile.mkdtemp(prefix="bl-xl-", dir="/tmp"))
     env = {**os.environ, "BLAZEN_RUNTIME_DIR": str(runtime)}

@@ -17,7 +17,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CRATE="$ROOT/crates/jessica-ffi"
+CRATE="$ROOT/domains/jessica-ffi"
 ANDROID_PROJECT="${ANDROID_PROJECT:-/Users/beret/dev/android}"
 
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
@@ -89,7 +89,7 @@ build_target () {
         out_dir="$ROOT/build/jessica-ffi/jniLibs/$ABI_DIR"
     fi
     mkdir -p "$out_dir"
-    cp "$ROOT/crates/target/$rust_target/release/libjessica_ffi.so" "$out_dir/"
+    cp "$ROOT/domains/target/$rust_target/release/libjessica_ffi.so" "$out_dir/"
     echo "  → $out_dir/libjessica_ffi.so"
 }
 

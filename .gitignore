@@ -60,7 +60,7 @@ ios/**/*.p12
 ios/**/*.mobileprovision
 
 # Generated code from IPC schemas (regenerate via `make gen-events`)
-crates/blazend-ipc/src/events/_generated.rs
+domains/blazend-ipc/src/events/_generated.rs
 rpi5/src/blazend/events/_generated.py
 
 # Editor / OS

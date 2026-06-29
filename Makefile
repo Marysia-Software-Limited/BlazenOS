@@ -81,7 +81,7 @@ venv python: $(VENV)/bin/python ## Create the Python virtualenv and install the 
 	cd rpi5 && $(PIP) install -e ".[dev]"
 
 # -------- build --------
-# Two Cargo workspaces: crates/ (shared core: ipc, fabric, jessica-core,
+# Two Cargo workspaces: domains/ (shared core: ipc, fabric, jessica-core,
 # jessica-ffi) and rpi5/crates/ (appliance units). The appliance depends on
 # the core one-directionally. See docs/14-RUST-PYTHON-SPLIT.md.
 
@@ -90,18 +90,18 @@ build: python rust ## Build both Python (venv) and Rust (host arch)
 
 .PHONY: rust
 rust: ## Build all Rust crates for the host (shared core + appliance)
-	cd crates && $(CARGO) build --release --workspace
+	cd domains && $(CARGO) build --release --workspace
 	cd rpi5/crates && $(CARGO) build --release --workspace
 
 .PHONY: rust-aarch64
 rust-aarch64: ## Cross-build Rust crates for Pi 5 (aarch64-unknown-linux-gnu)
 	@if [ -x "$(CROSS)" ] || command -v "$(CROSS)" >/dev/null 2>&1; then \
 	  echo "Using $(CROSS) for aarch64 cross-build"; \
-	  cd "$(REPO_ROOT)/crates" && "$(CROSS)" build --release --workspace --target $(RUST_TARGET); \
+	  cd "$(REPO_ROOT)/domains" && "$(CROSS)" build --release --workspace --target $(RUST_TARGET); \
 	  cd "$(REPO_ROOT)/rpi5/crates" && "$(CROSS)" build --release --workspace --target $(RUST_TARGET); \
 	else \
 	  echo "cross not found at $(CROSS); falling back to cargo (needs ALSA aarch64 sysroot)"; \
-	  cd "$(REPO_ROOT)/crates" && $(CARGO) build --release --workspace --target $(RUST_TARGET); \
+	  cd "$(REPO_ROOT)/domains" && $(CARGO) build --release --workspace --target $(RUST_TARGET); \
 	  cd "$(REPO_ROOT)/rpi5/crates" && $(CARGO) build --release --workspace --target $(RUST_TARGET); \
 	fi
 
@@ -111,7 +111,7 @@ rust-aarch64: ## Cross-build Rust crates for Pi 5 (aarch64-unknown-linux-gnu)
 gen-events: python ## Regenerate IPC event types (Python + Rust) from JSON Schemas
 	$(PY) scripts/gen-event-types.py --schemas configs/_schema/events \
 	  --python-out rpi5/src/blazend/events/_generated.py \
-	  --rust-out  crates/blazend-ipc/src/events/_generated.rs
+	  --rust-out  domains/blazend-ipc/src/events/_generated.rs
 
 # -------- model wrangling --------
 
@@ -203,7 +203,7 @@ test: test-fast test-vm ## Full pyramid (Tier 0..3)
 .PHONY: test-fast
 test-fast: venv lint ## Tier 0 (unit) + Tier 1 (component, mocked) — Python AND Rust (core + appliance)
 	cd rpi5 && $(PY) -m pytest tests/unit tests/component -x --tb=short
-	cd crates && $(CARGO) test --workspace --quiet
+	cd domains && $(CARGO) test --workspace --quiet
 	cd rpi5/crates && $(CARGO) test --workspace --quiet
 
 .PHONY: test-vm
@@ -232,9 +232,9 @@ audio-fixtures: venv ## Synthesise all WAV inputs from scenario YAMLs (via Piper
 lint: venv ## Static hygiene: ruff + mypy (Python), fmt --check + clippy (Rust, both workspaces)
 	$(RUFF) check rpi5 scripts
 	cd rpi5 && $(MYPY)
-	cd crates && $(CARGO) fmt --check
+	cd domains && $(CARGO) fmt --check
 	cd rpi5/crates && $(CARGO) fmt --check
-	cd crates && $(CARGO) clippy --workspace --all-targets -- -D warnings
+	cd domains && $(CARGO) clippy --workspace --all-targets -- -D warnings
 	cd rpi5/crates && $(CARGO) clippy --workspace --all-targets -- -D warnings
 
 .PHONY: audit
@@ -244,13 +244,13 @@ audit: venv ## Lint configs, scan deps, dry-run firewall rules
 .PHONY: clean
 clean: ## Remove build artifacts (keeps models + fixtures)
 	rm -rf vm-images _test_projects build dist .pytest_cache .ruff_cache rpi5/.pytest_cache rpi5/.ruff_cache
-	cd crates && $(CARGO) clean || true
+	cd domains && $(CARGO) clean || true
 	cd rpi5/crates && $(CARGO) clean || true
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +
 
 .PHONY: distclean
 distclean: clean clean-mobile ## Also remove models, audio fixtures, the venv, and Rust target
-	rm -rf models rpi5/tests/fixtures/audio $(VENV) crates/target rpi5/crates/target
+	rm -rf models rpi5/tests/fixtures/audio $(VENV) domains/target rpi5/crates/target
 
 # -------- Mobile twins ---------------------------------------------------
 # Thin pass-through targets. The per-project Makefile owns the real logic

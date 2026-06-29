@@ -2,7 +2,7 @@
 
 Component layout:
     blazend.config         — shared YAML loader (used by every Python unit).
-    blazend.events         — IPC envelope + topic constants (mirrors crates/blazend-ipc).
+    blazend.events         — IPC envelope + topic constants (mirrors domains/blazend-ipc).
     blazend.ipc            — async Unix-socket client/server.
     blazend.domains.systems.adapters.rpi5.state          — /run/blazen/state.json writer.
     blazend.domains.systems.adapters.rpi5.orchestrator   — pipeline supervisor (Python unit).

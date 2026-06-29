@@ -1,6 +1,6 @@
 """IPC event envelope + topic constants.
 
-Mirrors `crates/blazend-ipc/src/events.rs`. The schema-driven generator
+Mirrors `domains/blazend-ipc/src/events.rs`. The schema-driven generator
 in `scripts/gen-event-types.py` overwrites `_generated.py` from
 `configs/_schema/events/*.schema.json`; until M2 we hand-maintain the
 parallel definitions.

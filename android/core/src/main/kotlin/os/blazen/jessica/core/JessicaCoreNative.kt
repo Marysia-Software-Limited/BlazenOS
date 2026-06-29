@@ -3,7 +3,7 @@ package os.blazen.jessica.core
 /**
  * JNI surface implemented by the Rust crate `jessica-ffi`. The native
  * library is loaded once on first reference to this object; signatures
- * here MUST match `crates/jessica-ffi/src/jni_bridge.rs` byte-for-byte.
+ * here MUST match `domains/jessica-ffi/src/jni_bridge.rs` byte-for-byte.
  *
  * In M0 this object is **not actually called** — [JessicaCore] returns
  * fixtures so the UI builds end-to-end without cargo-ndk wired in.

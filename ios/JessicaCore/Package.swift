@@ -4,7 +4,7 @@
 // M0 ships a pure-Swift placeholder so the app compiles end-to-end
 // without the Rust toolchain. M1 swaps this for a `binaryTarget(url:)`
 // that points at `JessicaFFI.xcframework` produced by
-// `make ffi` from `crates/jessica-ffi`.
+// `make ffi` from `domains/jessica-ffi`.
 
 import PackageDescription
 

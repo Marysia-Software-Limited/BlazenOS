@@ -54,18 +54,18 @@ lipo -create \
     target/x86_64-apple-ios/release/libjessica_ffi.a \
     -output target/universal-ios-sim/libjessica_ffi.a
 
-# cbindgen regenerates the header (already in crates/jessica-ffi/include/)
+# cbindgen regenerates the header (already in domains/jessica-ffi/include/)
 cargo run -p jessica-ffi --bin cbindgen 2>/dev/null || \
-    cbindgen --config crates/jessica-ffi/cbindgen.toml \
-             crates/jessica-ffi \
-             --output crates/jessica-ffi/include/jessica_ffi.h
+    cbindgen --config domains/jessica-ffi/cbindgen.toml \
+             domains/jessica-ffi \
+             --output domains/jessica-ffi/include/jessica_ffi.h
 
 # Wrap into an xcframework
 xcodebuild -create-xcframework \
     -library target/aarch64-apple-ios/release/libjessica_ffi.a \
-        -headers crates/jessica-ffi/include \
+        -headers domains/jessica-ffi/include \
     -library target/universal-ios-sim/libjessica_ffi.a \
-        -headers crates/jessica-ffi/include \
+        -headers domains/jessica-ffi/include \
     -output ios/JessicaCore/JessicaFFI.xcframework
 ```
 

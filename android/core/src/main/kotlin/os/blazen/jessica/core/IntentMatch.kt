@@ -3,7 +3,7 @@ package os.blazen.jessica.core
 /**
  * One match result returned by [JessicaCore.matchIntent].
  *
- * Mirrors the `IntentMatch` shape in `crates/jessica-core/src/intent.rs`
+ * Mirrors the `IntentMatch` shape in `domains/jessica-core/src/intent.rs`
  * so a JSON round-trip across JNI is lossless. Treat this file as part of
  * the Rust ↔ Kotlin contract — changes require the matching Rust update.
  */

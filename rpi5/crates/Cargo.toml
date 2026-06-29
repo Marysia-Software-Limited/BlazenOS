@@ -1,6 +1,6 @@
 # Cargo workspace for the blazen_os Raspberry Pi 5 appliance Rust units.
 # The appliance (hot loops: audio I/O, wake word, TTS, health/watchdog)
-# depends one-directionally on the SHARED CORE workspace at ../../crates
+# depends one-directionally on the SHARED CORE workspace at ../../domains
 # (blazend-ipc for the IPC wire). The shared core never depends back.
 # See docs/14-RUST-PYTHON-SPLIT.md and docs/01-ARCHITECTURE.md.
 
@@ -48,7 +48,7 @@ alsa         = "0.9"
 # ML / ONNX (wake + VAD). Added in M2 once the loader stabilises.
 # ort = { version = "...", default-features = false, features = ["load-dynamic"] }
 
-# Shared core (lives in the top-level crates/ workspace; consumed here by path).
+# Shared core (lives in the repo-root domains/ workspace; consumed here by path).
 # Single source of truth for all three platforms (iOS, Android, Rpi5):
 #  - blazend-ipc   : IPC wire / event envelope
 #  - blazend-fabric: CRDT sync log — already runs as the blazend-fabric.service
@@ -56,9 +56,9 @@ alsa         = "0.9"
 #  - jessica-core  : intent router + fabric re-export. Mobile consumes it via
 #                    jessica-ffi; the appliance's future NLU unit consumes it
 #                    directly here — NO duplicated Python/Rust router.
-blazend-ipc     = { path = "../../crates/blazend-ipc" }
-blazend-fabric  = { path = "../../crates/blazend-fabric" }
-jessica-core    = { path = "../../crates/jessica-core" }
+blazend-ipc     = { path = "../../domains/blazend-ipc" }
+blazend-fabric  = { path = "../../domains/blazend-fabric" }
+jessica-core    = { path = "../../domains/jessica-core" }
 
 [profile.release]
 opt-level = 3

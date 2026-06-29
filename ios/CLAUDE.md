@@ -17,9 +17,9 @@ restrictive** guidance unless the user overrides.
 6. `ios/docs/architecture.md` → `docs/build.md` → `docs/ml-stack.md`
 
 When in doubt about an FFI contract, also read:
-- `crates/jessica-core/src/intent.rs`
-- `crates/jessica-ffi/src/lib.rs`
-- `crates/jessica-ffi/include/jessica_ffi.h`
+- `domains/jessica-core/src/intent.rs`
+- `domains/jessica-ffi/src/lib.rs`
+- `domains/jessica-ffi/include/jessica_ffi.h`
 
 ## 2. Project snapshot
 
@@ -56,7 +56,7 @@ When in doubt about an FFI contract, also read:
 6. When you add a new FFI function in the C ABI, update the Swift
    seam in `JessicaCore/Sources/JessicaCore/JessicaFFI.swift` AND the
    corresponding JNI export in
-   `crates/jessica-ffi/src/jni_bridge.rs` so the Android twin stays
+   `domains/jessica-ffi/src/jni_bridge.rs` so the Android twin stays
    honest.
 
 ## 5. Verification checklist (before declaring task done)

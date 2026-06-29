@@ -17,8 +17,8 @@ restrictive** guidance unless the user overrides.
 6. `android/docs/architecture.md` → `docs/build.md` → `docs/ml-stack.md`
 
 When in doubt about an FFI contract, also read:
-- `crates/jessica-core/src/intent.rs`
-- `crates/jessica-ffi/src/jni_bridge.rs`
+- `domains/jessica-core/src/intent.rs`
+- `domains/jessica-ffi/src/jni_bridge.rs`
 
 ## 2. Project snapshot
 
@@ -26,7 +26,7 @@ When in doubt about an FFI contract, also read:
 - Two modules: `:app` (Compose UI + ML wiring), `:core` (Kotlin port of
   the Rust mobile core — placeholder in M0, JNI in M1).
 - Namespace: `os.blazen.jessica` (matches the JNI class path baked into
-  `crates/jessica-ffi/src/jni_bridge.rs`).
+  `domains/jessica-ffi/src/jni_bridge.rs`).
 - Native lib: `libjessica_ffi.so`, loaded via
   `System.loadLibrary("jessica_ffi")` once `:core` switches to JNI.
 
@@ -54,7 +54,7 @@ When in doubt about an FFI contract, also read:
    `values/strings.xml` and `values-pl/strings.xml` entries together.
 6. When you add a new `external fun` in `JessicaCoreNative.kt`, add the
    matching `Java_os_blazen_jessica_core_JessicaCoreNative_<name>`
-   function in `crates/jessica-ffi/src/jni_bridge.rs` in the same
+   function in `domains/jessica-ffi/src/jni_bridge.rs` in the same
    commit.
 
 ## 5. Verification checklist (before declaring task done)

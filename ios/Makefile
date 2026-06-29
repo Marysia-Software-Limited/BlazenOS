@@ -51,7 +51,7 @@ clean:
 # See docs/build.md for the cargo + cbindgen + lipo + xcodebuild -create-xcframework
 # pipeline. Stubbed for M0.
 ffi:
-	@echo "M0 stub. M1: produce JessicaFFI.xcframework from crates/jessica-ffi."
+	@echo "M0 stub. M1: produce JessicaFFI.xcframework from domains/jessica-ffi."
 
 require-xcodegen:
 	@which xcodegen >/dev/null || { echo "Install: brew install xcodegen"; exit 1; }

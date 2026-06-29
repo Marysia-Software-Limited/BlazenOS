@@ -16,7 +16,7 @@ for anything not stated here.
    `.xcstrings` file replaces `L10n.swift` — the parity rule still
    applies.)
 3. **Shared core stays Rust.** Intent routing, sync log, adapter
-   contracts → `crates/jessica-core/`. The Swift placeholder in
+   contracts → `domains/jessica-core/`. The Swift placeholder in
    `JessicaCore` exists for M0 only.
 4. **FFI signatures are the contract.** Swift code that touches the FFI
    matches the cbindgen-generated `jessica_ffi.h`. If you change one

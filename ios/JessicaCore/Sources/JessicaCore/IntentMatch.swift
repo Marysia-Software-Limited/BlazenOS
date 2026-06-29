@@ -3,7 +3,7 @@ import Foundation
 /// One match result returned by ``JessicaCore/matchIntent(transcript:language:)``.
 ///
 /// Mirrors the `IntentMatch` shape in
-/// `crates/jessica-core/src/intent.rs` so a JSON round-trip
+/// `domains/jessica-core/src/intent.rs` so a JSON round-trip
 /// across the FFI is lossless. Treat this struct as part of the
 /// Rust ↔ Swift contract — changes here require the matching Rust update.
 public struct IntentMatch: Equatable, Sendable, Codable {

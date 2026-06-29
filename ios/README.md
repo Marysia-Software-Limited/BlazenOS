@@ -3,7 +3,7 @@
 Native iOS implementation of the **Jessica** voice-first assistant.
 Lives inside the `blazen_os` monorepo at `ios/`, side-by-side with the
 Android app (`android/`), the Pi 5 appliance (`rpi5/`), and the shared
-Rust core (`crates/jessica-core`, `crates/jessica-ffi`).
+Rust core (`domains/jessica-core`, `domains/jessica-ffi`).
 
 | Item              | Choice                                                |
 |-------------------|-------------------------------------------------------|
@@ -13,7 +13,7 @@ Rust core (`crates/jessica-core`, `crates/jessica-ffi`).
 | Min iOS           | **17.0** (custom-vocab on-device Speech, AVAudioEngine streaming). iOS 18.4+ recommended for Apple Intelligence Foundation Models. |
 | Languages (PL+EN) | Polish is the development language (`pl`); English ships day-1 |
 | ML stack          | openWakeWord (CoreML) + Apple `Speech` framework + Foundation Models + `AVSpeechSynthesizer` |
-| Shared core       | `crates/jessica-core/` (Rust) via `JessicaFFI.xcframework` (cbindgen C ABI) |
+| Shared core       | `domains/jessica-core/` (Rust) via `JessicaFFI.xcframework` (cbindgen C ABI) |
 
 ## Repo layout
 
@@ -46,8 +46,8 @@ blazen_os/ios/
 
 | Concern                              | Lives in                                       |
 |--------------------------------------|------------------------------------------------|
-| Intent router, sync log (CRDT)       | `crates/jessica-core/`                  |
-| C ABI                                | `crates/jessica-ffi/` (cbindgen → `jessica_ffi.h`) |
+| Intent router, sync log (CRDT)       | `domains/jessica-core/`                  |
+| C ABI                                | `domains/jessica-ffi/` (cbindgen → `jessica_ffi.h`) |
 | Shared intent YAML catalogue         | `configs/intents/`                             |
 | Product spec (PL+EN, shared w/ Android)| `docs/product/`                              |
 | Android twin                         | `android/`                                     |
@@ -57,7 +57,7 @@ The Rust workspace lives at `crates/Cargo.toml`. The iOS `JessicaCore`
 Swift package currently ships a **pure-Swift placeholder** so the app
 compiles end-to-end in M0; during M1 the placeholder is replaced with a
 `binaryTarget(url:)` for `JessicaFFI.xcframework` built from
-`crates/jessica-ffi` via cargo + cbindgen.
+`domains/jessica-ffi` via cargo + cbindgen.
 
 ## Quick start
 

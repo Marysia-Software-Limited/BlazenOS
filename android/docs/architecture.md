@@ -24,12 +24,12 @@
 └──────────────────────────────┬─────────────────────────────┘
                                │  JNI                M2 only
 ┌──────────────────────────────▼─────────────────────────────┐
-│  crates/jessica-ffi  (Rust → cdylib)                        │
+│  domains/jessica-ffi  (Rust → cdylib)                        │
 │   └── libjessica_ffi.so   (jniLibs/<abi>/)                  │
 └──────────────────────────────┬─────────────────────────────┘
                                │  Rust call
 ┌──────────────────────────────▼─────────────────────────────┐
-│  crates/jessica-core                                        │
+│  domains/jessica-core                                        │
 │   ├── intent.rs (regex router)                              │
 │   ├── lib.rs    (SyncLog, Fact, IntentRouter)               │
 │   └── (shared with iOS — single source of truth)            │
@@ -88,7 +88,7 @@ implementation behind it switches.
 ## Naming choices
 
 - **Package:** `os.blazen.jessica.*` — the JNI exports in
-  `crates/jessica-ffi/src/jni_bridge.rs` already bake in
+  `domains/jessica-ffi/src/jni_bridge.rs` already bake in
   `Java_os_blazen_jessica_core_*`, so this naming is the contract.
 - **Native lib:** `jessica_ffi` (loaded as `libjessica_ffi.so`).
 - **Application ID:** `os.blazen.jessica` — same as the package for

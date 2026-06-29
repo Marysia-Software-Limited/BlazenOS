@@ -164,9 +164,9 @@ stage_payload() {
   cp -R "$REPO_ROOT/configs/vm/"*.yaml      "$out/blazen-configs/vm/"
   # Rust binaries: prefer the cross-compiled aarch64 release artefacts.
   # Appliance units build in the rpi5/ project workspace; the shared-core
-  # blazend-fabric builds in the top-level crates/ workspace.
+  # blazend-fabric builds in the repo-root domains/ workspace.
   local app_rust="$REPO_ROOT/rpi5/crates/target/aarch64-unknown-linux-gnu/release"
-  local core_rust="$REPO_ROOT/crates/target/aarch64-unknown-linux-gnu/release"
+  local core_rust="$REPO_ROOT/domains/target/aarch64-unknown-linux-gnu/release"
   if [ ! -d "$app_rust" ]; then
     warn "Appliance Rust aarch64 artefacts not found at $app_rust; run 'make rust-aarch64' first"
     return 1

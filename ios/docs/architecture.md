@@ -20,12 +20,12 @@
 └──────────────────────┬─────────────────────────────┘
                        │  C ABI                M1 only
 ┌──────────────────────▼─────────────────────────────┐
-│  crates/jessica-ffi  (Rust → staticlib + xcframework)│
+│  domains/jessica-ffi  (Rust → staticlib + xcframework)│
 │   └── JessicaFFI.xcframework (cbindgen → C header)  │
 └──────────────────────┬─────────────────────────────┘
                        │  Rust call
 ┌──────────────────────▼─────────────────────────────┐
-│  crates/jessica-core                         │
+│  domains/jessica-core                         │
 │   ├── intent.rs (regex router)                      │
 │   ├── lib.rs    (SyncLog, Fact, IntentRouter)       │
 │   └── (shared with Android — single source of truth)│

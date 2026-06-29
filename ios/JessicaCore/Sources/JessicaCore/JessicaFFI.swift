@@ -4,7 +4,7 @@ import Foundation
 ///
 /// M0 stub: every method returns `nil` or `0`. The body is filled in
 /// during M1 once `JessicaFFI.xcframework` is built from
-/// `crates/jessica-ffi`. The function names and signatures match the
+/// `domains/jessica-ffi`. The function names and signatures match the
 /// C ABI exported by `jessica-ffi/src/lib.rs` and consumed by Swift
 /// via cbindgen-generated headers.
 ///

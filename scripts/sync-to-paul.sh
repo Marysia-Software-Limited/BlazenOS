@@ -43,7 +43,7 @@ log "syncing $REPO_ROOT/ -> $HOST:$DEST"
 
 rsync -avz --delete \
   --exclude='.venv/' \
-  --exclude='crates/target/' \
+  --exclude='target/' \
   --exclude='vm-images/' \
   --exclude='models/' \
   --exclude='_test_projects/' \
