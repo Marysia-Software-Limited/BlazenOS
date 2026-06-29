@@ -38,6 +38,20 @@ When both languages are plausible, prefer the one the **adjacent
 components** already use. Crossing the FFI boundary inside a single
 component is a smell — split the component first.
 
+> **Mind vs ML-glue (Phase 4, revised 2026-06-29).** The earlier Python
+> criterion "the orchestrator and intent routing glue heterogeneous APIs, so
+> they're Python" is **narrowed**: the **device-independent mind logic** —
+> intent routing, conversation orchestration/escalation, backend *selection*,
+> and the memory *model* — is **Rust**, shared with mobile via `jessica-core`.
+> What stays Python is the **ML-inference glue**: ASR (`faster-whisper`), local
+> LLM inference (`llama-cpp-python` / HailoRT), and embeddings — Python-first ML
+> libraries a Rust binding would only re-wrap (criterion #2 above). The line
+> between a *mind decision* (which backend, what to say, what to remember) and
+> *ML inference* (run the model) is the **IPC contract**, never an in-process
+> call. This is why the mind moving to Rust does not pull the model loaders with
+> it — the Rust mind dispatches inference to a thin Python server over the bus.
+> See [`19-DOMAIN-ARCHITECTURE.md`](19-DOMAIN-ARCHITECTURE.md) Phase 4.
+
 ---
 
 ## 2. Final assignment per component
@@ -52,9 +66,11 @@ component is a smell — split the component first.
 | `blazend-tts`              | Rust   | `piper-rs` or wrapped  | Streaming PCM out, voice swap on language change.      |
 | `blazend-health`           | Rust   | `tokio`, `systemd`     | Watchdog; talks to systemd notify socket.              |
 | `blazend-nlu`              | Rust   | `jessica-core`         | Fast-path intent router: `asr.final` → `nlu.intent` over the **shared** `jessica-core` `IntentRouter` (same crate the iOS/Android apps use via `jessica-ffi`). No Python copy. |
-| `blazend-orchestrator`     | Python | asyncio, pydantic, pyyaml | Pipeline supervisor; the conductor.              |
-| `blazend-asr`              | Python | `faster-whisper` (CT2) | Streaming partial transcripts; language detection.     |
-| `blazend-brain`            | Python | `llama-cpp-python` / `hailort` Python | Engine selector + sampler. |
+| `blazend-mind`             | Rust   | `jessica-core`         | **(Phase 4)** The conversation mind: owns the turn from `nlu.miss`/`nlu.intent`, escalation (`RoutePlan`), context (`MemoryStore`, JSON-persisted), and what-to-say. Dispatches inference to `blazend-brain` over `brain.request`; streams `brain.reply`. Device-independent — shared with mobile. |
+| `blazend-orchestrator`     | Python | asyncio, pydantic, pyyaml | Pipeline supervisor; the conductor (systems adapter — process lifecycle, not mind). |
+| `blazend-asr`              | Python | `faster-whisper` (CT2) | ML glue: streaming partial transcripts; language detection.     |
+| `blazend-brain`            | Python | `llama-cpp-python` / `hailort` Python | **(Phase 4: ML glue only)** Thin LLM inference server — receives `brain.request`, runs the model (Bielik / Hailo), streams tokens back as `brain.reply`. No routing/escalation/memory: those moved to `blazend-mind`. |
+| `blazend-embed`            | Python | `e5` / sentence-transformers | ML glue: note embeddings for semantic recall (serves `blazend-mind`'s `MemoryStore`). |
 | `blazend-bootstrap`        | Python | stdlib                 | First-boot pairing flow.                              |
 | `blazend-config` (library) | Python | pydantic               | Layered YAML loader; shared by every Python unit.      |
 

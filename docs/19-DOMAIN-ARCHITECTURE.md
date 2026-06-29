@@ -148,7 +148,7 @@ Phases 1–3 are complete. Phase 4 onward continues the cores-at-root direction.
 | **1** ✅ | Domain-ize the Pi | Python | 6-domain tree, ports extracted, appliance green *(Python under `rpi5/src/blazend/domains/`; its portable cores migrate to root in Phase 4)* |
 | **2** ✅ | Rust contract + core foundation | Rust | `jessica-core` grew portable mind types (intent, context, routing); `blazend-ipc` hardened; `jessica-ffi` widened |
 | **3** ✅ | Establish the root `domains/` library tree | Rust | The shared cores (`blazend-ipc`, `blazend-fabric`, `jessica-core`, `jessica-ffi`) moved from `crates/` into the repo-root **`domains/`** workspace; the 8 Pi adapter crates moved from `rpi5/crates/` into `rpi5/<domain>/`. Crate/binary names unchanged; appliance green |
-| **4** | Migrate the mind Python→Rust *(gated)* | Rust | orchestrator routing + context model move out of the Pi's Python and into the root `domains/` cores; the Pi keeps only ML glue + adapters. **Revises §6 of [`14-RUST-PYTHON-SPLIT.md`](14-RUST-PYTHON-SPLIT.md) — needs sign-off** |
+| **4** | Migrate the mind Python→Rust *(approved 2026-06-29)* | Rust | the conversation mind (routing/escalation, context model, backend selection) moves into a Rust `blazend-mind` unit on `jessica-core`; the Pi keeps only ML glue (ASR, LLM inference, embeddings) + adapters, reached over IPC. **Revised §1–§2 of [`14-RUST-PYTHON-SPLIT.md`](14-RUST-PYTHON-SPLIT.md)** |
 | **5** | Cross-platform + cross-device | Rust everywhere | `android/` and `ios/` implement their domain adapters against the **same** root cores; `blazend-fabric` `sync_fact` → one personality |
 
 One phase at a time, `make test-fast` green between each. Phase 4 is the load-bearing
