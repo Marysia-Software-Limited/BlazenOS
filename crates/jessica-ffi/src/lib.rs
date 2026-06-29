@@ -28,7 +28,7 @@ use std::ffi::{c_char, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Mutex;
 
-use jessica_core::{IntentRouter, SyncLog, SyncMergeOutcome};
+use jessica_core::{InMemoryStore, IntentRouter, MemoryStore, SyncLog, SyncMergeOutcome};
 
 #[cfg(target_os = "android")]
 pub mod jni_bridge;
@@ -48,6 +48,7 @@ pub struct JessicaHandle {
 struct JessicaInner {
     router: Option<IntentRouter>,
     log: SyncLog,
+    store: InMemoryStore,
 }
 
 impl JessicaHandle {
@@ -213,12 +214,7 @@ pub unsafe extern "C" fn jessica_ffi_match_intent(
         let json = serde_json::to_string(&m).map_err(|_| JESSICA_ERR_BAD_INPUT)?;
         Ok(Some(json))
     });
-    match result {
-        Ok(Some(json)) => CString::new(json)
-            .map(CString::into_raw)
-            .unwrap_or(std::ptr::null_mut()),
-        _ => std::ptr::null_mut(),
-    }
+    json_or_null(result)
 }
 
 // ---------------------------------------------------------------------------
@@ -270,12 +266,66 @@ pub unsafe extern "C" fn jessica_ffi_get_fact(
         let json = serde_json::to_string(fact).map_err(|_| JESSICA_ERR_BAD_INPUT)?;
         Ok(Some(json))
     });
-    match result {
-        Ok(Some(json)) => CString::new(json)
-            .map(CString::into_raw)
-            .unwrap_or(std::ptr::null_mut()),
-        _ => std::ptr::null_mut(),
-    }
+    json_or_null(result)
+}
+
+// ---------------------------------------------------------------------------
+// Context — notes
+// ---------------------------------------------------------------------------
+
+/// Add a note to the local context store.
+///
+/// `now` is an RFC 3339 timestamp string — the portable core takes its
+/// clock injected, so the caller supplies "now". Returns the created
+/// [`Note`](jessica_core::Note) (with its assigned id) as a
+/// heap-allocated NUL-terminated JSON string the caller owns and must
+/// free via [`jessica_ffi_free_string`], or NULL on bad input.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn jessica_ffi_add_note(
+    handle: *mut JessicaHandle,
+    text_ptr: *const u8,
+    text_len: usize,
+    title_ptr: *const u8,
+    title_len: usize,
+    now_ptr: *const u8,
+    now_len: usize,
+) -> *mut c_char {
+    let result: Result<Option<String>, i32> = with_handle(handle, |state| {
+        let text = utf8(unsafe { read_slice(text_ptr, text_len)? })?;
+        let title = utf8(unsafe { read_slice(title_ptr, title_len)? })?;
+        let now = utf8(unsafe { read_slice(now_ptr, now_len)? })?;
+        let note = state.store.add_note(text, title, now);
+        let json = serde_json::to_string(&note).map_err(|_| JESSICA_ERR_BAD_INPUT)?;
+        Ok(Some(json))
+    });
+    json_or_null(result)
+}
+
+/// Number of notes in the local context store.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn jessica_ffi_note_count(handle: *mut JessicaHandle) -> i64 {
+    with_handle(handle, |state| Ok(state.store.notes().len() as i64)).unwrap_or(-1)
+}
+
+/// Recall notes whose text or title contains `query` (case-insensitive);
+/// an empty query returns every note. Returns a JSON array of
+/// [`Note`](jessica_core::Note)s — a heap-allocated NUL-terminated string
+/// the caller owns and must free via [`jessica_ffi_free_string`] — or NULL
+/// on bad input.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn jessica_ffi_recall_notes(
+    handle: *mut JessicaHandle,
+    query_ptr: *const u8,
+    query_len: usize,
+) -> *mut c_char {
+    let result: Result<Option<String>, i32> = with_handle(handle, |state| {
+        let q = utf8(unsafe { read_slice(query_ptr, query_len)? })?;
+        let query = if q.is_empty() { None } else { Some(q) };
+        let notes = state.store.recall(query);
+        let json = serde_json::to_string(&notes).map_err(|_| JESSICA_ERR_BAD_INPUT)?;
+        Ok(Some(json))
+    });
+    json_or_null(result)
 }
 
 // ---------------------------------------------------------------------------
@@ -309,10 +359,27 @@ pub(crate) unsafe fn read_slice<'a>(ptr: *const u8, len: usize) -> Result<&'a [u
     Ok(unsafe { std::slice::from_raw_parts(ptr, len) })
 }
 
+/// Decode a byte slice as UTF-8, mapping failure to the standard sentinel.
+pub(crate) fn utf8(bytes: &[u8]) -> Result<&str, i32> {
+    std::str::from_utf8(bytes).map_err(|_| JESSICA_ERR_BAD_UTF8)
+}
+
 /// Collapse a `Result<i32, i32>` returned by [`with_handle`] into the
 /// flat `i32` status code expected by C ABI entry points.
 pub(crate) fn flatten_status(result: Result<i32, i32>) -> i32 {
     result.unwrap_or_else(|code| code)
+}
+
+/// Turn a JSON-or-error result into an owned C string, or NULL. `None`
+/// (no result) and every error collapse to NULL — the C ABI signals
+/// "nothing / bad input" the same way for all the string-returning ops.
+pub(crate) fn json_or_null(result: Result<Option<String>, i32>) -> *mut c_char {
+    match result {
+        Ok(Some(json)) => CString::new(json)
+            .map(CString::into_raw)
+            .unwrap_or(std::ptr::null_mut()),
+        _ => std::ptr::null_mut(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -377,6 +444,65 @@ intents:
                 jessica_ffi_match_intent(h, t.as_ptr(), t.len(), l.as_ptr(), l.len()).is_null()
             );
             jessica_ffi_free(h);
+        }
+    }
+
+    #[test]
+    fn note_lifecycle_add_count_recall() {
+        unsafe {
+            let h = jessica_ffi_new();
+
+            let text = "kup mleko".as_bytes();
+            let title = "zakupy".as_bytes();
+            let now = "2026-06-29T10:00:00".as_bytes();
+            let ptr = jessica_ffi_add_note(
+                h,
+                text.as_ptr(),
+                text.len(),
+                title.as_ptr(),
+                title.len(),
+                now.as_ptr(),
+                now.len(),
+            );
+            assert!(!ptr.is_null());
+            let created = CStr::from_ptr(ptr).to_str().unwrap().to_owned();
+            jessica_ffi_free_string(ptr);
+            let note: serde_json::Value = serde_json::from_str(&created).unwrap();
+            assert_eq!(note["id"], "note-1");
+            assert_eq!(note["text"], "kup mleko");
+
+            assert_eq!(jessica_ffi_note_count(h), 1);
+
+            // Recall by a fragment of the title (case-insensitive).
+            let q = "ZAKUPY".as_bytes();
+            let rptr = jessica_ffi_recall_notes(h, q.as_ptr(), q.len());
+            assert!(!rptr.is_null());
+            let hits = CStr::from_ptr(rptr).to_str().unwrap().to_owned();
+            jessica_ffi_free_string(rptr);
+            let arr: serde_json::Value = serde_json::from_str(&hits).unwrap();
+            assert_eq!(arr.as_array().unwrap().len(), 1);
+
+            // Empty query returns all notes.
+            let rptr = jessica_ffi_recall_notes(h, std::ptr::null(), 0);
+            let all = CStr::from_ptr(rptr).to_str().unwrap().to_owned();
+            jessica_ffi_free_string(rptr);
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&all)
+                    .unwrap()
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                1
+            );
+
+            jessica_ffi_free(h);
+        }
+    }
+
+    #[test]
+    fn note_count_on_null_handle_is_minus_one() {
+        unsafe {
+            assert_eq!(jessica_ffi_note_count(std::ptr::null_mut()), -1);
         }
     }
 

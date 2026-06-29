@@ -40,4 +40,16 @@ internal object JessicaCoreNative {
 
     /** `jessica_ffi_intent_count`. */
     external fun nativeIntentCount(handle: Long): Long
+
+    /**
+     * `jessica_ffi_add_note` — returns the created note as JSON, or null.
+     * `now` is an RFC 3339 timestamp (the core takes its clock injected).
+     */
+    external fun nativeAddNote(handle: Long, text: String, title: String, now: String): String?
+
+    /** `jessica_ffi_note_count`. */
+    external fun nativeNoteCount(handle: Long): Long
+
+    /** `jessica_ffi_recall_notes` — JSON array of notes (empty query → all), or null. */
+    external fun nativeRecallNotes(handle: Long, query: String): String?
 }

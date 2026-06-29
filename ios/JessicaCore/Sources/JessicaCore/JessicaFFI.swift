@@ -33,6 +33,23 @@ enum JessicaFFI {
 
     /// `jessica_ffi_intent_count`.
     static func intentCount(_ handle: OpaquePointer?) -> Int64 { 0 }
+
+    /// `jessica_ffi_add_note` — returns the created note as JSON, or nil (M1).
+    /// `now` is an RFC 3339 timestamp (the core takes its clock injected).
+    static func addNote(
+        _ handle: OpaquePointer?,
+        text: String,
+        title: String,
+        now: String
+    ) -> String? {
+        nil
+    }
+
+    /// `jessica_ffi_note_count`.
+    static func noteCount(_ handle: OpaquePointer?) -> Int64 { 0 }
+
+    /// `jessica_ffi_recall_notes` — JSON array of notes (empty query → all), or nil (M1).
+    static func recallNotes(_ handle: OpaquePointer?, query: String) -> String? { nil }
 }
 
 let JESSICA_OK: Int32 = 0

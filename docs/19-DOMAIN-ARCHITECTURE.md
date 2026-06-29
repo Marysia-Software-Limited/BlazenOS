@@ -120,7 +120,7 @@ One phase at a time, `make test-fast` green between each. Phase 4 is the load-be
 decision: it deliberately moves the orchestrator (today Python-mandated) into Rust, and
 ships only after that doc is updated and the maintainer approves.
 
-> **Status (Phase 2 in progress):** two more portable mind legs landed in
+> **Status (Phase 2 complete):** two more portable mind legs landed in
 > `crates/jessica-core`, joining the pre-existing `intent` router:
 > - **context** (`context.rs`) — `Note`, `Reminder`, `ReminderCategory`, the
 >   `MemoryStore` trait (the Rust mirror of the Python `MemoryStorePort`), and an
@@ -136,5 +136,12 @@ ships only after that doc is updated and the maintainer approves.
 > publisher drops oversized events instead of putting a frame on the wire that would
 > crash every subscriber; the broadcast write is full-or-drop (a short `try_write` can
 > no longer split a frame mid-message); and `Event::topic()` + a `Topic::ALL`-vs-schema
-> test guard the hand-written topic mappings against drift. The `jessica-ffi` widening
-> is the remaining Phase 2 work.
+> test guard the hand-written topic mappings against drift.
+>
+> The **`jessica-ffi`** three-way contract was widened to carry the context store across
+> the boundary: `jessica_ffi_add_note` / `jessica_ffi_note_count` / `jessica_ffi_recall_notes`
+> over the C ABI + JNI, with the matching Kotlin `external fun`s
+> (`JessicaCoreNative.kt`) and Swift seam stubs (`JessicaFFI.swift`) moved in lockstep;
+> the cbindgen header regenerates. Mobile cores now reach the portable memory model the
+> "one personality" sync rides on. Next: **Phase 3** (rewrite the Rust adapter crates
+> under the domain tree).

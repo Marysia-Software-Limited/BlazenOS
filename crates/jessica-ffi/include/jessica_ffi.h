@@ -150,4 +150,37 @@ int64_t jessica_ffi_fact_count(struct JessicaHandle *handle);
  */
 char *jessica_ffi_get_fact(struct JessicaHandle *handle, const uint8_t *id_ptr, uintptr_t id_len);
 
+/**
+ * Add a note to the local context store.
+ *
+ * `now` is an RFC 3339 timestamp string — the portable core takes its
+ * clock injected, so the caller supplies "now". Returns the created
+ * [`Note`](jessica_core::Note) (with its assigned id) as a
+ * heap-allocated NUL-terminated JSON string the caller owns and must
+ * free via [`jessica_ffi_free_string`], or NULL on bad input.
+ */
+char *jessica_ffi_add_note(struct JessicaHandle *handle,
+                           const uint8_t *text_ptr,
+                           uintptr_t text_len,
+                           const uint8_t *title_ptr,
+                           uintptr_t title_len,
+                           const uint8_t *now_ptr,
+                           uintptr_t now_len);
+
+/**
+ * Number of notes in the local context store.
+ */
+int64_t jessica_ffi_note_count(struct JessicaHandle *handle);
+
+/**
+ * Recall notes whose text or title contains `query` (case-insensitive);
+ * an empty query returns every note. Returns a JSON array of
+ * [`Note`](jessica_core::Note)s — a heap-allocated NUL-terminated string
+ * the caller owns and must free via [`jessica_ffi_free_string`] — or NULL
+ * on bad input.
+ */
+char *jessica_ffi_recall_notes(struct JessicaHandle *handle,
+                               const uint8_t *query_ptr,
+                               uintptr_t query_len);
+
 #endif  /* JESSICA_FFI_H */
