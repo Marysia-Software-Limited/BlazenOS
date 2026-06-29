@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://blazen.os/events/tool.response",
+  "title": "tool.response",
+  "type": "object",
+  "required": ["v", "ts_ms", "source", "topic", "data"],
+  "properties": {
+    "v": { "type": "integer", "const": 1 },
+    "ts_ms": { "type": "integer", "minimum": 0 },
+    "source": { "type": "string", "minLength": 1 },
+    "topic": { "type": "string", "const": "tool.response" },
+    "data": {
+      "type": "object",
+      "required": ["request_id", "ok", "text"],
+      "properties": {
+        "request_id": { "type": "string", "minLength": 1 },
+        "ok": { "type": "boolean" },
+        "text": { "type": "string" },
+        "language": { "type": "string", "enum": ["en", "pl"] },
+        "action": { "type": "string" },
+        "payload": { "type": "object" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

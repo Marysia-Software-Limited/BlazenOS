@@ -72,6 +72,10 @@ pub enum Topic {
     BrainRequest,
     /// LLM streaming reply chunk.
     BrainReply,
+    /// The Rust dispatch asks a Python tool to run (weather, news, …).
+    ToolRequest,
+    /// A Python tool's result.
+    ToolResponse,
     /// Streamed TTS audio chunk.
     TtsFrame,
     /// System-level lifecycle event.
@@ -85,7 +89,7 @@ pub enum Topic {
 impl Topic {
     /// Every topic variant, in declaration order. Used to check the
     /// hand-written enum against the `configs/_schema/events/` schemas.
-    pub const ALL: [Topic; 14] = [
+    pub const ALL: [Topic; 16] = [
         Topic::AudioFrame,
         Topic::WakeDetected,
         Topic::VadStart,
@@ -96,6 +100,8 @@ impl Topic {
         Topic::NluMiss,
         Topic::BrainRequest,
         Topic::BrainReply,
+        Topic::ToolRequest,
+        Topic::ToolResponse,
         Topic::TtsFrame,
         Topic::SystemEvent,
         Topic::HealthStatus,
@@ -115,6 +121,8 @@ impl Topic {
             Topic::NluMiss => "nlu.miss",
             Topic::BrainRequest => "brain.request",
             Topic::BrainReply => "brain.reply",
+            Topic::ToolRequest => "tool.request",
+            Topic::ToolResponse => "tool.response",
             Topic::TtsFrame => "tts.frame",
             Topic::SystemEvent => "system.event",
             Topic::HealthStatus => "health.status",
@@ -226,6 +234,44 @@ pub enum Event {
         request_id: Option<String>,
     },
 
+    /// The Rust dispatch asks a Python tool to run (weather, news, web,
+    /// radio, semantic recall — API/ML glue). The tool answers with a
+    /// `tool.response` carrying the same `request_id`.
+    #[serde(rename = "tool.request")]
+    ToolRequest {
+        /// Correlates the eventual `tool.response`.
+        request_id: String,
+        /// Tool name (e.g. `"weather.query"`, `"news.brief"`).
+        tool: String,
+        /// Language tag: `"en"` | `"pl"`.
+        language: String,
+        /// Tool-specific arguments.
+        #[serde(default)]
+        args: serde_json::Value,
+    },
+
+    /// A Python tool's result — `text` is spoken (the mind re-emits it as a
+    /// `brain.reply`); `action`/`payload` carry any side effect (e.g. a radio
+    /// stream to start).
+    #[serde(rename = "tool.response")]
+    ToolResponse {
+        /// Correlates back to the originating [`Event::ToolRequest`].
+        request_id: String,
+        /// Whether the tool succeeded.
+        ok: bool,
+        /// The spoken reply text.
+        text: String,
+        /// Reply language tag.
+        #[serde(default)]
+        language: Option<String>,
+        /// Action verb for a side effect (e.g. `"radio"`).
+        #[serde(default)]
+        action: Option<String>,
+        /// Action payload (e.g. `{stream, name}`).
+        #[serde(default)]
+        payload: Option<serde_json::Value>,
+    },
+
     /// TTS chunk written to audio-out.
     #[serde(rename = "tts.frame")]
     TtsFrame {
@@ -283,6 +329,8 @@ impl Event {
             Event::NluMiss { .. } => Topic::NluMiss,
             Event::BrainRequest { .. } => Topic::BrainRequest,
             Event::BrainReply { .. } => Topic::BrainReply,
+            Event::ToolRequest { .. } => Topic::ToolRequest,
+            Event::ToolResponse { .. } => Topic::ToolResponse,
             Event::TtsFrame { .. } => Topic::TtsFrame,
             Event::SystemEvent { .. } => Topic::SystemEvent,
             Event::HealthStatus { .. } => Topic::HealthStatus,
@@ -378,6 +426,20 @@ mod tests {
                 language: None,
                 text: None,
                 request_id: None,
+            },
+            Event::ToolRequest {
+                request_id: "t1".into(),
+                tool: "weather.query".into(),
+                language: "pl".into(),
+                args: serde_json::json!({}),
+            },
+            Event::ToolResponse {
+                request_id: "t1".into(),
+                ok: true,
+                text: "pogoda".into(),
+                language: None,
+                action: None,
+                payload: None,
             },
             Event::TtsFrame {
                 voice: "v".into(),

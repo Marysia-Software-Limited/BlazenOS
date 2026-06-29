@@ -41,6 +41,8 @@ EXPECTED_TOPICS: set[str] = {
     "nlu.miss",
     "brain.request",
     "brain.reply",
+    "tool.request",
+    "tool.response",
     "tts.frame",
     "system.event",
     "health.status",
