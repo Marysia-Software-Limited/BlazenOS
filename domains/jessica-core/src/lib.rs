@@ -15,6 +15,7 @@
 #![warn(missing_docs)]
 
 pub mod context;
+pub mod dispatch;
 pub mod intent;
 pub mod mind;
 pub mod routing;
@@ -23,6 +24,7 @@ pub mod routing;
 // on this crate, not blazend-fabric directly.
 pub use blazend_fabric::{Fact, FactType, PeerInfo, PeerKind, SyncLog, SyncMergeOutcome};
 pub use context::{InMemoryStore, MemoryStore, Note, Reminder, ReminderCategory};
+pub use dispatch::{dispatch, Dispatch, ToolCall};
 pub use intent::{IntentMatch, IntentRouter};
 pub use mind::{BrainRequest, Mind, DEFAULT_PERSONA};
 pub use routing::{Backend, RoutePlan};
