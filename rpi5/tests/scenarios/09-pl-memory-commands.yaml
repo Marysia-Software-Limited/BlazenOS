@@ -1,0 +1,46 @@
+id: 09-pl-memory-commands
+language: pl
+description: >-
+  Phase 4d memory commands (no LLM, no network): remember a note, recall it,
+  set the name, set a reminder. These are fast-path intents routed to the
+  tool layer (the Rust mind's dispatch in the cutover; dispatch.py→Tools today).
+tags: [intents, fast-path, memory, pl, phase4d]
+synth_voice: pl_PL-gosia-medium
+preconditions:
+  audio.volume: 50
+turns:
+  - user: "hej Jessico"
+    expect:
+      wake_acknowledged: true
+      detected_language: pl
+
+  - user: "mam na imię Paweł"
+    expect:
+      assistant_intent_matches:
+        intent: set_name
+        params:
+          name: Paweł
+      assistant_speech_contains: "Paweł"
+      assistant_language: pl
+
+  - user: "zapamiętaj że kod do bramy to cztery siedem dwa dziewięć"
+    expect:
+      assistant_intent_matches:
+        intent: remember_note
+      assistant_speech_contains: "Zapamiętałam"
+
+  - user: "co pamiętasz"
+    expect:
+      assistant_intent_matches:
+        intent: list_notes
+      assistant_speech_contains: "Pamiętam"
+
+  - user: "przypomnij mi o spotkaniu o piętnastej"
+    expect:
+      assistant_intent_matches:
+        intent: add_reminder
+      assistant_speech_contains: "15:00"
+postconditions:
+  no_unit_restarts: true
+  latency_budget:
+    wake_to_first_tts_ms_p95: 1100

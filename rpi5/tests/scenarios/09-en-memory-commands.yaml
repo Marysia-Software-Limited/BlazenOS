@@ -1,0 +1,46 @@
+id: 09-en-memory-commands
+language: en
+description: >-
+  EN counterpart of 09-pl-memory-commands (asset parity; EN is retained but
+  deferred at runtime — docs/13-LANGUAGES.md). Phase 4d memory commands:
+  remember, recall, set name, set reminder. Fast-path intents → tool layer.
+tags: [intents, fast-path, memory, en, phase4d]
+synth_voice: en_US-lessac-medium
+preconditions:
+  audio.volume: 50
+turns:
+  - user: "hey Jessica"
+    expect:
+      wake_acknowledged: true
+      detected_language: en
+
+  - user: "my name is Paul"
+    expect:
+      assistant_intent_matches:
+        intent: set_name
+        params:
+          name: Paul
+      assistant_speech_contains: "Paul"
+      assistant_language: en
+
+  - user: "remember that the gate code is four seven two nine"
+    expect:
+      assistant_intent_matches:
+        intent: remember_note
+      assistant_speech_contains: "remember"
+
+  - user: "what do you remember"
+    expect:
+      assistant_intent_matches:
+        intent: list_notes
+      assistant_speech_contains: "remember"
+
+  - user: "remind me about the meeting at three pm"
+    expect:
+      assistant_intent_matches:
+        intent: add_reminder
+      assistant_speech_contains: "15:00"
+postconditions:
+  no_unit_restarts: true
+  latency_budget:
+    wake_to_first_tts_ms_p95: 1100

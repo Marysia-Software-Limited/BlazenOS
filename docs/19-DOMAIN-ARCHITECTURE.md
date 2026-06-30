@@ -164,6 +164,32 @@ ships only after that doc is updated and the maintainer approves.
 > `cd rpi5/crates && cargo … --workspace` and the `rpi5/crates/target/` packaging path
 > are unchanged. Verified by `cargo build/test/clippy/fmt` on both workspaces + `make lint`.
 
+> **Status (Phase 4 build complete, 2026-06-30):** the device-independent **mind**
+> is Rust and runs on the bus. `jessica-core` grew `mind` (persona + context + routing
+> → `BrainRequest`) and `dispatch` (command intent → `ToolCall`). `blazend-mind` (new
+> `rpi5/ai-orchestrator/` unit) subscribes `nlu.miss`/`nlu.intent`/`tool.response` and
+> emits `brain.request` (chat) / `tool.request` (commands) / `brain.reply` (spoken
+> result). The **ML/API glue stays Python**: a thin `inference` server (`brain.request`
+> → model → `brain.reply`) and a `tool_server` (`tool.request` → weather/news/web/radio/
+> recall/remember/set_name/add_reminder → `tool.response`). New IPC seams
+> `brain.request` and `tool.request`/`tool.response`. The command intents are in
+> `configs/intents/system.yaml`; the **`dispatch.py`→`Tools` bridge** makes the *current*
+> supervisor pipeline handle them too, so nothing regresses pre-cutover. The Rust mind is
+> validated end-to-end on the real Pi (isolated). `make test-fast` green throughout.
+>
+> **Decision — config/clock dispatch stays Python.** The *device-independent* dispatch
+> (which tool/action) is Rust (`jessica_core::dispatch`). The *executors* for settings
+> mutation (the confirm/cancel state machine, voice-policy writes) and clock/`plnum`
+> locale formatting remain Python: they are **platform/settings/locale glue** (§1), not
+> portable mind logic, so a Rust port would add a settings-write IPC for no shared-mobile
+> benefit. `dispatch.py` is the systems/config adapter; the mind owns the portable routing.
+>
+> **Remaining for Phase 4 (the cutover):** re-wire the supervisor
+> (`systems/.../orchestrator/supervisor.py`) to spawn + route through `blazend-mind` +
+> `inference` + `tool_server` and retire the engine's `nlu.miss` role. This is an
+> architectural flip (no functional change — the appliance already works), best done with
+> iterative on-device voice validation. Gated on that validation.
+
 ### Phase 3 — execution notes (record)
 
 The move was mechanical and low-risk because it was a **source relocation, not a rewrite**:
