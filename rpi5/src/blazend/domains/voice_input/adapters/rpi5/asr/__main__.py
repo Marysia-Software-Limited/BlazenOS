@@ -78,46 +78,59 @@ async def _real_loop(pub: Publisher) -> None:
     rt = runtime_dir()
     ring = await _open_ring(rt / "audio-ring.shm")
     pre_roll_ms = int(load("audio").get("input.pre_roll_ms", 500))
-    pre_roll_frames = pre_roll_ms * ring.sample_rate // 1000
     transcriber = Transcriber()
     log.info("asr real path: model=%s ring=%dHz", transcriber.model, ring.sample_rate)
 
     sub = await _connect(rt / "audio-in.sock")
     log.info("subscribed to vad events on audio-in.sock")
 
-    start_pos: int | None = None
+    # On vad.end, read the utterance from the EXACT ring position audio-in was at
+    # when it fired the event. The event ts_ms is write_pos*1000/sample_rate
+    # (ts_from_pos in blazend-audio-in), so invert it to recover that write_pos.
+    # Anchoring on the event's own position — not the drifted current write_pos —
+    # makes the read land on the utterance regardless of how late the event is
+    # delivered. (Reading [start_pos, current write_pos] collapsed to the ~0.5s
+    # pre-roll under batched delivery, clipping the command -> "Zatrzymaj".)
+    tail_margin_ms = pre_roll_ms + 800  # pre-roll lead-in + the VAD hangover tail
     async for env in sub:
-        if env.topic == "vad.start":
-            start_pos = max(0, ring.write_pos - pre_roll_frames)
-        elif env.topic == "vad.end":
-            if start_pos is None:
-                continue
-            pcm = ring.read_range(start_pos, ring.write_pos)
-            start_pos = None
-            result = await asyncio.to_thread(transcriber.transcribe, pcm, ring.sample_rate)
-            if result.text:
-                await pub.publish(
-                    Envelope(
-                        topic="asr.final",
-                        source="blazend-asr",
-                        data={
-                            "language": result.language,
-                            "text": result.text,
-                            "confidence": round(result.confidence, 3),
-                        },
-                    )
+        if env.topic != "vad.end":
+            continue
+        dur_ms = int(env.data.get("duration_ms", 0))
+        event_pos = int(env.ts_ms) * ring.sample_rate // 1000
+        end = min(ring.write_pos, event_pos)
+        lookback = (dur_ms + tail_margin_ms) * ring.sample_rate // 1000
+        # Drop stale segments whose audio the ring has already overwritten — if
+        # ASR fell behind under a burst, the segment's frames are gone and reading
+        # them would transcribe unrelated recent audio. Stay current instead.
+        if ring.write_pos - end > ring.capacity - lookback:
+            log.warning("asr: dropping stale segment (ring overwritten under backlog)")
+            continue
+        begin = max(0, end - lookback)
+        pcm = ring.read_range(begin, end)
+        result = await asyncio.to_thread(transcriber.transcribe, pcm, ring.sample_rate)
+        if result.text:
+            await pub.publish(
+                Envelope(
+                    topic="asr.final",
+                    source="blazend-asr",
+                    data={
+                        "language": result.language,
+                        "text": result.text,
+                        "confidence": round(result.confidence, 3),
+                    },
                 )
-                log.info(
-                    "asr.final %s %r (conf=%.2f)", result.language, result.text, result.confidence
+            )
+            log.info(
+                "asr.final %s %r (conf=%.2f)", result.language, result.text, result.confidence
+            )
+        else:
+            await pub.publish(
+                Envelope(
+                    topic="error",
+                    source="blazend-asr",
+                    data={"code": "asr.no_text", "message": "no speech recognised"},
                 )
-            else:
-                await pub.publish(
-                    Envelope(
-                        topic="error",
-                        source="blazend-asr",
-                        data={"code": "asr.no_text", "message": "no speech recognised"},
-                    )
-                )
+            )
 
 
 async def run(mock: bool) -> None:

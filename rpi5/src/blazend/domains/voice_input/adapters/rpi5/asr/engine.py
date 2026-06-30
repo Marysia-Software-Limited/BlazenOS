@@ -68,8 +68,19 @@ def confidence_from_logprob(avg_logprob: float) -> float:
 
 def _to_float32(pcm: npt.NDArray[np.int16] | npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
     if pcm.dtype == np.float32:
-        return pcm.astype(np.float32, copy=False)
-    return pcm.astype(np.float32) / 32768.0
+        f = pcm.astype(np.float32, copy=False)
+    else:
+        f = pcm.astype(np.float32) / 32768.0
+    # Peak-normalize quiet captures. The Jabra→audio-in→ring path reaches whisper
+    # at roughly -30 dBFS (the mic has no AGC and the 180 Hz high-pass trims more
+    # low-end energy), far below the level whisper-small expects — which drove
+    # misreads and prompt-word hallucinations ("Zatrzymaj") on the radio command.
+    # Scale real speech up to ~-1 dBFS; leave near-silence (peak < ~-40 dBFS)
+    # untouched so we don't amplify the noise floor into garbage whisper "hears".
+    peak = float(np.max(np.abs(f))) if f.size else 0.0
+    if peak > 0.01:
+        f = f * (0.89 / peak)
+    return f
 
 
 def _resolve_model_dir(name: str) -> str:

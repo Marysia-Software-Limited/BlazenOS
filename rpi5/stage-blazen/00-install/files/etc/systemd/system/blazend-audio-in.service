@@ -8,20 +8,22 @@ Type=simple
 User=blazen
 Group=blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
-# WM8960 ReSpeaker capture, tuned on real hardware (see docs/05-MODELS.md):
-#  --device …wm8960…   capture PCM (the HAT mic; blazen-hat-mixer enables the
-#                      PGA→ADC path + sets +30 dB so speech reads ~18k RMS).
-#  --hp-cutoff 180     2nd-order high-pass to kill 50 Hz mains hum that would
-#                      otherwise dominate the RMS and mask speech.
-#  --open/--close 6500/5500 (mult 1.0)  fixed thresholds: the codec's resting
-#                      floor sits ~5k, near-field speech ~7-22k. Mults are 1.0
-#                      (no adaptive inflation); the floor is stable thanks to the
-#                      real-time scheduling below. Push-to-talk (deaf until the
-#                      button/wake activates) means false opens can't flood ASR,
-#                      so the threshold can sit close to the floor for sensitivity.
-#  --max-speech-ms 4000  force-close cap so a noisy stretch can't hold an
-#                      utterance open forever and starve ASR of segments.
-ExecStart=/usr/lib/blazen/bin/blazend-audio-in --device plughw:CARD=wm8960soundcard,DEV=0 --hp-cutoff 180 --open-rms 6500 --open-mult 1.0 --close-rms 5500 --close-mult 1.0 --hangover-ms 700 --min-speech-ms 120 --max-speech-ms 4000
+# Jabra SPEAK 410 USB capture, measured on real hardware:
+#  --device plughw:CARD=USB,DEV=0   the Jabra mic (USB-audio-class; clean onboard
+#                      NR — no blazen-hat-mixer +30 dB hack). Card id "USB".
+#  --hp-cutoff 180     2nd-order high-pass to kill 50 Hz mains hum.
+#  --open/--close 2000/1000 (mult 1.0)  fixed thresholds: the Jabra's resting floor
+#                      is ~120 RMS and near-field speech ~14-18k — a huge clean gap,
+#                      so the thresholds sit far above the floor and far below speech.
+#                      Re-measure with scripts/jabra-voice-check.py if the room changes.
+#  --max-speech-ms 6000  force-close cap so a noisy stretch can't hold an utterance
+#                      open forever and starve ASR of segments.
+# Empirically tuned on the Jabra (2026-06-30): --hp-cutoff 0 keeps full-spectrum
+# audio for ASR (the 180Hz HP stripped Polish vowel fundamentals and whisper
+# misread it); the resting floor is ~30 RMS and conversational speech is low, so
+# open/close sit at 80/70 (the shipped 2000/1000 never opened — wrong RMS scale).
+# NOTE: still needs work — see docs; wake false-positive rate + mic SNR pending.
+ExecStart=/usr/lib/blazen/bin/blazend-audio-in --device plughw:CARD=USB,DEV=0 --hp-cutoff 0 --open-rms 80 --open-mult 1.0 --close-rms 70 --close-mult 1.0 --hangover-ms 500 --min-speech-ms 150 --max-speech-ms 2500
 Restart=on-failure
 RestartSec=2
 SupplementaryGroups=audio

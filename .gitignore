@@ -19,6 +19,7 @@ _test_projects/
 
 # Python
 .venv/
+.venv-train/          # py3.12 uv venv for wake-word training (openwakeword/onnx/piper)
 __pycache__/
 *.pyc
 *.pyo

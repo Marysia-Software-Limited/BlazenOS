@@ -212,6 +212,15 @@ class Orchestrator:
                 "last_score": env.data.get("score"),
             }
             patch["awake"] = True
+            # Open one listen window for blazend-audio-in (mirrors the HAT
+            # button's activate marker). The wake word otherwise only lights the
+            # LED while the mic stays DEAF, so the command spoken after "dżesika"
+            # is never captured and ASR/NLU never run. blazend-audio-in consumes
+            # this marker to start one capture window.
+            try:
+                (self._runtime_dir / "activate").touch()
+            except OSError as exc:
+                log.warning("could not write activate marker: %s", exc)
         if env.topic == "nlu.intent" and self._dispatcher is not None:
             if not self._awake():
                 # Heard a command but not addressed ("Hej Jessico" not said) —

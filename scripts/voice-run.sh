@@ -71,7 +71,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 log "starting blazend-audio-in (mic → ring)"
-("$CARGO_TARGET/blazend-audio-in" --device "${BLAZEN_AUDIO_DEVICE:-plughw:CARD=wm8960soundcard,DEV=0}" \
+("$CARGO_TARGET/blazend-audio-in" --device "${BLAZEN_AUDIO_DEVICE:-plughw:CARD=USB,DEV=0}" \
   >>"$RUN_DIR/audio-in.log" 2>&1) & PIDS+=($!)
 log "starting blazend-wake (Hej Jessico → wake.sock)"
 ("$CARGO_TARGET/blazend-wake" >>"$RUN_DIR/wake.log" 2>&1) & PIDS+=($!)

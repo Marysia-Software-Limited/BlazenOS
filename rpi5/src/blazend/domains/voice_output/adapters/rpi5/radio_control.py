@@ -1,11 +1,13 @@
 """Radio/stream playback for the orchestrator.
 
-The ReSpeaker HAT has a single playback channel, so the TTS service
-(``blazend-audio-out``) and the stream player (``blazend-player``) cannot both
-hold it. So while a stream plays we stop audio-out (freeing the speaker) and
-restart it when the stream stops (so replies can be spoken). Stopping/starting
-audio-out is allowed by a narrow sudoers rule (``/etc/sudoers.d/blazen-audio-out``);
-the orchestrator unit drops ``NoNewPrivileges``/``RestrictSUIDSGID`` so sudo runs.
+Playback goes to the **Jabra SPEAK 410** USB speakerphone (card id ``USB``), the
+appliance's speaker now that the ReSpeaker HAT is removed. A single ALSA output
+PCM can't be held by both the TTS service (``blazend-audio-out``) and the stream
+player (``blazend-player``) at once, so while a stream plays we stop audio-out
+(freeing the speaker) and restart it when the stream stops (so replies can be
+spoken). Stopping/starting audio-out is allowed by a narrow sudoers rule
+(``/etc/sudoers.d/blazen-audio-out``); the orchestrator unit drops
+``NoNewPrivileges``/``RestrictSUIDSGID`` so sudo runs.
 """
 
 from __future__ import annotations
@@ -16,7 +18,8 @@ import subprocess
 log = logging.getLogger("blazend.domains.systems.adapters.rpi5.orchestrator.radio")
 
 _PLAYER = "/usr/lib/blazen/bin/blazend-player"
-_DEVICE = "plughw:CARD=wm8960soundcard,DEV=0"
+# Jabra SPEAK 410 USB out (48 kHz stereo native; blazend-player resamples to it).
+_DEVICE = "plughw:CARD=USB,DEV=0"
 
 
 class RadioControl:
