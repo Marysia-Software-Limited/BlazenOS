@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 _TOOL_INTENTS: frozenset[str] = frozenset({
     "weather.query", "news.brief", "web.lookup", "radio.play", "radio.stop",
     "context.recall", "context.recall_reminders", "context.remember", "context.set_name",
+    "context.add_reminder",
 })
 
 # Sensible defaults for delta-based mutations when nothing is stored yet.

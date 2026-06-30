@@ -15,6 +15,7 @@ Gemini, RSS, the station directory, the memory store) — see
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -34,6 +35,7 @@ from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.weather import (
     describe_code,
 )
 from blazend.domains.context.adapters.rpi5.memory import MemoryStore
+from blazend.domains.context.adapters.rpi5.timeparse import parse_when
 
 log = logging.getLogger("blazend.domains.ai_orchestrator.tools")
 
@@ -51,6 +53,35 @@ PERSONA = (
 
 def _t(lang: str, pl: str, en: str) -> str:
     return pl if lang == "pl" else en
+
+
+# Reminder parsing helpers (ported from the engine). The NLU strips the trigger
+# verb; the tool removes the time expression + leftover filler to get the task.
+_TIME_SPAN = re.compile(
+    r"\b((za|in)\s+(\d+\s+)?\w+|((o|at)\s+\d{1,2}(:\d{2})?\s*(am|pm)?))\b"
+    r"|\b(jutro|tomorrow)\b",
+    re.IGNORECASE,
+)
+_ALARM_HINT = re.compile(r"\b(alarm|budzik|wake\s+me|timer)\b", re.IGNORECASE)
+_EVENT_HINT = re.compile(r"\b(wydarzenie|spotkanie|event|meeting)\b", re.IGNORECASE)
+_LEAD_FILLER = re.compile(
+    r"^(?:mi|mnie|me|że|ze|żeby|zeby|aby|abym|o\s+tym,?\s*że|to|that|about|"
+    r"hej|hey|cześć|czesc|ok|okej|okay)\b[\s,]*",
+    re.IGNORECASE,
+)
+
+
+def _tidy(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip(" ,.:;!?–—-")
+
+
+def _strip_lead(text: str) -> str:
+    text = _tidy(text)
+    prev = None
+    while prev != text:
+        prev = text
+        text = _tidy(_LEAD_FILLER.sub("", text))
+    return text
 
 
 @dataclass
@@ -98,6 +129,8 @@ class Tools:
             return self.remember(str(args.get("text", "")), lang)
         if tool == "context.set_name":
             return self.set_name(str(args.get("name", "")), lang)
+        if tool == "context.add_reminder":
+            return self.add_reminder(str(args.get("text", "")), lang)
         if tool == "weather.query":
             return self.weather_now(args.get("place"), lang)
         if tool == "news.brief":
@@ -156,6 +189,39 @@ class Tools:
             _t(lang, f"Miło mi, {name}! Zapamiętam.", f"Nice to meet you, {name}! I'll remember."),
             "profile", {"name": name},
         )
+
+    def add_reminder(self, text: str, lang: str) -> ToolResult:
+        """Parse a spoken reminder ("o spotkaniu o 15:00") and store it.
+
+        Mirrors the engine's `_remind`: `parse_when` for the time, hint regexes
+        for the category, then the time + filler stripped to leave the task.
+        """
+        now = datetime.now()
+        when = parse_when(text, now)
+        category = (
+            "alarm" if _ALARM_HINT.search(text)
+            else "event" if _EVENT_HINT.search(text)
+            else "reminder"
+        )
+        task = _strip_lead(_TIME_SPAN.sub("", text))
+        if when is None:
+            return ToolResult(
+                True,
+                _t(lang, "Na kiedy? Np. „o 15:00” albo „za 10 minut”.",
+                   'When? E.g. "at 3pm" or "in 10 minutes".'),
+                "wake",
+            )
+        if not task:
+            task = {"alarm": _t(lang, "budzik", "alarm"), "event": _t(lang, "wydarzenie", "event")}.get(
+                category, _t(lang, "przypomnienie", "reminder")
+            )
+        rem = self.memory.add_reminder(task, due=when, now=now, category=category)
+        hhmm = when.strftime("%H:%M")
+        lead = {
+            "alarm": _t(lang, f"Ustawiłam budzik na {hhmm}", f"Alarm set for {hhmm}"),
+            "event": _t(lang, f"Zapisałam na {hhmm}", f"Saved for {hhmm}"),
+        }.get(category, _t(lang, f"Przypomnę Ci o {hhmm}", f"I'll remind you at {hhmm}"))
+        return ToolResult(True, f"{lead}: {task}.", "reminder", {"id": rem.id, "due": rem.due, "category": category})
 
     # -- weather -----------------------------------------------------------
     def weather_now(self, place_name: str | None, lang: str) -> ToolResult:

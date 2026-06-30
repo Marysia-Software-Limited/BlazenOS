@@ -127,6 +127,34 @@ def test_run_routes_memory_writes() -> None:
     assert mem.profile["name"] == "Ala"
 
 
+class _RecMemory(_FakeMemory):
+    def __init__(self) -> None:
+        super().__init__([])
+        self.reminders: list[dict[str, Any]] = []
+
+    def add_reminder(self, text: str, *, due: Any, now: Any, category: str = "reminder") -> Any:
+        self.reminders.append({"text": text, "due": due, "category": category})
+        r = _Note(text)
+        r.id = "rem-1"  # type: ignore[attr-defined]
+        r.due = due.isoformat()  # type: ignore[attr-defined]
+        return r
+
+
+def test_add_reminder_parses_time_and_task() -> None:
+    mem = _RecMemory()
+    res = _tools(memory=mem).add_reminder("o spotkaniu o 15:00", "pl")
+    assert res.action == "reminder"
+    assert len(mem.reminders) == 1
+    assert mem.reminders[0]["due"].hour == 15
+    assert "spotkaniu" in mem.reminders[0]["text"]
+
+
+def test_add_reminder_without_time_asks_when() -> None:
+    res = _tools(memory=_RecMemory()).add_reminder("o spotkaniu", "pl")
+    assert res.action == "wake"
+    assert "kiedy" in res.text.lower()
+
+
 def test_run_unknown_tool() -> None:
     t = _tools(memory=_FakeMemory([]))
     res = t.run("does.not.exist", {}, "en")

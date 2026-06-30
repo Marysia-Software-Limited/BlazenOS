@@ -59,6 +59,10 @@ pub fn dispatch(intent: &str, params: &HashMap<String, String>) -> Dispatch {
             "context.set_name",
             json!({ "name": arg("name").unwrap_or_default() }),
         )),
+        "add_reminder" => Dispatch::Tool(ToolCall::new(
+            "context.add_reminder",
+            json!({ "text": arg("text").unwrap_or_default() }),
+        )),
         "web_lookup" => Dispatch::Tool(ToolCall::new(
             "web.lookup",
             json!({ "query": arg("query").unwrap_or_default() }),
