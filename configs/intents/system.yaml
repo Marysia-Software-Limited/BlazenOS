@@ -594,3 +594,65 @@ intents:
         Polish and English, check the news and websites via Gemini, and remember
         notes and reminders. Try "remind me about my meeting at five" or "what's
         new in the news". Ask me about any function and I'll explain.
+
+  # --- Phase 4d: commands the Rust mind dispatches to the Python tool server.
+  # `tool:` mirrors jessica_core::dispatch; slot groups (place / query) ride
+  # nlu.intent params. Ported from the old engine's command regexes.
+  - name: weather_query
+    triggers:
+      pl:
+        - "pogod\\w*.*\\b(?:w|we)\\s+(?P<place>[a-ząćęłńóśźż'’\\- ]+?)\\s*$"
+        - "pogod\\w*|jaka (jest )?aura|czy (b(ę|e)dzie )?pad\\w*|temperatur\\w*"
+      en:
+        - "(?:weather|forecast|temperatur\\w*).*\\bin\\s+(?P<place>[a-z'’\\- ]+?)\\s*$"
+        - "weather|forecast|temperatur\\w*|is it (going to )?(rain|snow)"
+    action: tool_call
+    tool: weather.query
+
+  - name: news_brief
+    triggers:
+      pl:
+        - "wiadomo(ś|s)\\w*|co (nowego|s(ł|l)ycha(ć|c))|aktualno(ś|s)\\w*"
+      en:
+        - "news|headlines|what'?s happening"
+    action: tool_call
+    tool: news.brief
+
+  - name: list_notes
+    triggers:
+      pl:
+        - "co (pami(ę|e)tasz|zapami(ę|e)ta(ł|l)a(ś|s)?)|jakie mam notatki|moje notatki"
+      en:
+        - "what do you remember|list notes|my notes"
+    action: tool_call
+    tool: context.recall
+
+  - name: list_reminders
+    triggers:
+      pl:
+        - "jakie mam (przypomnienia|alarmy)|moje (przypomnienia|alarmy)|co mam (zaplanowane|na dzi(ś|s))"
+      en:
+        - "list (reminders|alarms)|what (reminders|alarms)|my (reminders|alarms)|what do i have planned"
+    action: tool_call
+    tool: context.recall_reminders
+
+  - name: radio_play
+    triggers:
+      pl:
+        - "(?:w(ł|l)(ą|a)cz|pu(ś|s)(ć|c)|nastaw|graj)\\b.*\\b(?P<query>trójk\\w*|trojk\\w*|jedynk\\w*|dwójk\\w*|dwojk\\w*|czwórk\\w*|czwork\\w*|rmf|nowy (ś|s)wiat)\\b"
+        - "(?:w(ł|l)(ą|a)cz|pu(ś|s)(ć|c)|nastaw|graj) radi[ao]"
+        - "\\bradio\\b"
+      en:
+        - "play (the )?(?P<query>radio|rmf|[a-z ]+? (radio|station|fm))"
+        - "(turn on|put on) (the )?radio"
+    action: tool_call
+    tool: radio.play
+
+  - name: radio_stop
+    triggers:
+      pl:
+        - "(wy(ł|l)(ą|a)cz|zatrzymaj|zga(ś|s)|przesta(ń|n)).*(radio|muzyk\\w*|stacj\\w*|gra\\w*)"
+      en:
+        - "(stop|turn off|pause).*(radio|music|station|playing)"
+    action: tool_call
+    tool: radio.stop

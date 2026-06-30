@@ -18,7 +18,8 @@ use std::time::Duration;
 
 use blazend_ipc::{runtime_dir, Event, EventEnvelope, Publisher, Subscriber};
 use clap::Parser;
-use jessica_core::{Backend, InMemoryStore, Mind, RoutePlan};
+use jessica_core::{Backend, Dispatch, InMemoryStore, Mind, RoutePlan};
+use tokio::sync::mpsc;
 
 #[derive(Parser, Debug)]
 #[command(name = "blazend-mind", version)]
@@ -72,19 +73,43 @@ fn memory_path() -> PathBuf {
     runtime_dir().join("data").join("memory.json")
 }
 
-/// Connect to the NLU publisher (`nlu.miss` / `nlu.intent`), retrying.
-async fn connect_nlu(nlu_sock: &Path) -> Subscriber {
+/// Connect to a publisher socket, retrying until it appears.
+async fn connect(sock: &Path) -> Subscriber {
     loop {
-        match Subscriber::connect(nlu_sock).await {
+        match Subscriber::connect(sock).await {
             Ok(s) => return s,
             Err(_) => tokio::time::sleep(Duration::from_millis(200)).await,
         }
     }
 }
 
-/// Run the mind loop: read `nlu.miss`, publish `brain.request`.
+/// Funnel a subscriber's envelopes into `tx` until EOF (in a task, so the mind
+/// can merge several input sockets — nlu + tool responses — in one loop).
+fn spawn_reader(sock: PathBuf, tx: mpsc::Sender<EventEnvelope>) {
+    tokio::spawn(async move {
+        let mut sub = connect(&sock).await;
+        while let Ok(Some(env)) = sub.next().await {
+            if tx.send(env).await.is_err() {
+                break;
+            }
+        }
+    });
+}
+
+fn load_store(mem_path: &Path) -> InMemoryStore {
+    InMemoryStore::load_json(mem_path).unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "memory load failed; using empty store");
+        InMemoryStore::new()
+    })
+}
+
+/// Run the mind loop. Merges `nlu.miss`/`nlu.intent` (from the NLU) and
+/// `tool.response` (from the tool server), and publishes `brain.request`
+/// (chat), `tool.request` (commands), and `brain.reply` (the spoken reply for
+/// a tool result) on `mind_sock`.
 async fn run(
     nlu_sock: PathBuf,
+    tools_sock: PathBuf,
     mind_sock: PathBuf,
     mind: Mind,
     mem_path: PathBuf,
@@ -92,42 +117,89 @@ async fn run(
     let plan = RoutePlan::default_chat();
     let publisher = Publisher::bind(&mind_sock).await?;
     tracing::info!(socket = ?publisher.socket_path, memory = ?mem_path, "mind online");
-    let mut sub = connect_nlu(&nlu_sock).await;
-    tracing::info!(nlu = ?nlu_sock, "mind subscribed to nlu.miss");
+    let (tx, mut rx) = mpsc::channel::<EventEnvelope>(64);
+    spawn_reader(nlu_sock, tx.clone()); // nlu.miss / nlu.intent
+    spawn_reader(tools_sock, tx); // tool.response
     let seq = AtomicU64::new(0);
-    while let Some(env) = sub.next().await? {
-        if let Event::NluMiss {
-            language,
-            transcript,
-        } = env.event
-        {
-            // Load context fresh each turn so notes/name the Python side
-            // writes are reflected without a restart.
-            let store = InMemoryStore::load_json(&mem_path).unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "memory load failed; using empty store");
-                InMemoryStore::new()
-            });
-            let request_id = format!("mind-{}", seq.fetch_add(1, Ordering::Relaxed));
-            let req = plan_turn(
-                &mind,
-                &store,
-                &plan,
-                request_id,
-                &language,
-                &transcript,
-                backend_available,
-            );
-            if let Event::BrainRequest {
-                ref request_id,
-                ref backend,
-                ..
-            } = req
-            {
-                tracing::info!(%request_id, backend = backend.as_deref().unwrap_or("none"), %language, %transcript, "chat turn → brain.request");
+    let next_id = || format!("mind-{}", seq.fetch_add(1, Ordering::Relaxed));
+
+    while let Some(env) = rx.recv().await {
+        let ts = env.ts_ms;
+        match env.event {
+            // Free-form chat → ask the model.
+            Event::NluMiss {
+                language,
+                transcript,
+            } => {
+                let store = load_store(&mem_path);
+                let req = plan_turn(
+                    &mind,
+                    &store,
+                    &plan,
+                    next_id(),
+                    &language,
+                    &transcript,
+                    backend_available,
+                );
+                if let Event::BrainRequest { ref backend, .. } = req {
+                    tracing::info!(backend = backend.as_deref().unwrap_or("none"), %language, %transcript, "chat → brain.request");
+                }
+                publisher
+                    .publish(EventEnvelope::new("blazend-mind", ts, req))
+                    .await?;
             }
-            publisher
-                .publish(EventEnvelope::new("blazend-mind", env.ts_ms, req))
-                .await?;
+            // A matched command → route to a tool (if tool-backed).
+            Event::NluIntent {
+                intent,
+                language,
+                params,
+                ..
+            } => {
+                if let Dispatch::Tool(call) = jessica_core::dispatch(&intent, &params) {
+                    let request_id = next_id();
+                    tracing::info!(%request_id, %intent, tool = %call.tool, "command → tool.request");
+                    publisher
+                        .publish(EventEnvelope::new(
+                            "blazend-mind",
+                            ts,
+                            Event::ToolRequest {
+                                request_id,
+                                tool: call.tool,
+                                language,
+                                args: call.args,
+                            },
+                        ))
+                        .await?;
+                }
+                // else: not a tool-backed command — config/clock dispatch owns it.
+            }
+            // A tool's result → speak it (and carry any side effect).
+            Event::ToolResponse {
+                request_id,
+                text,
+                language,
+                action,
+                payload,
+                ..
+            } => {
+                tracing::info!(%request_id, action = action.as_deref().unwrap_or(""), "tool.response → brain.reply");
+                publisher
+                    .publish(EventEnvelope::new(
+                        "blazend-mind",
+                        ts,
+                        Event::BrainReply {
+                            chunk: text.clone(),
+                            final_: true,
+                            text: Some(text),
+                            language,
+                            request_id: Some(request_id),
+                            action,
+                            payload,
+                        },
+                    ))
+                    .await?;
+            }
+            _ => {}
         }
     }
     Ok(())
@@ -141,9 +213,11 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
     let _args = Args::parse();
+    let rt = runtime_dir();
     run(
-        runtime_dir().join("nlu.sock"),
-        runtime_dir().join("mind.sock"),
+        rt.join("nlu.sock"),
+        rt.join("tools.sock"),
+        rt.join("mind.sock"),
         Mind::new(),
         memory_path(),
     )
@@ -199,6 +273,99 @@ mod tests {
             assert!(system.unwrap().contains("Użytkownik ma na imię Ala."));
         } else {
             panic!("expected brain.request");
+        }
+    }
+
+    /// End-to-end IPC: a command intent → `tool.request`, and a `tool.response`
+    /// → `brain.reply`, both over the real wire through a live `run()` loop.
+    #[tokio::test]
+    async fn nlu_intent_routes_to_tool_and_tool_response_is_spoken() {
+        let dir = std::env::temp_dir().join(format!("blazend-mind-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let nlu = dir.join("nlu.sock");
+        let tools = dir.join("tools.sock");
+        let mind_sock = dir.join("mind.sock");
+
+        // Stand-ins for the NLU and the tool server.
+        let nlu_pub = Publisher::bind(&nlu).await.unwrap();
+        let tools_pub = Publisher::bind(&tools).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(30)).await;
+
+        let (n, t, m) = (nlu.clone(), tools.clone(), mind_sock.clone());
+        tokio::spawn(async move {
+            run(n, t, m, Mind::new(), dir.join("data/memory.json"))
+                .await
+                .unwrap()
+        });
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let mut out = Subscriber::connect(&mind_sock).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // A weather command → tool.request carrying the place slot.
+        let mut params = std::collections::HashMap::new();
+        params.insert("place".to_string(), "Gdańsk".to_string());
+        nlu_pub
+            .publish(EventEnvelope::new(
+                "blazend-nlu",
+                1,
+                Event::NluIntent {
+                    intent: "weather_query".into(),
+                    language: "pl".into(),
+                    params,
+                    transcript: "jaka pogoda w Gdańsku".into(),
+                },
+            ))
+            .await
+            .unwrap();
+        let env = tokio::time::timeout(Duration::from_secs(2), out.next())
+            .await
+            .expect("timed out")
+            .unwrap()
+            .unwrap();
+        let rid = match env.event {
+            Event::ToolRequest {
+                tool,
+                language,
+                args,
+                request_id,
+            } => {
+                assert_eq!(tool, "weather.query");
+                assert_eq!(language, "pl");
+                assert_eq!(args["place"], "Gdańsk");
+                request_id
+            }
+            other => panic!("expected tool.request, got {other:?}"),
+        };
+
+        // The tool answers → the mind speaks it as brain.reply.
+        tools_pub
+            .publish(EventEnvelope::new(
+                "blazend-tools",
+                2,
+                Event::ToolResponse {
+                    request_id: rid.clone(),
+                    ok: true,
+                    text: "Gdańsk: 12°C.".into(),
+                    language: Some("pl".into()),
+                    action: Some("weather".into()),
+                    payload: None,
+                },
+            ))
+            .await
+            .unwrap();
+        let env = tokio::time::timeout(Duration::from_secs(2), out.next())
+            .await
+            .expect("timed out")
+            .unwrap()
+            .unwrap();
+        match env.event {
+            Event::BrainReply {
+                text, request_id, ..
+            } => {
+                assert_eq!(text.as_deref(), Some("Gdańsk: 12°C."));
+                assert_eq!(request_id.as_deref(), Some(rid.as_str()));
+            }
+            other => panic!("expected brain.reply, got {other:?}"),
         }
     }
 }

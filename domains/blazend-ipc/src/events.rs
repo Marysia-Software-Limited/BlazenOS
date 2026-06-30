@@ -232,6 +232,12 @@ pub enum Event {
         /// Correlates back to the originating [`Event::BrainRequest`].
         #[serde(default)]
         request_id: Option<String>,
+        /// Action verb for a side effect carried from a tool (e.g. `"radio_play"`).
+        #[serde(default)]
+        action: Option<String>,
+        /// Action payload (e.g. the radio `{id, name, url}`).
+        #[serde(default)]
+        payload: Option<serde_json::Value>,
     },
 
     /// The Rust dispatch asks a Python tool to run (weather, news, web,
@@ -426,6 +432,8 @@ mod tests {
                 language: None,
                 text: None,
                 request_id: None,
+                action: None,
+                payload: None,
             },
             Event::ToolRequest {
                 request_id: "t1".into(),

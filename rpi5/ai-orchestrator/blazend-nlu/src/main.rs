@@ -304,4 +304,28 @@ intents:
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// Conformance: the real shared `configs/intents/system.yaml` must compile
+    /// in the Rust router (Rust regex is stricter than Python — no lookaround/
+    /// backrefs — so a bad trigger fails here, not on the device).
+    #[test]
+    fn real_system_intents_compile() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../configs/intents/system.yaml");
+        let yaml = std::fs::read_to_string(&path).expect("read system.yaml");
+        let router =
+            IntentRouter::from_yaml(&yaml).expect("system.yaml compiles in the Rust router");
+        assert!(router.len() > 20);
+        // The Phase 4d command intents route + capture slots as expected.
+        assert_eq!(
+            router
+                .match_intent("jaka jest pogoda", "pl")
+                .map(|m| m.name),
+            Some("weather_query".into())
+        );
+        let m = router
+            .match_intent("pogoda w Gdańsku", "pl")
+            .expect("weather w/ city");
+        assert_eq!(m.params.get("place").map(String::as_str), Some("Gdańsku"));
+    }
 }
