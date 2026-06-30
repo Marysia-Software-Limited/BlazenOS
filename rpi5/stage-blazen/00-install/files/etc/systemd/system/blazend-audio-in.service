@@ -20,10 +20,12 @@ Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 #                      open forever and starve ASR of segments.
 # Empirically tuned on the Jabra (2026-06-30): --hp-cutoff 0 keeps full-spectrum
 # audio for ASR (the 180Hz HP stripped Polish vowel fundamentals and whisper
-# misread it); the resting floor is ~30 RMS and conversational speech is low, so
-# open/close sit at 80/70 (the shipped 2000/1000 never opened — wrong RMS scale).
-# NOTE: still needs work — see docs; wake false-positive rate + mic SNR pending.
-ExecStart=/usr/lib/blazen/bin/blazend-audio-in --device plughw:CARD=USB,DEV=0 --hp-cutoff 0 --open-rms 80 --open-mult 1.0 --close-rms 70 --close-mult 1.0 --hangover-ms 500 --min-speech-ms 150 --max-speech-ms 2500
+# misread it); resting floor ~30 RMS, conversational speech low, so open 80 /
+# close 50 (close < open for hysteresis; the shipped 2000/1000 never opened).
+# max-speech 1500 caps a segment to ~command length. NOTE: mic SNR is the open
+# blocker — far-field voice (~-30 to -50 dBFS) is too quiet for whisper-small;
+# speak near the mic or use a larger ASR model.
+ExecStart=/usr/lib/blazen/bin/blazend-audio-in --device plughw:CARD=USB,DEV=0 --hp-cutoff 0 --open-rms 80 --open-mult 1.0 --close-rms 50 --close-mult 1.0 --hangover-ms 400 --min-speech-ms 150 --max-speech-ms 1500
 Restart=on-failure
 RestartSec=2
 SupplementaryGroups=audio

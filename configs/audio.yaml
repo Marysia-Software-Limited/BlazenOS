@@ -25,12 +25,12 @@ input:
   # model over-fires (floods ASR) and far-field SNR is marginal; speak near the mic.
   vad:
     open_rms: 80                      # speech-start (floor ~30; conversational speech is low)
-    close_rms: 70                     # silence
+    close_rms: 50                     # silence (close < open for hysteresis)
     open_mult: 1.0                    # fixed thresholds — adaptive floor tracking reads ~0
     close_mult: 1.0
-    hangover_ms: 500                  # trailing silence before vad.end
+    hangover_ms: 400                  # trailing silence before vad.end
     min_speech_ms: 150                # minimum speech before vad.start
-    max_speech_ms: 2500               # force-close cap so a stuck-open stretch can't bloat a segment
+    max_speech_ms: 1500               # force-close cap → ~command-length segments
 
 output:
   device: vc4hdmi0                    # TEMPORARY: HDMI, no speaker on the ReSpeaker

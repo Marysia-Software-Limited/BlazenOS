@@ -40,7 +40,8 @@ PIPER = REPO / ".venv-train/bin/piper"
 VOICE_PL = REPO / "models/tts/pl_PL-gosia-medium.onnx"
 VOICE_EN = REPO / "models/tts/en_US-lessac-medium.onnx"
 OUT = REPO / "models/wake/jessica.onnx"
-REAL_DIR = Path.home() / "wake-samples" / "dzesika"  # real "dżesika" recordings
+REAL_DIR = Path.home() / "wake-samples" / "dzesika"  # real "dżesika" recordings (positives)
+NEG_DIR = Path.home() / "wake-samples" / "negatives"  # real non-wake recordings
 SR = 16_000
 
 # Wake WORD is the bare "dżesika" (Polish phonetic for Jessica) — the form the
@@ -53,23 +54,52 @@ WAKE = [(VOICE_PL, ["Dżesika", "Dżesiko", "Dziesika", "Hej Dżesika",
 # Commands appended after the wake word (so positives also learn "wake + speech",
 # incl. the radio command the user tests with).
 COMMANDS = ["", "", "włącz trójkę", "puść trójkę", "która godzina", "włącz muzykę"]
-# Hard negatives: rhyming Polish names and other speech — all must NOT wake.
-# (Bare "Jessica/Dżesika" is now a POSITIVE, so it is no longer listed here.)
+# Hard negatives — all must NOT wake. (Bare "Jessica/Dżesika" is a POSITIVE, so
+# it is not listed here.) Three groups drive false-positive reduction:
+#   1. COMMANDS spoken WITHOUT the wake word — the user says these right after
+#      "dżesika", so the bare command must score low or the wake floods on it.
+#   2. Words ending in -ika/-yka/-nika that rhyme with "dżesika".
+#   3. Everyday Polish/English speech so general talk never wakes.
+COMMAND_NEG = [
+    "włącz trójkę", "puść trójkę", "włącz jedynkę", "puść jedynkę", "włącz radio",
+    "wyłącz radio", "zatrzymaj radio", "włącz muzykę", "puść muzykę", "wyłącz muzykę",
+    "zatrzymaj", "stop", "zatrzymaj się", "ścisz", "głośniej", "ciszej", "pauza",
+    "następna piosenka", "poprzednia piosenka", "która godzina", "jaka pogoda",
+    "ustaw budzik", "ustaw alarm", "nastaw minutnik", "przypomnij mi", "co potrafisz",
+    "włącz światło", "wyłącz światło", "włącz telewizor", "puść wiadomości",
+]
 NEGATIVE = [
-    (VOICE_PL, ["Marysia", "Krysia", "Kasia", "Basia", "Misia", "Jagoda",
-                "dzień dobry", "która godzina", "dziękuję bardzo",
-                "jaka pogoda", "włącz muzykę", "telefon do mamy", "kalendarz na jutro",
-                "przeczytaj wiadomości", "dobranoc", "proszę bardzo",
-                "asystent głosowy", "włącz komputer", "jak się masz", "co słychać",
-                "do widzenia", "włącz światło", "wyłącz światło", "ustaw alarm",
-                "opowiedz mi coś", "ile to kosztuje", "gdzie jesteś", "hej Marysia",
-                "hej Kasia", "hej mamo"]),
-    (VOICE_EN, ["Melissa", "Jessie", "good morning", "what time is it",
-                "thank you very much", "the weather today", "play some music",
-                "call my mother", "read the news", "good night", "yes please",
-                "assistant", "turn on the computer", "hello there", "how are you",
-                "see you later", "turn on the light", "set an alarm",
-                "tell me a story", "hey Melissa", "hey mom"]),
+    (VOICE_PL, COMMAND_NEG + [
+        # rhyming -ika / -yka / -nika
+        "Monika", "Weronika", "Dominika", "Angelika", "Marika", "Eryka",
+        "muzyka", "fabryka", "Ameryka", "technika", "fizyka", "logika",
+        "matematyka", "gramatyka", "elektronika", "ceramika", "tunika",
+        # rhyming Polish names / diminutives
+        "Marysia", "Krysia", "Kasia", "Basia", "Misia", "Jagoda", "Zosia",
+        "Frania", "Ania", "Hania",
+        # everyday speech
+        "dzień dobry", "dobry wieczór", "dobranoc", "do widzenia", "do zobaczenia",
+        "na razie", "cześć", "przepraszam", "dziękuję bardzo", "proszę bardzo",
+        "nie wiem", "tak jest", "oczywiście", "może później", "poczekaj chwilę",
+        "jak się masz", "co słychać", "co tam u ciebie", "wszystko w porządku",
+        "miłego dnia", "telefon do mamy", "kalendarz na jutro", "asystent głosowy",
+        "włącz komputer", "ile to kosztuje", "gdzie jesteś", "opowiedz mi coś",
+        "jeden dwa trzy cztery", "poniedziałek wtorek środa", "raz dwa trzy",
+        "hej Marysia", "hej Kasia", "hej mamo", "hej tato",
+    ]),
+    (VOICE_EN, [
+        "turn on the radio", "play the radio", "stop the radio", "play some music",
+        "turn it off", "stop", "pause", "volume up", "volume down", "next song",
+        "what time is it", "the weather today", "set an alarm", "set a timer",
+        # rhyming -ica / -ika
+        "Monica", "Veronica", "Angelica", "replica", "America", "basilica",
+        "Melissa", "Jessie", "Marissa",
+        # everyday speech
+        "good morning", "good evening", "good night", "see you later", "thank you",
+        "yes please", "no thanks", "how are you", "hello there", "what's up",
+        "call my mother", "read the news", "turn on the light", "tell me a story",
+        "one two three four", "hey Melissa", "hey mom", "hey there",
+    ]),
 ]
 WIN, EMB_HOP = 16, 1280  # classifier window (frames), samples per embedding step
 
@@ -121,11 +151,15 @@ def load_wav(path: Path) -> np.ndarray:
     return pcm
 
 
+def _wavs(d: Path) -> list[Path]:
+    return sorted(Path(p) for p in glob.glob(str(d / "*.wav")) if "_raw" not in Path(p).name)
+
+
 def real_windows(af, paths: list[Path]) -> list[list[np.ndarray]]:
-    """Per-file positive windows from real recordings. Each utterance is placed at
-    a few lead offsets (timing jitter) and gain/noise-augmented; the first windows
-    — which cover the word — are kept. Returned grouped by file so a whole
-    utterance can be held out for validation (no window leaks across the split)."""
+    """Per-file POSITIVE windows from real "dżesika" recordings. Each utterance is
+    placed at a few lead offsets (timing jitter) and gain/noise-augmented; the
+    first windows — which cover the word — are kept. Returned grouped by file so a
+    whole utterance can be held out for validation (no window leaks across split)."""
     per_file = []
     for p in paths:
         pcm = load_wav(p)
@@ -139,7 +173,22 @@ def real_windows(af, paths: list[Path]) -> list[list[np.ndarray]]:
     return per_file
 
 
-def build_dataset(af, real_dir: Path):
+def real_neg_windows(af, paths: list[Path]) -> list[list[np.ndarray]]:
+    """Per-file NEGATIVE windows from real non-wake recordings (the user speaking
+    commands / other Polish). The whole clip is non-wake, so EVERY window is a
+    negative. Grouped by file for a held-out false-positive metric."""
+    per_file = []
+    for p in paths:
+        pcm = load_wav(p)
+        wins: list[np.ndarray] = []
+        for g, nz in ((1.0, 0.0), (0.85, 0.01), (1.2, 0.02)):
+            wins.extend(all_windows(af, augment(place(pcm), g, nz)))
+        if wins:
+            per_file.append(wins)
+    return per_file
+
+
+def build_dataset(af, real_dir: Path, neg_dir: Path):
     pos, neg = [], []
     # Synthetic positives: "<wake> [command]" with the wake near the start → the
     # first few windows (which cover the wake + following speech) are positive.
@@ -152,10 +201,11 @@ def build_dataset(af, real_dir: Path):
                     for g, nz in ((1.0, 0.0), (0.8, 0.02), (1.2, 0.03)):
                         wins = all_windows(af, augment(base, g, nz))
                         pos.extend(wins[:3])  # first 3 windows cover the wake
-    # Negatives: every window of non-wake speech (incl. similar names).
+    # Synthetic negatives: every window of non-wake speech (commands, rhyming
+    # names, everyday talk) — three length scales widen coverage.
     for voice, phrases in NEGATIVE:
         for text in phrases:
-            for ls in (0.9, 1.1):
+            for ls in (0.9, 1.0, 1.1):
                 base = place(piper_synth(voice, text, ls))
                 for g, nz in ((1.0, 0.0), (1.1, 0.02)):
                     neg.extend(all_windows(af, augment(base, g, nz)))
@@ -163,11 +213,11 @@ def build_dataset(af, real_dir: Path):
     rs = np.random.RandomState(0)
     for _ in range(30):
         neg.extend(all_windows(af, rs.normal(0, rs.uniform(30, 900), 48_000).astype(np.float32)))
-    # Real positives — the operator's own "dżesika", grouped per utterance.
-    real_paths = sorted(Path(p) for p in glob.glob(str(real_dir / "*.wav"))
-                        if "_raw" not in Path(p).name)
-    real = real_windows(af, real_paths) if real_paths else []
-    return np.array(pos), np.array(neg), real
+    # Real positives ("dżesika") and real negatives (the user's non-wake speech),
+    # each grouped per utterance for held-out validation.
+    real = real_windows(af, _wavs(real_dir)) if real_dir.is_dir() else []
+    real_neg = real_neg_windows(af, _wavs(neg_dir)) if neg_dir.is_dir() else []
+    return np.array(pos), np.array(neg), real, real_neg
 
 
 def main() -> int:
@@ -175,8 +225,12 @@ def main() -> int:
     ap.add_argument("--epochs", type=int, default=250)
     ap.add_argument("--real-dir", type=Path, default=REAL_DIR,
                     help="dir of real 'dżesika' wavs (positives); synthetic-only if absent")
+    ap.add_argument("--neg-dir", type=Path, default=NEG_DIR,
+                    help="dir of real non-wake wavs (hard negatives); optional")
     ap.add_argument("--real-oversample", type=int, default=4,
                     help="replicate real-positive windows N× so they aren't drowned by synth")
+    ap.add_argument("--neg-oversample", type=int, default=3,
+                    help="replicate real-negative windows N× (the key false-positive driver)")
     args = ap.parse_args()
 
     import torch
@@ -186,7 +240,7 @@ def main() -> int:
     np.random.seed(0)
     af = AudioFeatures()
     print("synthesising + embedding training clips (Piper)…", flush=True)
-    pos, neg, real = build_dataset(af, args.real_dir)
+    pos, neg, real, real_neg = build_dataset(af, args.real_dir, args.neg_dir)
     if real:
         # Split real utterances 80/20 BY FILE so no windows of a held-out
         # utterance leak into training — this is the honest real-world metric.
@@ -206,14 +260,36 @@ def main() -> int:
         print("  NO real samples found — synthetic-only (quality bounded; "
               f"expected dir: {args.real_dir})", flush=True)
         real_tr, real_va = [], np.empty((0, WIN, 96), dtype=np.float32)
-    print(f"  synth positives={len(pos)}  negatives={len(neg)}  "
-          f"real train positives={len(real_tr)}", flush=True)
 
-    # Training set: synth positives + real-train positives + negatives.
+    # Real NEGATIVES — the user's own non-wake speech (commands, other Polish).
+    # These are the strongest lever on the false-positive rate. Split by file and
+    # oversample the train half, mirroring the positives.
+    if real_neg:
+        rsn = np.random.RandomState(3)
+        order = rsn.permutation(len(real_neg))
+        vcut = max(1, int(0.2 * len(real_neg)))
+        neg_val_files = [real_neg[i] for i in order[:vcut]]
+        neg_tr_files = [real_neg[i] for i in order[vcut:]]
+        real_neg_tr = [w for f in neg_tr_files for w in f] * args.neg_oversample
+        real_neg_va = np.array([w for f in neg_val_files for w in f], dtype=np.float32)
+        print(f"  real negatives: {len(real_neg)} clips "
+              f"({len(neg_tr_files)} train / {len(neg_val_files)} val), "
+              f"{len(real_neg_tr)} train windows ×{args.neg_oversample}, "
+              f"{len(real_neg_va)} val windows", flush=True)
+    else:
+        print("  no real negatives (--neg-dir) — synth negatives only", flush=True)
+        real_neg_tr, real_neg_va = [], np.empty((0, WIN, 96), dtype=np.float32)
+
+    print(f"  synth positives={len(pos)}  synth negatives={len(neg)}  "
+          f"real+ ={len(real_tr)}  real- ={len(real_neg_tr)}", flush=True)
+
+    # Training set: synth positives + real-train positives, vs synth negatives +
+    # real-train negatives.
     pos_all = np.concatenate([pos, np.array(real_tr, dtype=np.float32)]) if real_tr else pos
-    X = np.concatenate([pos_all, neg]).astype(np.float32)  # (N,16,96)
-    y = np.concatenate([np.ones(len(pos_all)), np.zeros(len(neg))]).astype(np.float32)
-    npos = len(pos_all)
+    neg_all = np.concatenate([neg, np.array(real_neg_tr, dtype=np.float32)]) if real_neg_tr else neg
+    X = np.concatenate([pos_all, neg_all]).astype(np.float32)  # (N,16,96)
+    y = np.concatenate([np.ones(len(pos_all)), np.zeros(len(neg_all))]).astype(np.float32)
+    npos, nneg = len(pos_all), len(neg_all)
     # Hold out 20% for synthetic validation.
     rs = np.random.RandomState(1)
     idx = rs.permutation(len(X))
@@ -238,7 +314,7 @@ def main() -> int:
     opt = torch.optim.Adam(net.parameters(), lr=1e-3, weight_decay=1e-4)
     xt, yt = torch.from_numpy(Xtr), torch.from_numpy(ytr).unsqueeze(1)
     # Class weight: positives rarer.
-    w = torch.where(yt > 0.5, len(neg) / max(1, npos), 1.0)
+    w = torch.where(yt > 0.5, nneg / max(1, npos), 1.0)
     for _ep in range(args.epochs):
         opt.zero_grad()
         out = net(xt)
@@ -274,6 +350,34 @@ def main() -> int:
         print(f"VALIDATION (REAL dżesika) @thr={thr}: "
               f"window_mean={rv.mean():.2f} window_fire={win_fire:.0%} "
               f"utterance_fire={fired}/{len(val_files)}", flush=True)
+    # Real-negative validation — held-out non-wake clips. The runtime fires on the
+    # MAX window score per clip, so a clip "false-fires" if any window clears thr.
+    if len(real_neg_va):
+        with torch.no_grad():
+            nv = net(torch.from_numpy(real_neg_va)).numpy().ravel()
+        nf, off = 0, 0
+        for f in neg_val_files:
+            seg = nv[off:off + len(f)]
+            off += len(f)
+            if len(seg) and seg.max() > thr:
+                nf += 1
+        print(f"VALIDATION (REAL negatives) @thr={thr}: window_mean={nv.mean():.2f} "
+              f"window_false_accept={float((nv > thr).mean()):.0%} "
+              f"clip_false_fire={nf}/{len(neg_val_files)}", flush=True)
+    # Threshold scan: per-utterance true-fire vs per-clip false-fire across
+    # thresholds, so the operator can pick a runtime --threshold that separates.
+    if len(real_va) and len(real_neg_va):
+        def fmax(scores, files):
+            out, off = [], 0
+            for f in files:
+                out.append(float(scores[off:off + len(f)].max()) if len(f) else 0.0)
+                off += len(f)
+            return np.array(out)
+        pmax, nmax = fmax(rv, val_files), fmax(nv, neg_val_files)
+        print("  thr   real-dżesika-fire   real-neg-false-fire", flush=True)
+        for t in (0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9):
+            print(f"  {t:.1f}   {int((pmax > t).sum())}/{len(pmax)}"
+                  f"              {int((nmax > t).sum())}/{len(nmax)}", flush=True)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     # Stage the openWakeWord front-end ONNX next to the classifier so the Rust

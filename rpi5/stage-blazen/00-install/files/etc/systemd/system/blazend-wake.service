@@ -15,11 +15,13 @@ Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 WorkingDirectory=/var/lib/blazen
 Environment=ORT_DYLIB_PATH=/usr/lib/blazen/.venv/lib/python3.13/site-packages/onnxruntime/capi/libonnxruntime.so.1.27.0
 # cooldown 2500ms (up from the 1500 default) collapses one spoken "dżesika" to a
-# single wake — the retrained model otherwise re-fires across the rolling window
-# and floods ASR. threshold stays at the 0.5 default: the model's true-positive
-# scores vary 0.5-1.0 and overlap false positives, so a higher cut drops real
-# wakes. Clean separation needs retraining with a larger negative set.
-ExecStart=/usr/lib/blazen/bin/blazend-wake --threshold 0.5 --cooldown_ms 2500
+# single wake — avoids re-firing across the rolling detection window. threshold
+# 0.4: the model retrained with the operator's real negatives separates real
+# "dżesika" (live 0.4-0.7) from real commands/rhymes (<=0.36); 0.4 catches the
+# variable live delivery while rejecting false positives. (Validation held-out
+# clips score ~0.98 vs ~0.01 — the live gap is delivery variance; more real
+# positives would tighten it.) NOTE: clap flag is --cooldown-ms (hyphen), not _ms.
+ExecStart=/usr/lib/blazen/bin/blazend-wake --threshold 0.4 --cooldown-ms 2500
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=yes

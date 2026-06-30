@@ -98,11 +98,13 @@ async def _real_loop(pub: Publisher) -> None:
         dur_ms = int(env.data.get("duration_ms", 0))
         event_pos = int(env.ts_ms) * ring.sample_rate // 1000
         end = min(ring.write_pos, event_pos)
-        lookback = (dur_ms + tail_margin_ms) * ring.sample_rate // 1000
-        # Drop stale segments whose audio the ring has already overwritten — if
-        # ASR fell behind under a burst, the segment's frames are gone and reading
-        # them would transcribe unrelated recent audio. Stay current instead.
-        if ring.write_pos - end > ring.capacity - lookback:
+        # Read at most one ring's worth, ending at the segment position. (A long
+        # force-closed segment can ask for more than the ring holds — cap it.)
+        lookback = min((dur_ms + tail_margin_ms) * ring.sample_rate // 1000, ring.capacity)
+        # Drop only if the segment END is older than the ring still holds — under a
+        # backlog its frames are gone and reading them would transcribe unrelated
+        # recent audio. (A timely segment has write_pos≈end, so it is kept.)
+        if ring.write_pos - end > ring.capacity:
             log.warning("asr: dropping stale segment (ring overwritten under backlog)")
             continue
         begin = max(0, end - lookback)
