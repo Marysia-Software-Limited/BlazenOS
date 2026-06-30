@@ -94,6 +94,10 @@ class Tools:
             return self.recall_notes(lang)
         if tool == "context.recall_reminders":
             return self.recall_reminders(lang)
+        if tool == "context.remember":
+            return self.remember(str(args.get("text", "")), lang)
+        if tool == "context.set_name":
+            return self.set_name(str(args.get("name", "")), lang)
         if tool == "weather.query":
             return self.weather_now(args.get("place"), lang)
         if tool == "news.brief":
@@ -123,6 +127,34 @@ class Tools:
         )
         return ToolResult(
             True, _t(lang, f"Twoje przypomnienia: {lines}.", f"Your reminders: {lines}."), "recall", {"count": len(pend)}
+        )
+
+    # -- memory writes -----------------------------------------------------
+    def remember(self, text: str, lang: str) -> ToolResult:
+        """Store a note. The NLU already stripped the trigger verb, so `text`
+        is the note body. Mirrors the engine's `_remember` (sans title split /
+        embedding, which the semantic-recall path handles separately)."""
+        body = text.strip(" ,.:!")
+        if not body:
+            return ToolResult(True, _t(lang, "Co mam zapamiętać?", "What should I remember?"), "wake")
+        note = self.memory.add_note(body, now=datetime.now())
+        return ToolResult(
+            True,
+            _t(lang, f"Zapamiętałam: {note.text}.", f"Got it, I'll remember: {note.text}."),
+            "note", {"id": note.id, "text": note.text},
+        )
+
+    def set_name(self, name: str, lang: str) -> ToolResult:
+        """Store the user's name (capitalised), mirroring the engine's `_set_name`."""
+        name = name.strip()
+        if not name:
+            return ToolResult(True, _t(lang, "Jak mam Cię nazywać?", "What should I call you?"), "wake")
+        name = name[:1].upper() + name[1:]
+        self.memory.set_profile("name", name, now=datetime.now())
+        return ToolResult(
+            True,
+            _t(lang, f"Miło mi, {name}! Zapamiętam.", f"Nice to meet you, {name}! I'll remember."),
+            "profile", {"name": name},
         )
 
     # -- weather -----------------------------------------------------------

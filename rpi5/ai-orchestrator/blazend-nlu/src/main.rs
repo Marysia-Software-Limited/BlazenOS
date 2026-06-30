@@ -327,5 +327,19 @@ intents:
             .match_intent("pogoda w Gdańsku", "pl")
             .expect("weather w/ city");
         assert_eq!(m.params.get("place").map(String::as_str), Some("Gdańsku"));
+        // Memory writes capture their slots and out-rank the broad radio trigger.
+        let r = router
+            .match_intent("zapamiętaj że radio gra fajnie", "pl")
+            .expect("remember");
+        assert_eq!(r.name, "remember_note");
+        assert_eq!(
+            r.params.get("text").map(String::as_str),
+            Some("radio gra fajnie")
+        );
+        let n = router
+            .match_intent("mam na imię Paweł", "pl")
+            .expect("name");
+        assert_eq!(n.name, "set_name");
+        assert_eq!(n.params.get("name").map(String::as_str), Some("Paweł"));
     }
 }

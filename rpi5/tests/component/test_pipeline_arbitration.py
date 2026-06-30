@@ -121,14 +121,24 @@ async def test_pipeline_arbitration(tmp_path, monkeypatch):
         await asyncio.sleep(0.6)  # give the brain a chance to (wrongly) reply
         assert brain_replies == [], "brain must not reply to a matched command"
 
-        # 2) Unmatched utterance → brain only.
+        # 2) A memory command ("zapamiętaj …") is now a fast-path intent → the
+        #    dispatcher (via the Phase 4d tool bridge), NOT the brain.
         await asr.publish(Envelope(topic="asr.final", source="blazend-asr",
                                    data={"language": "pl",
                                          "text": "zapamiętaj że kod do bramy to 4729",
                                          "confidence": 0.9}))
+        await _wait(lambda: len(dispatched) >= 2, 5.0)
+        assert "4729" in dispatched[-1].speak
+        await asyncio.sleep(0.6)  # give the brain a chance to (wrongly) reply
+        assert brain_replies == [], "brain must not reply to a matched command"
+
+        # 3) A genuine free-chat utterance → brain only.
+        await asr.publish(Envelope(topic="asr.final", source="blazend-asr",
+                                   data={"language": "pl",
+                                         "text": "opowiedz mi coś ciekawego o kosmosie",
+                                         "confidence": 0.9}))
         await _wait(lambda: len(brain_replies) >= 1, 5.0)
-        assert brain_replies[-1]["action"] == "note" and "4729" in brain_replies[-1]["text"]
-        assert len(dispatched) == 1, "dispatcher must not fire on an unmatched utterance"
+        assert len(dispatched) == 2, "dispatcher must not fire on an unmatched utterance"
     finally:
         stop.set()
         for t in tasks:

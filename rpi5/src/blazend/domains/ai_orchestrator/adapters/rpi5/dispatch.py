@@ -18,7 +18,18 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from blazend.domains.ai_orchestrator.adapters.rpi5.tools import Tools
+
+# Tool-backed command intents (Phase 4d): routed here to the shared Tools in the
+# current pipeline; the Rust mind takes this over at the cutover. The tool names
+# mirror jessica_core::dispatch + configs/intents/system.yaml.
+_TOOL_INTENTS: frozenset[str] = frozenset({
+    "weather.query", "news.brief", "web.lookup", "radio.play", "radio.stop",
+    "context.recall", "context.recall_reminders", "context.remember", "context.set_name",
+})
 
 # Sensible defaults for delta-based mutations when nothing is stored yet.
 _DEFAULTS: dict[str, Any] = {"audio.volume": 50}
@@ -83,6 +94,15 @@ class IntentDispatcher:
         self._pending: dict[str, Any] | None = None
         allowed = self._allow.get("languages.pinned", {}).get("allowed_values", ["pl", "en"])
         self._supported = tuple(c for c in allowed if c)
+        self._tool_kit: Tools | None = None
+
+    def _tools(self) -> Tools:
+        """Lazily build the shared tool kit (clients read their configs)."""
+        if self._tool_kit is None:
+            from blazend.domains.ai_orchestrator.adapters.rpi5.tools import Tools
+
+            self._tool_kit = Tools()
+        return self._tool_kit
 
     def pinned_language(self) -> str | None:
         """Currently pinned reply language (None = auto-detect)."""
@@ -246,6 +266,9 @@ class IntentDispatcher:
         self, tool: str, params: dict[str, Any], lang: str, *, now: datetime | None = None
     ) -> DispatchResult:
         now = now or datetime.now()
+        if tool in _TOOL_INTENTS:
+            res = self._tools().run(tool, params, lang)
+            return DispatchResult(res.text, lang, "tool", data={"tool": tool, "ok": res.ok, **res.payload})
         if tool == "clock.time":
             # Spell the time out in Polish words so Piper says it naturally
             # ("dwudziesta trzecia szesnaście") instead of mangling "23:16".

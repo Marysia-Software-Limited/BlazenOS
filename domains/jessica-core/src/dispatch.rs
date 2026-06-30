@@ -51,6 +51,14 @@ pub fn dispatch(intent: &str, params: &HashMap<String, String>) -> Dispatch {
             json!({ "place": arg("place") }),
         )),
         "news_brief" => Dispatch::Tool(ToolCall::new("news.brief", json!({}))),
+        "remember_note" => Dispatch::Tool(ToolCall::new(
+            "context.remember",
+            json!({ "text": arg("text").unwrap_or_default() }),
+        )),
+        "set_name" => Dispatch::Tool(ToolCall::new(
+            "context.set_name",
+            json!({ "name": arg("name").unwrap_or_default() }),
+        )),
         "web_lookup" => Dispatch::Tool(ToolCall::new(
             "web.lookup",
             json!({ "query": arg("query").unwrap_or_default() }),
@@ -120,6 +128,21 @@ mod tests {
         assert_eq!(
             dispatch("list_reminders", &params(&[])),
             Dispatch::Tool(ToolCall::new("context.recall_reminders", json!({})))
+        );
+    }
+
+    #[test]
+    fn memory_writes_carry_their_slots() {
+        assert_eq!(
+            dispatch("remember_note", &params(&[("text", "kup mleko")])),
+            Dispatch::Tool(ToolCall::new(
+                "context.remember",
+                json!({"text": "kup mleko"})
+            ))
+        );
+        assert_eq!(
+            dispatch("set_name", &params(&[("name", "Paweł")])),
+            Dispatch::Tool(ToolCall::new("context.set_name", json!({"name": "Paweł"})))
         );
     }
 

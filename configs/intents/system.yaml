@@ -636,6 +636,24 @@ intents:
     action: tool_call
     tool: context.recall_reminders
 
+  - name: set_name
+    triggers:
+      pl:
+        - "(?:nazywam si(ę|e)|mam na imi(ę|e)|m(ó|o)w do mnie)\\s+(?P<name>[a-ząćęłńóśźż'’\\-]+)"
+      en:
+        - "(?:my name is|call me)\\s+(?P<name>[a-z'’\\-]+)"
+    action: tool_call
+    tool: context.set_name
+
+  - name: remember_note
+    triggers:
+      pl:
+        - "(?:zapami(ę|e)taj|zapisz)\\s+(?:(?:że|ze|to|:|,)\\s+)?(?P<text>.+)"
+      en:
+        - "remember\\s+(?:that\\s+)?(?P<text>.+)"
+    action: tool_call
+    tool: context.remember
+
   - name: radio_play
     triggers:
       pl:

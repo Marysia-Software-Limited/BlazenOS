@@ -16,17 +16,30 @@ from blazend.events import TOPIC_TOOL_REQUEST, TOPIC_TOOL_RESPONSE, Envelope
 class _Note:
     def __init__(self, text: str) -> None:
         self.text = text
+        self.id = "note-1"
+        self.title = ""
 
 
 class _FakeMemory:
     def __init__(self, notes: list[str]) -> None:
         self._notes = [_Note(t) for t in notes]
+        self.profile: dict[str, str] = {}
+        self.added: list[str] = []
 
     def notes(self) -> list[_Note]:
         return self._notes
 
     def pending(self) -> list[Any]:
         return []
+
+    def add_note(self, text: str, *, now: Any, title: str = "") -> _Note:
+        self.added.append(text)
+        n = _Note(text)
+        n.id = f"note-{len(self.added)}"  # type: ignore[attr-defined]
+        return n
+
+    def set_profile(self, key: str, value: str, *, now: Any) -> None:
+        self.profile[key] = value
 
 
 class _Station:
@@ -82,6 +95,36 @@ def test_radio_play_offers_when_unresolved() -> None:
 def test_radio_stop() -> None:
     t = _tools(radio=_FakeRadio(None))
     assert t.radio_stop("en").text == "Turning off the radio."
+
+
+def test_remember_stores_note() -> None:
+    mem = _FakeMemory([])
+    t = _tools(memory=mem)
+    res = t.remember("kup mleko", "pl")
+    assert res.ok and res.action == "note"
+    assert mem.added == ["kup mleko"]
+    assert "Zapamiętałam: kup mleko." == res.text
+
+
+def test_remember_empty_asks_what() -> None:
+    res = _tools(memory=_FakeMemory([])).remember("  ", "en")
+    assert res.text == "What should I remember?"
+
+
+def test_set_name_capitalises_and_stores() -> None:
+    mem = _FakeMemory([])
+    res = _tools(memory=mem).set_name("paweł", "pl")
+    assert mem.profile["name"] == "Paweł"
+    assert "Paweł" in res.text and res.action == "profile"
+
+
+def test_run_routes_memory_writes() -> None:
+    mem = _FakeMemory([])
+    t = _tools(memory=mem)
+    t.run("context.remember", {"text": "oddać książkę"}, "pl")
+    t.run("context.set_name", {"name": "Ala"}, "pl")
+    assert mem.added == ["oddać książkę"]
+    assert mem.profile["name"] == "Ala"
 
 
 def test_run_unknown_tool() -> None:
