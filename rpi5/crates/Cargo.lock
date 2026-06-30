@@ -231,6 +231,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "blazend-mind"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "blazend-ipc",
+ "clap",
+ "jessica-core",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "blazend-nlu"
 version = "0.0.1"
 dependencies = [
