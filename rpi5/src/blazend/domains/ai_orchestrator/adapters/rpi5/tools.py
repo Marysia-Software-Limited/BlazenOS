@@ -1,0 +1,227 @@
+"""Tool services — the API/ML glue the Rust dispatch calls (Phase 4d).
+
+Each tool takes **structured args** (the NLU already extracted the slots) and
+returns a [`ToolResult`] the mind speaks. Ported faithfully from the old
+engine's tool methods (`_weather`, `_news`, `_recall_notes`, `_radio`, …) so
+behaviour and phrasing are byte-identical; the engine is retired at the Phase 4
+cutover and this becomes the single home of the tool logic.
+
+Stays Python because every tool here is API/ML/hardware glue (Open-Meteo,
+Gemini, RSS, the station directory, the memory store) — see
+`docs/14-RUST-PYTHON-SPLIT.md` §1. Reached over the `tool.request` /
+`tool.response` IPC seam by `tool_server`.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any
+
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.gemini import (
+    GeminiClient,
+    GeminiError,
+)
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.news import (
+    NewsClient,
+    NewsError,
+)
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.radio import RadioDirectory
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.weather import (
+    WeatherClient,
+    WeatherError,
+    describe_code,
+)
+from blazend.domains.context.adapters.rpi5.memory import MemoryStore
+
+log = logging.getLogger("blazend.domains.ai_orchestrator.tools")
+
+# The Jessica persona (same text as engine.PERSONA / jessica_core::DEFAULT_PERSONA).
+# Lives here now that the engine is being retired; used for the grounded-LLM
+# system prompts (news, web lookup).
+PERSONA = (
+    "Jesteś Jessica — głosowa asystentka osobista dla osób niewidomych i "
+    "słabowidzących, działająca na Raspberry Pi 5. Odpowiadaj w języku "
+    "użytkownika (polski lub angielski); domyślnie po polsku. Mów krótko — "
+    "jedno lub dwa zdania, chyba że poproszono o szczegóły. Bądź konkretna i "
+    "uczciwa; jeśli czegoś nie wiesz, powiedz to wprost."
+)
+
+
+def _t(lang: str, pl: str, en: str) -> str:
+    return pl if lang == "pl" else en
+
+
+@dataclass
+class ToolResult:
+    """A tool's outcome: spoken ``text`` plus an optional side effect."""
+
+    ok: bool
+    text: str
+    action: str = ""
+    payload: dict[str, Any] = field(default_factory=dict)
+
+
+class Tools:
+    """The assistant's tools, behind structured-arg methods.
+
+    Clients are built once and reused. Each is independently constructible so
+    tests inject fakes; production uses the on-device defaults.
+    """
+
+    def __init__(
+        self,
+        *,
+        memory: MemoryStore | None = None,
+        weather: WeatherClient | None = None,
+        gemini: GeminiClient | None = None,
+        news: NewsClient | None = None,
+        radio: RadioDirectory | None = None,
+        persona: str = PERSONA,
+    ) -> None:
+        self.memory = memory or MemoryStore()
+        self.weather = weather or WeatherClient()
+        self.gemini = gemini or GeminiClient()
+        self.news = news or NewsClient()
+        self.radio = radio or RadioDirectory()
+        self.persona = persona
+
+    # -- dispatch ----------------------------------------------------------
+    def run(self, tool: str, args: dict[str, Any], lang: str) -> ToolResult:
+        """Route a ``tool`` name + ``args`` to its handler."""
+        if tool == "context.recall":
+            return self.recall_notes(lang)
+        if tool == "context.recall_reminders":
+            return self.recall_reminders(lang)
+        if tool == "weather.query":
+            return self.weather_now(args.get("place"), lang)
+        if tool == "news.brief":
+            return self.news_brief(lang)
+        if tool == "web.lookup":
+            return self.web_lookup(str(args.get("query", "")), lang)
+        if tool == "radio.play":
+            return self.radio_play(str(args.get("query", "")), lang)
+        if tool == "radio.stop":
+            return self.radio_stop(lang)
+        return ToolResult(False, _t(lang, "Nie znam tego narzędzia.", "I don't know that tool."), "error")
+
+    # -- context -----------------------------------------------------------
+    def recall_notes(self, lang: str) -> ToolResult:
+        notes = self.memory.notes()
+        if not notes:
+            return ToolResult(True, _t(lang, "Nic jeszcze nie zapisałam.", "I haven't noted anything yet."), "recall")
+        lines = "; ".join(n.text for n in notes[-10:])
+        return ToolResult(True, _t(lang, f"Pamiętam: {lines}.", f"I remember: {lines}."), "recall", {"count": len(notes)})
+
+    def recall_reminders(self, lang: str) -> ToolResult:
+        pend = self.memory.pending()
+        if not pend:
+            return ToolResult(True, _t(lang, "Nie masz żadnych przypomnień.", "You have no reminders."), "recall")
+        lines = "; ".join(
+            f"{datetime.fromisoformat(r.due).strftime('%H:%M')} — {r.text}" for r in pend[:10]
+        )
+        return ToolResult(
+            True, _t(lang, f"Twoje przypomnienia: {lines}.", f"Your reminders: {lines}."), "recall", {"count": len(pend)}
+        )
+
+    # -- weather -----------------------------------------------------------
+    def weather_now(self, place_name: str | None, lang: str) -> ToolResult:
+        place = None
+        if place_name and place_name.strip():
+            try:
+                place = self.weather.geocode(place_name.strip(), lang)
+            except WeatherError:
+                place = None
+        try:
+            c = self.weather.current(place)
+        except WeatherError as e:
+            log.warning("weather lookup failed (%s)", e)
+            return ToolResult(
+                False, _t(lang, "Nie mogę teraz sprawdzić pogody.", "I can't check the weather right now."),
+                "error", {"reason": "weather_failed"},
+            )
+        desc = describe_code(c.code, lang)
+        temp, feels, wind = round(c.temperature), round(c.feels_like), round(c.wind_speed)
+        if lang == "pl":
+            out = (f"{c.place}: {temp}{c.units_temp}, {desc}. "
+                   f"Odczuwalna {feels}{c.units_temp}, wiatr {wind} {c.units_wind}.")
+        else:
+            out = (f"In {c.place} it's {temp}{c.units_temp}, {desc}. "
+                   f"Feels like {feels}{c.units_temp}, wind {wind} {c.units_wind}.")
+        return ToolResult(True, out, "weather", {"place": c.place, "temp": temp, "code": c.code})
+
+    # -- news --------------------------------------------------------------
+    def news_brief(self, lang: str) -> ToolResult:
+        if self.gemini.available:
+            if lang == "pl":
+                query = ("Podaj najważniejsze aktualne wiadomości z międzynarodowych agencji "
+                         "(Reuters, AP, AFP, BBC), ze szczególnym uwzględnieniem Krakowa i Polski.")
+                sys = self.persona + (" Odpowiedz po polsku, zwięźle, 3-4 najważniejsze punkty. "
+                                      "Przetłumacz nagłówki na polski.")
+            else:
+                query = ("Give the top current news from international agencies "
+                         "(Reuters, AP, AFP, BBC), focusing on Kraków and Poland.")
+                sys = self.persona + " Answer in English, briefly — 3-4 key points."
+            try:
+                answer = self.gemini.grounded(query, system=sys)
+                return ToolResult(True, answer, "news", {"grounded": True, "focus": "krakow-poland"})
+            except GeminiError as e:
+                log.warning("news via Gemini failed (%s); falling back to RSS", e)
+        try:
+            items = self.news.headlines(lang)
+        except NewsError as e:
+            log.warning("RSS news fallback failed (%s)", e)
+            items = []
+        if items:
+            lead = _t(lang, "Najważniejsze wiadomości:", "Top headlines:")
+            body = " ".join(f"{i + 1}. {h}." for i, h in enumerate(items))
+            return ToolResult(True, f"{lead} {body}", "news", {"source": "rss", "count": len(items)})
+        return ToolResult(
+            False, _t(lang, "Nie mogę teraz sprawdzić wiadomości.", "I can't check the news right now."),
+            "error", {"reason": "news_unavailable"},
+        )
+
+    # -- web lookup --------------------------------------------------------
+    def web_lookup(self, query: str, lang: str) -> ToolResult:
+        if not self.gemini.available:
+            return ToolResult(
+                False,
+                _t(lang, "To wymaga konta Gemini — ustaw GEMINI_API_KEY.",
+                   "That needs a Gemini account — set GEMINI_API_KEY."),
+                "news", {"needs_key": True},
+            )
+        sys = self.persona + _t(lang, " Streść zwięźle, po polsku.", " Summarise briefly, in English.")
+        try:
+            answer = self.gemini.grounded(query, system=sys)
+        except GeminiError as e:
+            log.warning("site lookup via Gemini failed (%s)", e)
+            return ToolResult(
+                False, _t(lang, "Nie mogę teraz tego sprawdzić.", "I can't look that up right now."),
+                "error", {"reason": "lookup_failed"},
+            )
+        return ToolResult(True, answer, "news", {"grounded": True})
+
+    # -- radio -------------------------------------------------------------
+    def radio_play(self, query: str, lang: str) -> ToolResult:
+        if not self.radio.available:
+            return ToolResult(True, _t(lang, "Radio nie jest skonfigurowane.", "Radio isn't configured."), "radio_offer")
+        station = self.radio.resolve(query)
+        if station is None:
+            names = [s.name for s in self.radio.offer()]
+            if len(names) > 1:
+                joined = ", ".join(names[:-1]) + _t(lang, f" lub {names[-1]}", f" or {names[-1]}")
+            else:
+                joined = names[0] if names else ""
+            return ToolResult(
+                True,
+                _t(lang, f"Mogę włączyć: {joined}. Którą stację?", f"I can play: {joined}. Which station?"),
+                "radio_offer", {"stations": [s.id for s in self.radio.offer()]},
+            )
+        return ToolResult(
+            True, _t(lang, f"Włączam stację {station.name}.", f"Playing {station.name}."),
+            "radio_play", {"id": station.id, "name": station.name, "url": station.url},
+        )
+
+    def radio_stop(self, lang: str) -> ToolResult:
+        return ToolResult(True, _t(lang, "Wyłączam radio.", "Turning off the radio."), "radio_stop")
