@@ -14,7 +14,12 @@ Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 # ships (without it the crate aborts on startup instead of falling back).
 WorkingDirectory=/var/lib/blazen
 Environment=ORT_DYLIB_PATH=/usr/lib/blazen/.venv/lib/python3.13/site-packages/onnxruntime/capi/libonnxruntime.so.1.27.0
-ExecStart=/usr/lib/blazen/bin/blazend-wake
+# cooldown 2500ms (up from the 1500 default) collapses one spoken "dżesika" to a
+# single wake — the retrained model otherwise re-fires across the rolling window
+# and floods ASR. threshold stays at the 0.5 default: the model's true-positive
+# scores vary 0.5-1.0 and overlap false positives, so a higher cut drops real
+# wakes. Clean separation needs retraining with a larger negative set.
+ExecStart=/usr/lib/blazen/bin/blazend-wake --threshold 0.5 --cooldown_ms 2500
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=yes
