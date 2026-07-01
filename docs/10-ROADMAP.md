@@ -212,14 +212,14 @@ SSH-able).
   `docs/02-HARDWARE.md`. Unit + transition tests green.
 - ✓ **`blazend-audio-in` real `cpal` probe (2026-06-12):** opens the
   default input device, reports `mic.ready` / `mic.absent`, and falls
-  back to synthetic frames when none is present (WSL/CI). The streaming
+  back to synthetic frames when none is present (headless/CI). The streaming
   capture → shared-memory ring buffer needs a live ALSA device and lands
   on real hardware.
 - ⧗ `blazend-wake` running openWakeWord with the pretrained model — needs
   the ONNX model + `ort` (which has host-SDK build issues; deferred).
 - ⧗ Tier 3 scenario `01-wake-word.yaml` — its exit criterion runs the
   e2e-runner against a booted VM with real audio; both are blocked on
-  this WSL host (no audio device, M1 boot blocker). **Validates on real
+  the dev host (no audio device, M1 boot blocker). **Validates on real
   Pi 5** — see the M1 boot note above.
 
 **Exit criterion:** `make test-scenario S=01-wake-word` green in CI

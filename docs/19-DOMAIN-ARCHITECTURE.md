@@ -208,6 +208,6 @@ binary names, runtime behaviour, and the event contract are untouched.
   `voice-input` as its nominal owner and is consumed by voice-output via a workspace dep.
 - **Verification:** `cargo build/test/clippy/fmt --workspace` + `make lint` are fully
   host-runnable and prove the relocation. The aarch64 cross-build and `make test-vm`
-  (QEMU TCG, blocked on the WSL host) are unaffected by a pure source move — the one
+  (QEMU TCG, foreign-arch — slow) are unaffected by a pure source move — the one
   thing to smoke-test on real hardware is that the image still boots the renamed-path
   build (binary names and the install path `/usr/lib/blazen/bin/` do not change).
