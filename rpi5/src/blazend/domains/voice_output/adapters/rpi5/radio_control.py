@@ -3,11 +3,11 @@
 Playback goes to the **Jabra SPEAK 410** USB speakerphone (card id ``USB``), the
 appliance's speaker now that the ReSpeaker HAT is removed. A single ALSA output
 PCM can't be held by both the TTS service (``blazend-audio-out``) and the stream
-player (``blazend-player``) at once, so while a stream plays we stop audio-out
-(freeing the speaker) and restart it when the stream stops (so replies can be
-spoken). Stopping/starting audio-out is allowed by a narrow sudoers rule
-(``/etc/sudoers.d/blazen-audio-out``); the orchestrator unit drops
-``NoNewPrivileges``/``RestrictSUIDSGID`` so sudo runs.
+player (``blazend-player``) at once. The orchestrator's half-duplex reconciler
+(see ``supervisor.py``) owns audio-out — it is already DOWN while listening and
+is kept down while a stream plays — so this class only manages the player
+process. Stopping/starting audio-out (done by the supervisor) is allowed by a
+narrow sudoers rule (``/etc/sudoers.d/blazen-audio-out``).
 """
 
 from __future__ import annotations
@@ -23,10 +23,10 @@ _DEVICE = "plughw:CARD=USB,DEV=0"
 
 
 class RadioControl:
-    """Owns at most one ``blazend-player`` stream + the audio-out hand-off.
+    """Owns at most one ``blazend-player`` stream.
 
-    All methods are blocking (subprocess + systemctl); call them off the event
-    loop with ``asyncio.to_thread``.
+    All methods are blocking (subprocess); call them off the event loop with
+    ``asyncio.to_thread``.
     """
 
     def __init__(self) -> None:
@@ -35,18 +35,6 @@ class RadioControl:
     @property
     def playing(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
-
-    def _audio_out(self, action: str) -> None:
-        try:
-            subprocess.run(
-                ["sudo", "-n", "systemctl", action, "blazend-audio-out"],
-                check=False,
-                timeout=10,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            log.warning("systemctl %s blazend-audio-out failed: %s", action, exc)
 
     def _kill(self) -> None:
         if self._proc is None:
@@ -62,11 +50,12 @@ class RadioControl:
         self._proc = None
 
     def play(self, url: str, name: str = "") -> None:
-        """Start a stream: kill any current one, free the HAT, spawn the player."""
+        """Start a stream: kill any current one, spawn the player. The orchestrator
+        frees the Jabra output (stops audio-out via its half-duplex reconciler)
+        before calling this, so the player can hold the speaker exclusively."""
         self._kill()
         if not url:
             return
-        self._audio_out("stop")  # release the speaker for the stream
         try:
             self._proc = subprocess.Popen(
                 [_PLAYER, "--source", url, "--device", _DEVICE],
@@ -77,12 +66,11 @@ class RadioControl:
         except OSError as exc:
             log.warning("radio play failed: %s", exc)
             self._proc = None
-            self._audio_out("start")  # nothing playing → give TTS the speaker back
 
     def stop(self) -> None:
-        """Stop the stream (if any) and return the HAT to TTS (audio-out)."""
+        """Stop the stream (if any). The orchestrator's reconciler restores
+        audio-out to the (down-while-listening) half-duplex default."""
         was_playing = self.playing
         self._kill()
         if was_playing:
             log.info("radio stopped")
-        self._audio_out("start")

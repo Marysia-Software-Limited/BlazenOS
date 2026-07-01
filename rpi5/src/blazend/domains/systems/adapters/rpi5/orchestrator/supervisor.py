@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -59,9 +60,19 @@ class Orchestrator:
         self._greeting = self._load_greeting()
         self._require_wake, self._wake_window_s = self._load_wake_gating()
         self._awake_until = 0.0  # loop-clock deadline; speech acts only before it
-        self._radio = RadioControl()  # internet-radio playback (HAT hand-off with TTS)
+        self._radio = RadioControl()  # internet-radio playback
         self._stop = asyncio.Event()
         self._subscribers: list[tuple[str, Subscriber]] = []
+        # Half-duplex speaker: the Jabra is a speakerphone whose echo-cancellation
+        # ducks its OWN mic while blazend-audio-out holds the output stream open —
+        # so the mic can't hear a command while audio-out is up. The supervisor
+        # owns audio-out: DOWN by default (mic un-ducked, listening), UP only while
+        # a reply is speaking. `_speak_until` is a loop-clock deadline bumped on
+        # each spoken reply; `speaker-busy` (set by audio-out during playback)
+        # extends it. A reconciler applies the desired state.
+        self._speaker_busy = self._runtime_dir / "speaker-busy"
+        self._speak_until = 0.0
+        self._audio_out_up: bool | None = None  # last-applied state (None = unknown)
 
     @staticmethod
     def _load_wake_gating() -> tuple[bool, float]:
@@ -112,6 +123,8 @@ class Orchestrator:
         lang = self._default_lang
         text = en if lang == "en" else pl
         log.info("speaking startup greeting (%s)", lang)
+        self._mark_speaking()  # bring audio-out up before TTS plays
+        await asyncio.sleep(2.5)  # let the reconciler start audio-out
         await self._publisher.publish(
             Envelope(
                 topic="brain.reply",
@@ -148,6 +161,42 @@ class Orchestrator:
             log.warning("intent dispatcher disabled (%s)", exc)
             return None
 
+    def _mark_speaking(self) -> None:
+        """Bump the speak deadline so the reconciler brings audio-out up in time
+        for a reply (covers audio-out start ~1-2s + TTS synth); `speaker-busy`
+        then holds it up for the duration of playback."""
+        self._speak_until = asyncio.get_running_loop().time() + 6.0
+
+    async def _apply_audio_out(self, up: bool) -> None:
+        """Start/stop blazend-audio-out to match desired state (only on change)."""
+        if up == self._audio_out_up:
+            return
+        self._audio_out_up = up
+        action = "start" if up else "stop"
+        try:
+            await asyncio.to_thread(
+                subprocess.run,
+                ["sudo", "-n", "systemctl", action, "blazend-audio-out"],
+                check=False, timeout=10,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            log.info("audio-out %s (half-duplex: %s)", action,
+                     "speaking" if up else "listening")
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.warning("systemctl %s blazend-audio-out failed: %s", action, exc)
+            self._audio_out_up = None  # unknown — retry next tick
+
+    async def _speaker_manager(self) -> None:
+        """Reconcile audio-out: UP while a reply speaks (and no radio stream holds
+        the Jabra), DOWN otherwise so the mic is un-ducked for the next command."""
+        await self._apply_audio_out(False)  # boot idle: listening, mic un-ducked
+        while not self._stop.is_set():
+            speaking = self._speaker_busy.exists() or \
+                asyncio.get_running_loop().time() < self._speak_until
+            desired = speaking and not self._radio.playing
+            await self._apply_audio_out(desired)
+            await asyncio.sleep(0.3)
+
     async def run(self) -> None:
         """Bind sockets, connect to peers, react until interrupted."""
         await self._publisher.bind()
@@ -155,6 +204,9 @@ class Orchestrator:
         self._led.write()  # initial state (idle: listening)
         self._hwled.set_pixels(self._led.leds)
         log.info("orchestrator bound at %s", self._publisher._socket_path)  # noqa: SLF001
+
+        # Own audio-out for half-duplex (keeps the Jabra mic un-ducked while idle).
+        asyncio.create_task(self._speaker_manager())
 
         # Connect to every peer (idempotent; missing peers are retried lazily).
         for name in self._peers:
@@ -232,6 +284,7 @@ class Orchestrator:
                 # Acting on a command keeps the conversation open for follow-ups.
                 self._awake_until = asyncio.get_running_loop().time() + self._wake_window_s
                 if reply is not None:
+                    self._mark_speaking()  # spoken reply → audio-out up
                     await self._publisher.publish(reply)
                     patch["last_command"] = {
                         "intent": env.data.get("intent"),
@@ -249,11 +302,19 @@ class Orchestrator:
             action = str(env.data.get("action", ""))
             if action == "radio_play":
                 payload = env.data.get("payload", {}) or {}
+                # Free the Jabra output for the stream, then play. The reconciler
+                # keeps audio-out down while the stream is playing.
+                self._speak_until = 0.0
+                await self._apply_audio_out(False)
+                await asyncio.sleep(0.3)  # let the device release
                 await asyncio.to_thread(
                     self._radio.play, str(payload.get("url", "")), str(payload.get("name", ""))
                 )
             elif action == "radio_stop":
                 await asyncio.to_thread(self._radio.stop)
+            elif env.data.get("text"):
+                # A spoken reply from the brain (LLM) — bring audio-out up to play it.
+                self._mark_speaking()
         if env.topic == "health.status":
             # Mirror the level into state on every verdict (the orchestrator is
             # the dominant state writer); recovery details only on a fault.
@@ -310,6 +371,7 @@ class Orchestrator:
         lang = self._recovery_lang()
         ann = recovery_for_level(level, lang)
         if ann.speak:
+            self._mark_speaking()  # spoken cue → audio-out up
             await self._publisher.publish(Envelope(
                 topic="brain.reply",
                 source="blazend-orchestrator",
