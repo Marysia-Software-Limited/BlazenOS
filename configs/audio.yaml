@@ -13,7 +13,7 @@ input:
   sample_rate_hz: 16000
   channels: 1                         # ASR-facing mono (plughw resamples/downmixes)
   frame_ms: 20
-  ring_buffer_seconds: 3
+  ring_buffer_seconds: 6            # >= capture_window_s (ASR fixed-window after wake)
   pre_roll_ms: 500
   high_pass_hz: 0                     # HP OFF: 180Hz HP stripped Polish vowel
                                       # fundamentals and whisper misread the audio.

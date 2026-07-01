@@ -273,6 +273,12 @@ class Orchestrator:
                 (self._runtime_dir / "activate").touch()
             except OSError as exc:
                 log.warning("could not write activate marker: %s", exc)
+            # If a stream is playing, pause it so the command spoken after
+            # "dżesika" is heard cleanly, and clear speaker-busy so the mic's VAD
+            # is no longer suppressed.
+            if self._radio.playing:
+                await asyncio.to_thread(self._radio.stop)
+                self._speaker_busy.unlink(missing_ok=True)
         if env.topic == "nlu.intent" and self._dispatcher is not None:
             if not self._awake():
                 # Heard a command but not addressed ("Hej Jessico" not said) —
@@ -292,12 +298,11 @@ class Orchestrator:
                     }
                 # Keep the language pin authoritative in state (scenario 09).
                 patch["languages"] = {"pinned": self._dispatcher.pinned_language()}
-        # Radio: pause a playing stream the moment the user starts talking so the
-        # command (and the spoken reply) get the HAT speaker, then act on the
-        # brain's radio decision. `_radio.*` block (subprocess + systemctl) → run
-        # them off the event loop.
-        if env.topic == "vad.start" and self._radio.playing:
-            await asyncio.to_thread(self._radio.stop)
+        # Radio: act on the brain's decision. Barge-in is wake-gated (see the
+        # wake.detected handler) rather than triggered by raw vad.start — on the
+        # Jabra speakerphone the stream's own audio loops back into the mic, so a
+        # vad.start barge-in would immediately stop the radio it just started.
+        # `_radio.*` block (subprocess) → run off the event loop.
         if env.topic == "brain.reply":
             action = str(env.data.get("action", ""))
             if action == "radio_play":
@@ -310,8 +315,13 @@ class Orchestrator:
                 await asyncio.to_thread(
                     self._radio.play, str(payload.get("url", "")), str(payload.get("name", ""))
                 )
+                # Suppress the VAD while the stream plays so the Jabra hearing its
+                # own output can't trigger a barge-in. Wake reads the raw ring, so
+                # "dżesika" still interrupts (handled above).
+                self._speaker_busy.touch()
             elif action == "radio_stop":
                 await asyncio.to_thread(self._radio.stop)
+                self._speaker_busy.unlink(missing_ok=True)
             elif env.data.get("text"):
                 # A spoken reply from the brain (LLM) — bring audio-out up to play it.
                 self._mark_speaking()

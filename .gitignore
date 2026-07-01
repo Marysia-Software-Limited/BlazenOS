@@ -19,7 +19,10 @@ _test_projects/
 
 # Python
 .venv/
-.venv-train/          # py3.12 uv venv for wake-word training (openwakeword/onnx/piper)
+# .venv-train: py3.12 uv venv for wake-word training (openwakeword/onnx/piper)
+# .venv-whisper: GPU whisper server venv (scripts/whisper_server.py)
+.venv-train/
+.venv-whisper/
 __pycache__/
 *.pyc
 *.pyo

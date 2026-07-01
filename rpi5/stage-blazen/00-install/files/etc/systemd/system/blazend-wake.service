@@ -14,14 +14,12 @@ Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 # ships (without it the crate aborts on startup instead of falling back).
 WorkingDirectory=/var/lib/blazen
 Environment=ORT_DYLIB_PATH=/usr/lib/blazen/.venv/lib/python3.13/site-packages/onnxruntime/capi/libonnxruntime.so.1.27.0
-# cooldown 2500ms (up from the 1500 default) collapses one spoken "dżesika" to a
-# single wake — avoids re-firing across the rolling detection window. threshold
-# 0.4: the model retrained with the operator's real negatives separates real
-# "dżesika" (live 0.4-0.7) from real commands/rhymes (<=0.36); 0.4 catches the
-# variable live delivery while rejecting false positives. (Validation held-out
-# clips score ~0.98 vs ~0.01 — the live gap is delivery variance; more real
-# positives would tighten it.) NOTE: clap flag is --cooldown-ms (hyphen), not _ms.
-ExecStart=/usr/lib/blazen/bin/blazend-wake --threshold 0.4 --cooldown-ms 2500
+# cooldown 3000ms collapses one spoken "dżesika" to a single wake and limits the
+# re-fire rate across the rolling detection window (excess wakes flood the ASR
+# fixed-window capture). threshold 0.7: close "dżesika" scores ~0.8-0.99, real
+# commands/rhymes <=0.36, so 0.7 has wide margin. NOTE: clap flag is --cooldown-ms
+# (hyphen), not _ms. Live capture LEVEL (Jabra DSP) is the limiter, not the score.
+ExecStart=/usr/lib/blazen/bin/blazend-wake --threshold 0.7 --cooldown-ms 3000
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=yes

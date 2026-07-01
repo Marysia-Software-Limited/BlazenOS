@@ -13,6 +13,7 @@ overridable by ``BLAZEN_ASR_MODEL``; this 8 GB Pi defaults to `small`).
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 from dataclasses import dataclass
@@ -160,6 +161,11 @@ class Transcriber:
         self.compute_type: str = str(cfg.get("compute_type", "int8"))
         self.beam_size: int = int(cfg.get("beam_size", 1))
         self.initial_prompt: str = str(cfg.get("initial_prompt", ""))
+        # Optional remote GPU whisper (scripts/whisper_server.py on the dev host).
+        # When set, transcription is offloaded there — accurate + fast for the
+        # far-field path — with a local fallback if it's unreachable.
+        self.remote_url: str = os.environ.get("BLAZEN_ASR_REMOTE_URL") or str(cfg.get("remote_url", ""))
+        self.remote_timeout: float = float(cfg.get("remote_timeout_s", 20))
         self._backend: WhisperBackend | None = backend
 
     def _ensure_backend(self) -> WhisperBackend:
@@ -174,11 +180,43 @@ class Transcriber:
     ) -> Transcript:
         """Transcribe one utterance. `language_mode` `auto` lets Whisper detect
         (then coerced Polish-first); `pl`/`en` force that language."""
-        backend = self._ensure_backend()
         forced = None if self.language_mode == "auto" else self.language_mode
+        if self.remote_url:
+            remote = self._remote(pcm, sample_rate, forced)
+            if remote is not None:
+                return remote  # else fall through to local
+        backend = self._ensure_backend()
         result = backend.run(_to_float32(pcm), forced)
         return Transcript(
             language=coerce_language(result.language),
             text=result.text.strip(),
             confidence=confidence_from_logprob(result.avg_logprob),
         )
+
+    def _remote(
+        self, pcm: npt.NDArray[np.int16] | npt.NDArray[np.float32], sample_rate: int,
+        forced: str | None,
+    ) -> Transcript | None:
+        """POST raw i16 PCM to the remote GPU whisper server. None on failure so
+        the caller falls back to the local model."""
+        import json
+        import urllib.error
+        import urllib.request
+        i16 = pcm if pcm.dtype == np.int16 else np.clip(pcm * 32768.0, -32768, 32767).astype(np.int16)
+        url = f"{self.remote_url}?sr={int(sample_rate)}&lang={forced or 'auto'}"
+        req = urllib.request.Request(
+            url, data=i16.tobytes(), method="POST",
+            headers={"Content-Type": "application/octet-stream"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.remote_timeout) as resp:  # noqa: S310
+                d = json.loads(resp.read().decode())
+            return Transcript(
+                language=coerce_language(str(d.get("language", "pl"))),
+                text=str(d.get("text", "")).strip(),
+                confidence=confidence_from_logprob(float(d.get("avg_logprob", -10.0))),
+            )
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            logging.getLogger("blazend.asr.engine").warning(
+                "remote ASR failed (%s); using local model", exc)
+            return None

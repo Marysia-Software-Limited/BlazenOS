@@ -14,6 +14,8 @@ import asyncio
 import logging
 from pathlib import Path
 
+import numpy as np
+
 from blazend.config import load
 from blazend.domains.voice_input.adapters.rpi5.audio import RingReader
 from blazend.events import Envelope, system_event
@@ -77,38 +79,44 @@ async def _real_loop(pub: Publisher) -> None:
 
     rt = runtime_dir()
     ring = await _open_ring(rt / "audio-ring.shm")
-    pre_roll_ms = int(load("audio").get("input.pre_roll_ms", 500))
+    cap_s = float(load("wake-word").get("capture_window_s", 4.5))
     transcriber = Transcriber()
-    log.info("asr real path: model=%s ring=%dHz", transcriber.model, ring.sample_rate)
+    log.info("asr real path: model=%s ring=%dHz fixed-window=%.1fs",
+             transcriber.model, ring.sample_rate, cap_s)
 
-    sub = await _connect(rt / "audio-in.sock")
-    log.info("subscribed to vad events on audio-in.sock")
+    sub = await _connect(rt / "wake.sock")
+    log.info("subscribed to wake.detected on wake.sock (fixed-window capture)")
 
-    # On vad.end, read the utterance from the EXACT ring position audio-in was at
-    # when it fired the event. The event ts_ms is write_pos*1000/sample_rate
-    # (ts_from_pos in blazend-audio-in), so invert it to recover that write_pos.
-    # Anchoring on the event's own position — not the drifted current write_pos —
-    # makes the read land on the utterance regardless of how late the event is
-    # delivered. (Reading [start_pos, current write_pos] collapsed to the ~0.5s
-    # pre-roll under batched delivery, clipping the command -> "Zatrzymaj".)
-    tail_margin_ms = pre_roll_ms + 800  # pre-roll lead-in + the VAD hangover tail
+    # Capture a FIXED window straight from the ring after the wake word — NOT the
+    # energy VAD, which fragments quiet short utterances on this mic (it brackets
+    # a transient + silence and whisper then finds no speech). The wake ts_ms is
+    # the ring write_pos at detection (last_pos*1000/SR in blazend-wake); the
+    # spoken command follows it. Wait for the window to fill, then transcribe
+    # [wake_pos, wake_pos + capture_window]. Documented design: wake-word.yaml
+    # `capture_window_s` + voice/runner.py. (Ring must hold >= capture_window_s.)
     async for env in sub:
-        if env.topic != "vad.end":
+        if env.topic != "wake.detected":
             continue
-        dur_ms = int(env.data.get("duration_ms", 0))
-        event_pos = int(env.ts_ms) * ring.sample_rate // 1000
-        end = min(ring.write_pos, event_pos)
-        # Read at most one ring's worth, ending at the segment position. (A long
-        # force-closed segment can ask for more than the ring holds — cap it.)
-        lookback = min((dur_ms + tail_margin_ms) * ring.sample_rate // 1000, ring.capacity)
-        # Drop only if the segment END is older than the ring still holds — under a
-        # backlog its frames are gone and reading them would transcribe unrelated
-        # recent audio. (A timely segment has write_pos≈end, so it is kept.)
-        if ring.write_pos - end > ring.capacity:
-            log.warning("asr: dropping stale segment (ring overwritten under backlog)")
+        wake_pos = int(env.ts_ms) * ring.sample_rate // 1000
+        # Skip stale wakes (ASR backed up under a burst): if the window start is
+        # already older than the ring holds, its audio is gone.
+        pre = 2 * ring.sample_rate  # a bit before the reported wake position
+        if ring.write_pos - (wake_pos - pre) > ring.capacity:
+            log.warning("asr: dropping stale wake (ring overwritten; backlog)")
             continue
-        begin = max(0, end - lookback)
+        # Wait for the command to be spoken after the wake word, then read from
+        # just-before-wake up to the CURRENT write head — so the window contains
+        # the command regardless of the pause length or the wake's report latency.
+        await asyncio.sleep(min(cap_s, 3.0))
+        end = ring.write_pos
+        begin = max(wake_pos - pre, end - ring.capacity + ring.sample_rate)
         pcm = ring.read_range(begin, end)
+        if len(pcm) < ring.sample_rate // 2:  # < 0.5 s captured — nothing to do
+            continue
+        # Capture level (RMS): if this is near the noise floor the mic under-
+        # captured the command (e.g. the Jabra's DSP gated it) and ASR will misread.
+        rms = float(np.sqrt((np.asarray(pcm, dtype=np.float64) ** 2).mean())) if len(pcm) else 0.0
+        log.info("fixed-window read %.1fs rms=%.0f", len(pcm) / ring.sample_rate, rms)
         result = await asyncio.to_thread(transcriber.transcribe, pcm, ring.sample_rate)
         if result.text:
             await pub.publish(

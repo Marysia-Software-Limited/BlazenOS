@@ -14,13 +14,19 @@ beam_size: 5                           # push-to-talk → one short utterance at
                                        # extra beam-search cost is fine and accuracy matters more
 language: pl                           # Polish-only mode: force PL (skips the auto-detect
                                        # first pass → faster + more accurate). auto | en | pl | de
-# Domain prompt: biases the decoder toward the words Jessica actually hears (her
-# name + the common commands), which sharply reduces misreads on the quiet HAT
-# mic (e.g. "która godzina" misheard as "kto jedzie na"). Keep it short.
-initial_prompt: >-
-  Rozmowa z asystentką głosową Dżesiką po polsku. Polecenia: Która godzina?
-  Jaka jest pogoda? Włącz radio Trójkę. Włącz Jedynkę. Włącz Radio Kraków.
-  Zatrzymaj. Ustaw budzik. Przypomnij mi. Co potrafisz?
+# Domain prompt: biased the decoder toward the words Jessica hears. DISABLED —
+# on low-SNR far-field audio whisper echoed the prompt words ("Zatrzymaj",
+# "Przypomnij mi. Co potrafisz?") instead of the command, so it hurt more than it
+# helped. Re-enable (a SHORT hint) only if the mic input is consistently clean.
+initial_prompt: ""
+
+# Optional remote GPU whisper (scripts/whisper_server.py on the dev host with a
+# GPU). When set, transcription is offloaded there — accurate + fast for the
+# far-field path where whisper-small on the Pi CPU misreads real Polish — with a
+# local fallback if unreachable. Set per-unit via BLAZEN_ASR_REMOTE_URL (a
+# blazend-asr.service drop-in) so the appliance default stays fully on-device.
+remote_url: ""                         # e.g. http://192.168.50.102:8090/transcribe
+remote_timeout_s: 20
 auto_detect:
   first_window_ms: 1000
   switch_threshold: 0.7
