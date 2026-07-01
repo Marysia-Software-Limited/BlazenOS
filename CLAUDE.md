@@ -143,13 +143,17 @@ VM). Surface only the failures.
    regen cost), modifying `configs/system.yaml` defaults.
 6. **Dev rig.** Linux (`paul`) is the **primary rig for the whole
    monorepo** — Pi 5, Android, iOS sources, Rust core, all docs. `paul`
-   is **Arch Linux running under WSL2 on Windows 11** (x86_64), not bare
-   metal: aarch64 QEMU is **TCG-only** (no KVM accel → `make run-vm` is
-   slow and the full Pi boot is blocked, see `docs/10-ROADMAP.md` M1),
-   real-SD flashing needs `wsl --mount` (or the Windows Imager), and USB
-   mic/HAT bring-up needs `usbipd-win`. The maintainer's Mac is required
-   only for the final iOS xcodebuild / TestFlight cut. See
-   [`docs/15-DEV-WORKFLOW.md`](docs/15-DEV-WORKFLOW.md) (§ WSL2 host notes)
+   is **native Arch Linux** (x86_64, bare metal) with an **NVIDIA RTX
+   3090**; it is `192.168.50.102` on the LAN and hosts the GPU services
+   the Pi reaches: Ollama/Bielik (`:11434`) and the remote whisper
+   `blazen-whisper.service` (faster-whisper large-v3, `:8090`) that
+   `blazend-asr` can offload far-field transcription to. aarch64 QEMU is
+   still **TCG-only** (KVM can't accelerate a foreign arch → `make run-vm`
+   is slow and the full Pi boot is blocked, see `docs/10-ROADMAP.md` M1),
+   but USB (mic/HAT) and real-SD flashing attach **directly** — no
+   `usbipd-win` / `wsl --mount`. The maintainer's Mac is required only for
+   the final iOS xcodebuild / TestFlight cut. See
+   [`docs/15-DEV-WORKFLOW.md`](docs/15-DEV-WORKFLOW.md)
    and [`docs/17-MOBILE-MONOREPO.md`](docs/17-MOBILE-MONOREPO.md) §4.
 
    **If you (Claude) are running on `paul`:** this is your home repo.
