@@ -1,0 +1,17 @@
+[Unit]
+Description=Blazen USB ethernet gadget (SSH over USB, Pi=10.55.0.1)
+Documentation=man:configfs(5)
+After=sys-kernel-config.mount systemd-modules-load.service
+Wants=sys-kernel-config.mount
+# Peripheral mode + dwc2 must be enabled (config.txt/cmdline). If the UDC never
+# appears (e.g. USB-C not data-connected) the script no-ops harmlessly.
+ConditionPathExists=/sys/class/udc
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/blazen-usb-gadget.sh
+ExecStop=/bin/sh -c 'echo "" > /sys/kernel/config/usb_gadget/blazen/UDC 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target
