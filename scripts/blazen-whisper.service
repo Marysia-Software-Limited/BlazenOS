@@ -1,0 +1,22 @@
+# Remote GPU whisper server for blazend-asr (dev host, e.g. paul with an RTX 3090).
+# Install:  sudo cp scripts/blazen-whisper.service /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now blazen-whisper
+# The Pi's blazend-asr reaches it via BLAZEN_ASR_REMOTE_URL=http://<host>:8090/transcribe.
+[Unit]
+Description=Blazen remote GPU whisper (faster-whisper large-v3) for blazend-asr
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=beret
+WorkingDirectory=/home/beret/dev/blazen_os
+Environment=LD_LIBRARY_PATH=/home/beret/dev/blazen_os/.venv-whisper/lib/python3.12/site-packages/nvidia/cublas/lib:/home/beret/dev/blazen_os/.venv-whisper/lib/python3.12/site-packages/nvidia/cudnn/lib:/home/beret/dev/blazen_os/.venv-whisper/lib/python3.12/site-packages/nvidia/cuda_nvrtc/lib
+Environment=BLAZEN_WHISPER_MODEL=/home/beret/dev/blazen_os/models/asr-remote/large-v3
+Environment=BLAZEN_WHISPER_PORT=8090
+ExecStart=/home/beret/dev/blazen_os/.venv-whisper/bin/python /home/beret/dev/blazen_os/scripts/whisper_server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
