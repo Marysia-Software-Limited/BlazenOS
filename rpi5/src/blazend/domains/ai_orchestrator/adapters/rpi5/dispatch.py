@@ -33,7 +33,7 @@ _TOOL_INTENTS: frozenset[str] = frozenset({
 })
 
 # Sensible defaults for delta-based mutations when nothing is stored yet.
-_DEFAULTS: dict[str, Any] = {"audio.volume": 50}
+_DEFAULTS: dict[str, Any] = {"audio.volume": 30}  # low default: less speaker→mic echo
 _CONFIRMS_NEEDED = {"never": 0, "single": 1, "loud": 1, "double_loud": 2}
 
 # Spoken language tokens (PL + EN trigger captures) → ISO code. Only pl/en are

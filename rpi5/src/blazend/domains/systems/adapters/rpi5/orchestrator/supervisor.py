@@ -28,6 +28,13 @@ from blazend.ipc import Publisher, Subscriber, runtime_dir
 
 log = logging.getLogger("blazend.domains.systems.adapters.rpi5.orchestrator")
 
+# Jabra SPEAK 410 output-volume control (voice volume commands + radio ducking).
+_JABRA_CARD = "USB"       # ALSA card id of the Jabra speakerphone
+_JABRA_MIXER = "PCM"      # its playback volume control
+_DUCK_PCT = 8             # Jabra output % while listening over a playing stream
+_DUCK_WINDOW_S = 6.0      # restore volume if no radio command follows the wake
+_DEFAULT_VOLUME_PCT = 30  # startup output volume (kept low: less speaker→mic echo)
+
 DEFAULT_PEERS: tuple[str, ...] = (
     "audio-in",
     "wake",
@@ -73,6 +80,14 @@ class Orchestrator:
         self._speaker_busy = self._runtime_dir / "speaker-busy"
         self._speak_until = 0.0
         self._audio_out_up: bool | None = None  # last-applied state (None = unknown)
+        # Jabra output volume (0-100 %). Voice commands (głośniej / ciszej /
+        # "ustaw głośność na N") mutate audio.volume → applied to the speaker here.
+        # Radio "duck & verify": a wake while a stream plays may just be the
+        # stream echoing into the mic, so we DUCK the output (not stop), listen,
+        # and restore unless a real radio command follows.
+        self._volume_pct = _DEFAULT_VOLUME_PCT
+        self._ducked = False
+        self._duck_task: asyncio.Task[None] | None = None
 
     @staticmethod
     def _load_wake_gating() -> tuple[bool, float]:
@@ -205,6 +220,10 @@ class Orchestrator:
         self._hwled.set_pixels(self._led.leds)
         log.info("orchestrator bound at %s", self._publisher._socket_path)  # noqa: SLF001
 
+        # Apply the startup output volume to the Jabra so the stored audio.volume,
+        # the voice volume commands, and the hardware all agree from boot.
+        await self._set_volume(self._volume_pct)
+
         # Own audio-out for half-duplex (keeps the Jabra mic un-ducked while idle).
         asyncio.create_task(self._speaker_manager())
 
@@ -273,12 +292,14 @@ class Orchestrator:
                 (self._runtime_dir / "activate").touch()
             except OSError as exc:
                 log.warning("could not write activate marker: %s", exc)
-            # If a stream is playing, pause it so the command spoken after
-            # "dżesika" is heard cleanly, and clear speaker-busy so the mic's VAD
-            # is no longer suppressed.
+            # If a stream is playing, DUCK it (don't stop) so the command after
+            # "dżesika" is heard over a quieter stream — then arm an auto-restore.
+            # A real radio_stop/radio_play acts on it; a false wake (the stream's
+            # own audio echoing into the Jabra mic) just restores the volume, so
+            # the radio no longer stops itself on every echo-triggered wake.
             if self._radio.playing:
-                await asyncio.to_thread(self._radio.stop)
-                self._speaker_busy.unlink(missing_ok=True)
+                await self._duck_on()
+                self._arm_duck_restore()
         if env.topic == "nlu.intent" and self._dispatcher is not None:
             if not self._awake():
                 # Heard a command but not addressed ("Hej Jessico" not said) —
@@ -307,6 +328,8 @@ class Orchestrator:
             action = str(env.data.get("action", ""))
             if action == "radio_play":
                 payload = env.data.get("payload", {}) or {}
+                # A real radio command supersedes any pending duck-restore.
+                self._cancel_duck_restore()
                 # Free the Jabra output for the stream, then play. The reconciler
                 # keeps audio-out down while the stream is playing.
                 self._speak_until = 0.0
@@ -315,13 +338,19 @@ class Orchestrator:
                 await asyncio.to_thread(
                     self._radio.play, str(payload.get("url", "")), str(payload.get("name", ""))
                 )
+                # New stream plays at the user's volume (un-duck if we ducked to
+                # hear the command that switched stations).
+                await self._duck_off()
                 # Suppress the VAD while the stream plays so the Jabra hearing its
                 # own output can't trigger a barge-in. Wake reads the raw ring, so
                 # "dżesika" still interrupts (handled above).
                 self._speaker_busy.touch()
             elif action == "radio_stop":
+                self._cancel_duck_restore()
+                self._ducked = False
                 await asyncio.to_thread(self._radio.stop)
                 self._speaker_busy.unlink(missing_ok=True)
+                await self._set_volume(self._volume_pct)  # ready for next stream
             elif env.data.get("text"):
                 # A spoken reply from the brain (LLM) — bring audio-out up to play it.
                 self._mark_speaking()
@@ -345,6 +374,51 @@ class Orchestrator:
             system_event(source="blazend-orchestrator", kind="observed", detail=env.topic)
         )
 
+    def _amixer(self, level: str) -> None:
+        """Set the Jabra playback volume (level like '27%'). Best-effort."""
+        try:
+            subprocess.run(
+                ["amixer", "-c", _JABRA_CARD, "set", _JABRA_MIXER, level],
+                capture_output=True, timeout=4, check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.warning("amixer set %s failed: %s", level, exc)
+
+    async def _set_volume(self, pct: int) -> None:
+        """Apply an output volume (0-100 %) to the Jabra speaker."""
+        await asyncio.to_thread(self._amixer, f"{max(0, min(100, int(pct)))}%")
+
+    async def _duck_on(self) -> None:
+        """Lower the Jabra so a command is heard over a playing stream."""
+        self._ducked = True
+        await self._set_volume(_DUCK_PCT)
+
+    async def _duck_off(self) -> None:
+        """Restore the Jabra to the user's volume after a duck."""
+        self._ducked = False
+        await self._set_volume(self._volume_pct)
+
+    def _arm_duck_restore(self) -> None:
+        """(Re)arm the timer that un-ducks the stream if no command follows."""
+        if self._duck_task is not None and not self._duck_task.done():
+            self._duck_task.cancel()
+        self._duck_task = asyncio.ensure_future(self._duck_restore_later())
+
+    def _cancel_duck_restore(self) -> None:
+        if self._duck_task is not None and not self._duck_task.done():
+            self._duck_task.cancel()
+        self._duck_task = None
+
+    async def _duck_restore_later(self) -> None:
+        try:
+            await asyncio.sleep(_DUCK_WINDOW_S)
+        except asyncio.CancelledError:
+            return
+        # No radio command followed the wake → treat it as a false (echo) wake
+        # and bring the volume back up.
+        if self._radio.playing and self._ducked:
+            await self._duck_off()
+
     def _dispatch_intent(self, env: Envelope) -> Envelope | None:
         """Act on a fast-path `nlu.intent`; return the spoken reply (if any)."""
         if self._dispatcher is None:
@@ -358,6 +432,17 @@ class Orchestrator:
             # In the VM / dev we never actually power off; on the device a
             # power unit consumes this. Log it loudly.
             log.warning("system command requested: %s (not executed in dev)", result.signal)
+        # Volume commands (głośniej / ciszej / "ustaw głośność na N") mutate the
+        # audio.volume setting; push the new level to the Jabra speaker so it's
+        # actually audible (the dispatcher only updates the stored value).
+        if result.data.get("key") == "audio.volume":
+            try:
+                self._volume_pct = max(0, min(100, int(result.data.get("value"))))
+                if not self._ducked:  # while ducked, keep the low level until restore
+                    self._amixer(f"{self._volume_pct}%")
+                log.info("volume → %d%%", self._volume_pct)
+            except (TypeError, ValueError):
+                pass
         if not result.speak:
             return None
         data: dict[str, Any] = {
