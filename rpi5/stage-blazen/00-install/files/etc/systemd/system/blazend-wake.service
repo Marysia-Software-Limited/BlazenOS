@@ -19,7 +19,7 @@ Environment=ORT_DYLIB_PATH=/usr/lib/blazen/.venv/lib/python3.13/site-packages/on
 # fixed-window capture). threshold 0.7: close "dżesika" scores ~0.8-0.99, real
 # commands/rhymes <=0.36, so 0.7 has wide margin. NOTE: clap flag is --cooldown-ms
 # (hyphen), not _ms. Live capture LEVEL (Jabra DSP) is the limiter, not the score.
-ExecStart=/usr/lib/blazen/bin/blazend-wake --threshold 0.7 --cooldown-ms 3000
+ExecStart=/usr/lib/blazen/bin/blazend-wake --threshold 0.8 --cooldown-ms 3000
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=yes

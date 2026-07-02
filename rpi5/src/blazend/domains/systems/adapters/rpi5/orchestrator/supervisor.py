@@ -187,6 +187,17 @@ class Orchestrator:
         if up == self._audio_out_up:
             return
         self._audio_out_up = up
+        # Mark self-speech: audio-out is UP only for Jessica's own TTS (radio keeps
+        # it DOWN). The ASR skips wakes fired during this window so Jessica's voice
+        # echoing into the Jabra mic can't drive an endless self-reply loop.
+        try:
+            marker = self._runtime_dir / "speaking"
+            if up:
+                marker.touch()
+            else:
+                marker.unlink(missing_ok=True)
+        except OSError:
+            pass
         action = "start" if up else "stop"
         try:
             await asyncio.to_thread(
@@ -223,6 +234,9 @@ class Orchestrator:
         # Apply the startup output volume to the Jabra so the stored audio.volume,
         # the voice volume commands, and the hardware all agree from boot.
         await self._set_volume(self._volume_pct)
+        # Clear a stale self-speech marker (a crash mid-reply would otherwise leave
+        # the ASR ignoring every wake — deaf until the file is removed).
+        (self._runtime_dir / "speaking").unlink(missing_ok=True)
 
         # Own audio-out for half-duplex (keeps the Jabra mic un-ducked while idle).
         asyncio.create_task(self._speaker_manager())

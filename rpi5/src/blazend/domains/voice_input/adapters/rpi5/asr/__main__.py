@@ -80,6 +80,10 @@ async def _real_loop(pub: Publisher) -> None:
     rt = runtime_dir()
     ring = await _open_ring(rt / "audio-ring.shm")
     cap_s = float(load("wake-word").get("capture_window_s", 4.5))
+    # Below this i16 RMS the post-wake window is treated as a false wake (ambient
+    # /echo) and skipped rather than transcribed. Real speech into the Jabra is
+    # ~400+; ambient/echo false wakes sit ~100-370; real commands 440+.
+    min_rms = float(load("asr").get("min_capture_rms", 350.0))
     transcriber = Transcriber()
     log.info("asr real path: model=%s ring=%dHz fixed-window=%.1fs",
              transcriber.model, ring.sample_rate, cap_s)
@@ -96,6 +100,14 @@ async def _real_loop(pub: Publisher) -> None:
     # `capture_window_s` + voice/runner.py. (Ring must hold >= capture_window_s.)
     async for env in sub:
         if env.topic != "wake.detected":
+            continue
+        # Ignore wakes that fire while Jessica is speaking her own reply: the TTS
+        # loops from the Jabra speaker into its mic and false-triggers the wake,
+        # which would capture Jessica's own voice → endless self-reply loop. The
+        # orchestrator sets `speaking` only for the TTS window (NOT for radio), so
+        # voice control of a playing stream still works.
+        if (rt / "speaking").exists():
+            log.info("asr: ignoring wake during self-speech (TTS echo)")
             continue
         wake_pos = int(env.ts_ms) * ring.sample_rate // 1000
         # Skip stale wakes (ASR backed up under a burst): if the window start is
@@ -117,6 +129,14 @@ async def _real_loop(pub: Publisher) -> None:
         # captured the command (e.g. the Jabra's DSP gated it) and ASR will misread.
         rms = float(np.sqrt((np.asarray(pcm, dtype=np.float64) ** 2).mean())) if len(pcm) else 0.0
         log.info("fixed-window read %.1fs rms=%.0f", len(pcm) / ring.sample_rate, rms)
+        # Noise-floor gate: a wake fired but the window is near-silent → this was a
+        # false wake (the loose wake model firing on ambient/echo), not a spoken
+        # command. Transcribing it makes whisper hallucinate text → the LLM answers
+        # → endless unsolicited chatter. Drop it. A real command spoken into the
+        # Jabra sits well above this floor.
+        if rms < min_rms:
+            log.info("fixed-window rms=%.0f below floor %.0f — dropping (false wake)", rms, min_rms)
+            continue
         result = await asyncio.to_thread(transcriber.transcribe, pcm, ring.sample_rate)
         if result.text:
             await pub.publish(
