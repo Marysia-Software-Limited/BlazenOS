@@ -128,7 +128,26 @@ driven by the orchestrator over SPI):
 
 Faults override all three: **yellow** = degraded / reprompt, **red** = error /
 recovery mode (SSH already on). The identical contract is mirrored to
-`/run/blazen/led.json` (`leds: [...]`) for the headless/VM path. Other cues:
+`/run/blazen/led.json` (`leds: [...]`) for the headless/VM path.
+
+**Jabra appliance status LED (no HAT).** On the Jabra-only build there is no HAT,
+so a **single WS2812/NeoPixel** carries the state — it collapses the 3-phase
+contract to the dominant colour (idle=off, listening=green, capturing=blue,
+thinking=magenta, speaking=blue, error=red). Driven from **SPI0 MOSI** by
+`led_hw.Ws2812Led` (3 SPI bits per WS2812 bit at 2.4 MHz — the reliable Pi 5
+method). Wiring — three jumpers, no HAT:
+
+| NeoPixel pin | Pi 5 header |
+|--------------|-------------|
+| DIN (data)   | **GPIO10 / MOSI — pin 19** |
+| 5V / VCC     | 5V — pin 2 or 4 |
+| GND          | GND — pin 6 |
+
+Enabled by `dtparam=spi=on` (set in `stage-blazen`); the orchestrator service
+sets `BLAZEN_LED_TYPE=ws2812` / `BLAZEN_LED_COUNT=1`. Fail-soft: no LED wired or
+SPI off → `led.json` stays the only status surface. For a legacy APA102 chain
+set `BLAZEN_LED_TYPE=apa102` (adds CLK on GPIO11 / pin 23); `=none` disables.
+Other cues:
 
 | Signal      | Meaning                                       |
 |-------------|-----------------------------------------------|

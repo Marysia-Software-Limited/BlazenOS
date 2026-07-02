@@ -17,6 +17,12 @@ Group=blazen
 WorkingDirectory=/usr/lib/blazen
 Environment=PYTHONPATH=/usr/lib/blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
+# Status LED: a single WS2812/NeoPixel on SPI0 MOSI (BCM10) shows Jessica's state
+# (blue=listening, magenta=thinking, blue=speaking, red=error, off=idle). Fail-
+# soft — no LED wired or SPI off → led.json stays the only status surface.
+# Override BLAZEN_LED_TYPE=apa102 for the legacy HAT chain, or =none to disable.
+Environment=BLAZEN_LED_TYPE=ws2812
+Environment=BLAZEN_LED_COUNT=1
 ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.domains.systems.adapters.rpi5.orchestrator
 Restart=on-failure
 RestartSec=2

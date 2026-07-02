@@ -10,8 +10,10 @@ from blazend.domains.systems.adapters.rpi5 import led, led_hw
 from blazend.domains.systems.adapters.rpi5.led_hw import (
     Apa102Led,
     NullStatusLed,
+    Ws2812Led,
     apa102_frame,
     open_status_led,
+    ws2812_frame,
 )
 
 
@@ -127,3 +129,42 @@ def test_open_status_led_no_device_returns_null(monkeypatch):
     # Point at a bus/device that cannot exist so the path check fails fast,
     # regardless of whether the host actually has SPI enabled.
     assert isinstance(open_status_led(bus=99, device=99), NullStatusLed)
+
+
+# --- WS2812 -------------------------------------------------------------
+def test_ws2812_frame_bit_encoding():
+    # One green pixel (grb order) at full brightness: G=255 → 8×0b110, R=0 →
+    # 8×0b100, B=0 → 8×0b100, then the zero reset.
+    frame = ws2812_frame([(0, 255, 0)], brightness=255, order="grb")
+    one, zero = 0b110, 0b100
+    g_bits = int.from_bytes(frame[0:3], "big")
+    r_bits = int.from_bytes(frame[3:6], "big")
+    for i in range(8):
+        assert (g_bits >> (3 * i)) & 0b111 == one
+        assert (r_bits >> (3 * i)) & 0b111 == zero
+    assert frame.endswith(b"\x00" * 40)  # >50 µs latch
+
+
+def test_ws2812_single_led_collapses_to_dominant():
+    spi = FakeSpi()
+    leds = Ws2812Led(spi, count=1)
+    # 3-phase list with the active colour in the THINK slot → one LED still
+    # shows it (not the leading OFF).
+    leds.set_pixels([led.OFF, led.MAGENTA, led.OFF])
+    assert leds.color == led.MAGENTA
+    assert spi.writes[-1] == list(ws2812_frame([led_hw.RGB[led.MAGENTA]], brightness=40, order="grb"))
+
+
+def test_ws2812_swallows_spi_write_errors():
+    class BoomSpi(FakeSpi):
+        def writebytes(self, data: list[int]) -> None:
+            raise OSError("SPI gone")
+
+    leds = Ws2812Led(BoomSpi(), count=1)
+    leds.set(led.GREEN)
+    assert leds.color == led.GREEN
+
+
+def test_open_status_led_type_none_returns_null(monkeypatch):
+    monkeypatch.delenv("BLAZEN_LED", raising=False)
+    assert isinstance(open_status_led(led_type="none"), NullStatusLed)

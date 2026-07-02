@@ -78,25 +78,28 @@ fi
 # (Unit files were rsync'd into /etc/systemd/system/ via stage-blazen/files/.)
 
 systemctl enable blazend.target
-# NOTE: blazend-wake is deliberately NOT enabled. The shipped synthetic
-# `jessica.onnx` wake model scores ~0 on real speech, so the appliance runs in
-# always-listen mode (`wake-word.yaml require_wake: false`) and the wake
-# detector would only burn a whole CPU core (~150 %) running onnxruntime to no
-# effect. Re-enable it once a real wake model exists. See docs/05-MODELS.md.
-for unit in blazend-hat-mixer blazend-audio-in blazend-audio-out blazend-asr \
+# blazend-wake IS enabled: a REAL "dżesika" wake model now ships
+# (models/wake/jessica.onnx, sha256 ce2527…, trained locally on real negatives +
+# the operator's own utterances). The ASR capture is wake-triggered — the ASR
+# subscribes to `wake.detected` and reads a fixed window around each hit — so the
+# wake detector is a hard dependency of the voice path, not an optional gate.
+# Threshold/cooldown live in blazend-wake.service (0.7 / 3000 ms). See
+# docs/05-MODELS.md and configs/wake-word.yaml.
+for unit in blazend-audio-in blazend-audio-out blazend-wake blazend-asr \
             blazend-nlu blazend-brain blazend-tts blazend-health \
             blazend-orchestrator blazend-bootstrap blazend-fabric blazend-button; do
   systemctl enable "${unit}.service" 2>/dev/null || true
 done
 
-# PipeWire/PulseAudio must NOT run: the blazend audio path owns the WM8960 via
-# direct ALSA (arecord/aplay on plughw). A stray user PipeWire session probes
-# the codec in a retry loop (wireplumber ~50 % CPU) and starves the real-time
-# capture, spiking the mic noise floor into the speech band. Mask it globally
-# for every user so it can't socket-activate. (Harmless if not installed.)
+# PipeWire/PulseAudio must NOT run: the blazend audio path owns the Jabra USB
+# device via direct ALSA (arecord/aplay on plughw:CARD=USB). A stray user
+# PipeWire session probes the codec in a retry loop (wireplumber ~50 % CPU) and
+# starves the real-time capture, spiking the mic noise floor into the speech
+# band. Mask it globally for every user so it can't socket-activate. (Harmless
+# if not installed.)
 systemctl --global mask pipewire.socket pipewire-pulse.socket pipewire.service \
   pipewire-pulse.service wireplumber.service filter-chain.service 2>/dev/null || true
-echo "=== blazend chroot: wake disabled (no real model) + PipeWire masked ==="
+echo "=== blazend chroot: wake ENABLED (real dżesika model) + PipeWire masked ==="
 
 # Sudoers files must be 0440 root:root or sudo refuses to load them. The rule
 # itself (files/etc/sudoers.d/blazen-audio-out) lets the orchestrator hand the
@@ -153,24 +156,30 @@ fi
 mkdir -p /var/lib/blazen /run/blazen
 chown -R blazen:blazen /var/lib/blazen /run/blazen "$INSTALL_DIR"
 
-# --- Audio HAT ready out-of-the-box (ReSpeaker 2-Mics / WM8960) -----------
-# Enable the codec overlay + I2C so capture works on first boot with no
-# manual dtoverlay edit. The mixer state (capture path unmuted, boost set)
-# ships as /var/lib/alsa/asound.state via stage-blazen/files and is restored
-# by alsa-restore.service on boot.
+# --- Jabra-only audio + USB-C SSH-over-USB gadget + status LED ------------
+# The appliance mic/speaker is the Jabra SPEAK 410 USB speakerphone — no
+# ReSpeaker HAT — so NO wm8960 overlay / I2C. Instead: (1) put the USB-C port in
+# peripheral mode so a dev host can SSH to the Pi DIRECTLY over USB
+# (blazen-usb-gadget.service brings up usb0 = 10.55.0.1), alongside the LAN; and
+# (2) keep SPI0 on for the status LED — a single WS2812/NeoPixel on BCM10 (MOSI)
+# shows Jessica's state (led_hw.Ws2812Led). Fail-soft: no LED wired → led.json only.
 CFG=/boot/firmware/config.txt
 if [ -f "$CFG" ]; then
-  grep -q '^dtparam=i2c_arm=on'        "$CFG" || sed -i 's/^#dtparam=i2c_arm=on/dtparam=i2c_arm=on/' "$CFG"
-  grep -q '^dtparam=i2c_arm=on'        "$CFG" || echo 'dtparam=i2c_arm=on' >> "$CFG"
-  # SPI0 (/dev/spidev0.0) drives the HAT's 3 APA102 status LEDs.
-  grep -q '^dtparam=spi=on'            "$CFG" || sed -i 's/^#dtparam=spi=on/dtparam=spi=on/' "$CFG"
-  grep -q '^dtparam=spi=on'            "$CFG" || echo 'dtparam=spi=on' >> "$CFG"
-  if ! grep -q 'dtoverlay=wm8960-soundcard' "$CFG"; then
-    printf '\n# Blazen: ReSpeaker 2-Mics WM8960 audio HAT\ndtoverlay=wm8960-soundcard\n' >> "$CFG"
+  if ! grep -q '^dtoverlay=dwc2,dr_mode=peripheral' "$CFG"; then
+    printf '\n# Blazen: USB-C peripheral mode for SSH-over-USB (blazen-usb-gadget)\ndtoverlay=dwc2,dr_mode=peripheral\n' >> "$CFG"
   fi
-  echo "=== blazend chroot: WM8960 HAT overlay + SPI (APA102 LEDs) enabled in config.txt ==="
+  if ! grep -q '^dtparam=spi=on' "$CFG"; then
+    printf '\n# Blazen: SPI0 for the WS2812/APA102 status LED (DIN→BCM10 MOSI)\ndtparam=spi=on\n' >> "$CFG"
+  fi
+  echo "=== blazend chroot: dwc2 peripheral + SPI status-LED enabled in config.txt ==="
+fi
+# dwc2 must load early for the gadget to bind its UDC.
+CMD=/boot/firmware/cmdline.txt
+if [ -f "$CMD" ] && ! grep -q 'modules-load=dwc2' "$CMD"; then
+  sed -i '1 s/$/ modules-load=dwc2/' "$CMD"
 fi
 systemctl enable alsa-restore.service 2>/dev/null || true
+systemctl enable blazen-usb-gadget.service 2>/dev/null || true
 
 # --- No swap (RAM-only appliance) ----------------------------------------
 # The voice stack is sized to fit physical RAM; swapping would only add SD

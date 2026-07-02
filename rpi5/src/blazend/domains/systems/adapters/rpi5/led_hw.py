@@ -68,6 +68,49 @@ def apa102_frame(
     return bytes(out)
 
 
+# --- WS2812 / NeoPixel over SPI MOSI ------------------------------------
+# The reliable way to drive a WS2812 on a Pi 5 (its PWM/DMA changed, so the old
+# rpi_ws281x doesn't work): clock the data out of SPI MOSI (BCM10). Each WS2812
+# bit becomes 3 SPI bits at ~2.4 MHz (bit ~417 ns) — a '1' is 110 (0.83 µs high),
+# a '0' is 100 (0.42 µs high), inside the WS2812 timing window. One colour byte =
+# 24 SPI bits = 3 SPI bytes; a trailing run of zeros gives the >50 µs reset.
+WS2812_SPEED_HZ = 2_400_000
+WS2812_DEFAULT_BRIGHTNESS = 40   # 0..255 (~16 %); gentle for a desk indicator
+_WS_RESET = bytes(40)            # ~133 µs low at 2.4 MHz >> the 50 µs latch
+
+
+def _ws_byte_to_spi(v: int) -> bytes:
+    acc = 0
+    for i in range(8):
+        acc = (acc << 3) | (0b110 if (v >> (7 - i)) & 1 else 0b100)
+    return acc.to_bytes(3, "big")
+
+
+_WS_TABLE: list[bytes] = [_ws_byte_to_spi(v) for v in range(256)]
+
+
+def ws2812_frame(
+    pixels: list[tuple[int, int, int]],
+    *,
+    brightness: int = WS2812_DEFAULT_BRIGHTNESS,
+    order: str = "grb",
+) -> bytes:
+    """Build the raw SPI byte stream for a chain of WS2812 LEDs (MOSI = DIN).
+
+    ``brightness`` is 0..255 and scales every channel (WS2812 has no global
+    brightness byte). ``order`` is the chip's wire order — WS2812/WS2812B is
+    **grb**. Pure function: no hardware, fully unit-testable.
+    """
+    scale = max(0, min(255, brightness))
+    out = bytearray()
+    for r, g, b in pixels:
+        chan = {"r": r & 0xFF, "g": g & 0xFF, "b": b & 0xFF}
+        for c in order:
+            out += _WS_TABLE[(chan[c] * scale) // 255]
+    out += _WS_RESET
+    return bytes(out)
+
+
 @runtime_checkable
 class StatusLed(Protocol):
     """The seam the runner drives: set a contract colour, release on shutdown."""
@@ -162,33 +205,108 @@ class Apa102Led:
             log.debug("APA102 close failed (%s)", exc)
 
 
+class Ws2812Led:
+    """Paints the contract colour onto a WS2812/NeoPixel chain over SPI MOSI.
+
+    Same seam as :class:`Apa102Led`. For a single indicator LED (``count == 1``)
+    the 3-phase pipeline list is collapsed to the dominant (first non-off)
+    colour, so one NeoPixel still shows the overall state. Write failures are
+    logged and swallowed — a dead status LED must never take down the voice loop.
+    """
+
+    def __init__(
+        self,
+        spi: object,
+        *,
+        count: int = 1,
+        brightness: int = WS2812_DEFAULT_BRIGHTNESS,
+        order: str = "grb",
+    ) -> None:
+        self._spi = spi
+        self._count = max(1, count)
+        self._brightness = max(0, min(255, brightness))
+        self._order = order
+        self.color = OFF
+        self.pixels: list[str] = [OFF]
+        self._paint(OFF)
+
+    def set(self, color: str) -> None:
+        if color == self.color or color not in RGB:
+            return
+        self.color = color
+        self.pixels = [color]
+        self._write([RGB[color]] * self._count)
+
+    def set_pixels(self, colors: list[str]) -> None:
+        self.pixels = list(colors)
+        self.color = next((c for c in colors if c != OFF), OFF)
+        if self._count == 1:
+            rgb = [RGB.get(self.color, RGB[OFF])]
+        else:
+            rgb = [RGB.get(c, RGB[OFF]) for c in colors[: self._count]]
+            rgb += [RGB[OFF]] * (self._count - len(rgb))
+        self._write(rgb)
+
+    def _paint(self, color: str) -> None:
+        self._write([RGB[color]] * self._count)
+
+    def _write(self, rgb: list[tuple[int, int, int]]) -> None:
+        frame = ws2812_frame(rgb, brightness=self._brightness, order=self._order)
+        try:
+            self._spi.writebytes(list(frame))  # type: ignore[attr-defined]
+        except Exception as exc:  # noqa: BLE001 — never let the LED kill the loop
+            log.warning("WS2812 write failed (%s); status LED disabled", exc)
+
+    def close(self) -> None:
+        try:
+            self._paint(OFF)
+            self._spi.close()  # type: ignore[attr-defined]
+        except Exception as exc:  # noqa: BLE001
+            log.debug("WS2812 close failed (%s)", exc)
+
+
 def open_status_led(
     *,
+    led_type: str | None = None,
     bus: int | None = None,
     device: int | None = None,
     count: int | None = None,
     brightness: int | None = None,
     order: str | None = None,
-    speed_hz: int = DEFAULT_SPEED_HZ,
+    speed_hz: int | None = None,
 ) -> StatusLed:
-    """Open the HAT's APA102 chain, or return a :class:`NullStatusLed`.
+    """Open the configured status LED over SPI, or return a :class:`NullStatusLed`.
 
-    Fail-soft: returns the no-op LED when disabled (``BLAZEN_LED=0``), when
-    ``spidev`` is missing, when ``/dev/spidev<bus>.<device>`` doesn't exist
-    (SPI not enabled, or running in the VM), or if the open fails for any
-    reason. Env overrides: ``BLAZEN_LED`` (0 disables), ``BLAZEN_LED_BUS``,
+    Two LED families share the SPI MOSI line: ``ws2812`` (a single NeoPixel is
+    the Jabra-appliance recommendation — DIN→BCM10, one wire) and ``apa102`` (the
+    legacy HAT chain — DIN→BCM10, CLK→BCM11). Type-appropriate defaults are
+    chosen for count/brightness/order/speed; every field is env-overridable.
+
+    Fail-soft: returns the no-op LED when disabled (``BLAZEN_LED=0`` or
+    ``BLAZEN_LED_TYPE=none``), when ``spidev`` is missing, when
+    ``/dev/spidev<bus>.<device>`` doesn't exist (SPI not enabled / the VM), or if
+    the open fails for any reason. Env overrides: ``BLAZEN_LED`` (0 disables),
+    ``BLAZEN_LED_TYPE`` (ws2812|apa102|none), ``BLAZEN_LED_BUS``,
     ``BLAZEN_LED_DEV``, ``BLAZEN_LED_COUNT``, ``BLAZEN_LED_BRIGHTNESS``,
-    ``BLAZEN_LED_ORDER`` (channel order if a HAT shows the wrong colours).
+    ``BLAZEN_LED_ORDER`` (channel order if the colours look wrong).
     """
     if os.environ.get("BLAZEN_LED", "1") == "0":
         return NullStatusLed()
+    led_type = (led_type or os.environ.get("BLAZEN_LED_TYPE", "ws2812")).lower()
+    if led_type in ("none", "off", "null"):
+        return NullStatusLed()
     bus = int(os.environ.get("BLAZEN_LED_BUS", "0")) if bus is None else bus
     device = int(os.environ.get("BLAZEN_LED_DEV", "0")) if device is None else device
-    count = int(os.environ.get("BLAZEN_LED_COUNT", str(DEFAULT_COUNT))) if count is None else count
+    ws = led_type == "ws2812"
+    if count is None:
+        count = int(os.environ.get("BLAZEN_LED_COUNT", "1" if ws else str(DEFAULT_COUNT)))
     if brightness is None:
-        brightness = int(os.environ.get("BLAZEN_LED_BRIGHTNESS", str(DEFAULT_BRIGHTNESS)))
+        brightness = int(os.environ.get(
+            "BLAZEN_LED_BRIGHTNESS", str(WS2812_DEFAULT_BRIGHTNESS if ws else DEFAULT_BRIGHTNESS)))
     if order is None:
-        order = os.environ.get("BLAZEN_LED_ORDER", "bgr")
+        order = os.environ.get("BLAZEN_LED_ORDER", "grb" if ws else "bgr")
+    if speed_hz is None:
+        speed_hz = WS2812_SPEED_HZ if ws else DEFAULT_SPEED_HZ
 
     if not Path(f"/dev/spidev{bus}.{device}").exists():
         log.info("no /dev/spidev%d.%d — status LED runs headless (led.json only)", bus, device)
@@ -206,7 +324,10 @@ def open_status_led(
     except Exception as exc:  # noqa: BLE001
         log.warning("could not open SPI%d.%d (%s); status LED disabled", bus, device, exc)
         return NullStatusLed()
-    log.info("APA102 status LED on SPI%d.%d (%d LEDs, %s)", bus, device, count, order)
+    log.info("%s status LED on SPI%d.%d (%d LEDs, %s, %d Hz)",
+             "WS2812" if ws else "APA102", bus, device, count, order, speed_hz)
+    if ws:
+        return Ws2812Led(spi, count=count, brightness=brightness, order=order)
     return Apa102Led(spi, count=count, brightness=brightness, order=order)
 
 
