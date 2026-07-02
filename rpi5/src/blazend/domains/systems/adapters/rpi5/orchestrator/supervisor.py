@@ -360,16 +360,31 @@ class Orchestrator:
             log.warning("system command requested: %s (not executed in dev)", result.signal)
         if not result.speak:
             return None
+        data: dict[str, Any] = {
+            "language": result.language,
+            "text": result.speak,
+            "chunk": result.speak,
+            "final_": True,
+            "action": f"command.{result.action}",
+        }
+        # Radio tools carry the resolved stream in result.data ({tool,url,name}).
+        # Surface them as the radio_play/radio_stop actions (+payload) the radio
+        # reconciler acts on — otherwise a fast-path "włącz trójkę" match only
+        # SPEAKS the confirmation and never starts the stream. A radio_offer (no
+        # station resolved → no url) intentionally stays a plain spoken reply.
+        tool = result.data.get("tool")
+        if tool == "radio.play" and result.data.get("url"):
+            data["action"] = "radio_play"
+            data["payload"] = {
+                "url": str(result.data["url"]),
+                "name": str(result.data.get("name", "")),
+            }
+        elif tool == "radio.stop":
+            data["action"] = "radio_stop"
         return Envelope(
             topic="brain.reply",
             source="blazend-orchestrator",
-            data={
-                "language": result.language,
-                "text": result.speak,
-                "chunk": result.speak,
-                "final_": True,
-                "action": f"command.{result.action}",
-            },
+            data=data,
         )
 
     async def _announce_recovery(self, env: Envelope) -> dict[str, Any] | None:
