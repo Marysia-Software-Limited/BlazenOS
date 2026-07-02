@@ -97,7 +97,7 @@ inject_stage() {
   local enable_ssh=1
   cat > "$BUILD_DIR/pi-gen/config" <<EOF
 IMG_NAME=${BLAZEN_IMAGE_NAME:-blazen_os}
-TARGET_HOSTNAME=blazen
+TARGET_HOSTNAME=${BLAZEN_HOSTNAME:-blazen}
 ENABLE_SSH=${enable_ssh}
 RELEASE=trixie
 PI_GEN_RELEASE='trixie'
@@ -171,7 +171,7 @@ stage_payload() {
     warn "Appliance Rust aarch64 artefacts not found at $app_rust; run 'make rust-aarch64' first"
     return 1
   fi
-  for bin in blazend-audio-in blazend-audio-out blazend-wake blazend-nlu blazend-tts blazend-health; do
+  for bin in blazend-audio-in blazend-audio-out blazend-wake blazend-nlu blazend-tts blazend-health blazend-player; do
     install -m 0755 "$app_rust/$bin" "$out/blazen-rust/$bin"
   done
   install -m 0755 "$core_rust/blazend-fabric" "$out/blazen-rust/blazend-fabric"
