@@ -696,8 +696,18 @@ class Assistant:
         # Retrieve the user's relevant stored notes and inject them. Shared
         # `system=` kwarg → this covers local LLM, OpenAI and Gemini uniformly.
         system += self._notes_context(text, lang)
-        # On-device LLM first (offline, private). Then the OpenAI cloud second
-        # layer, then Gemini, then the canned "needs a model/key" fallback.
+        # DOUBT fallback: when its key is set, the OpenAI cloud model (gpt-5.5) is
+        # PREFERRED for freeform / unclear requests — it interprets an ambiguous
+        # command-with-context better than the local model. It degrades gracefully:
+        # any OpenAI failure (incl. a connection outage) falls through to the local
+        # Bielik, which is also the private default when no key is set. Then Gemini,
+        # then the canned "needs a model/key" line.
+        if self.openai is not None and self.openai.available:
+            try:
+                answer = self.openai.chat(text, system=system)
+                return Reply(answer, lang, "chat", {"engine": "openai"})
+            except OpenAiError as e:
+                log.warning("OpenAI doubt-fallback failed (%s) — using local model", e)
         if self.llm is not None and self.llm.available:
             if on_sentence is not None:
                 return self._chat_stream_local(text, system, lang, on_sentence, on_token)
@@ -706,12 +716,6 @@ class Assistant:
             except LlmError as e:
                 return Reply(_t(lang, f"Coś poszło nie tak: {e}", f"Something went wrong: {e}"), lang, "error")
             return Reply(answer, lang, "chat", {"engine": "local"})
-        if self.openai is not None and self.openai.available:
-            try:
-                answer = self.openai.chat(text, system=system)
-            except OpenAiError as e:
-                return Reply(_t(lang, f"Coś poszło nie tak: {e}", f"Something went wrong: {e}"), lang, "error")
-            return Reply(answer, lang, "chat", {"engine": "openai"})
         if self.gemini.available:
             try:
                 answer = self.gemini.chat(text, system=system)

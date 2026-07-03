@@ -21,6 +21,12 @@ Environment=BLAZEN_MODELS_DIR=/var/lib/blazen/models
 # GGUF) if the URL is unreachable (e.g. off the dev LAN), so this is safe to ship.
 Environment=BLAZEN_LLM_OLLAMA_URL=http://192.168.50.102:11434
 Environment=BLAZEN_LLM_OLLAMA_MODEL=SpeakLeash/bielik-11b-v2.3-instruct:Q8_0
+# Cloud DOUBT fallback: when a key is present the engine PREFERS OpenAI (gpt-5.5)
+# for unclear/freeform requests, degrading to the local Bielik on any failure.
+# The key is NOT in git — drop OPENAI_API_KEY=sk-… (or CHAT_GPT_KEY=…) into
+# /etc/blazen/secrets.env (0600). With no key the path stays fully on-device.
+Environment=OPENAI_MODEL=gpt-5.5
+EnvironmentFile=-/etc/blazen/secrets.env
 ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.domains.ai_orchestrator.adapters.rpi5.brain
 Restart=on-failure
 RestartSec=3
