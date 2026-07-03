@@ -50,7 +50,10 @@ rodio        = "0.19"
 memmap2      = "0.9"
 # Stream/file player (blazend-player): pure-Rust decode + ALSA out.
 symphonia    = { version = "0.5", default-features = false, features = ["mp3", "aac", "isomp4", "ogg", "vorbis", "flac", "wav", "pcm"] }
-ureq         = { version = "2", default-features = false, features = ["tls"] }
+ureq         = { version = "2", default-features = false, features = ["native-tls"] }  # OpenSSL, not rustls — some radio HTTPS (nadaje.com) fails the rustls handshake
+# native-tls (OpenSSL) connector for ureq; `vendored` builds OpenSSL from source
+# so it links cleanly under `cross` without a target libssl-dev.
+native-tls   = { version = "0.2", features = ["vendored"] }
 alsa         = "0.9"
 
 # ML / ONNX (wake + VAD). Added in M2 once the loader stabilises.

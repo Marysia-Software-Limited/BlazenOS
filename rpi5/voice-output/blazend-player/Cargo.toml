@@ -18,5 +18,6 @@ tracing-subscriber = { workspace = true }
 clap               = { workspace = true }
 crossbeam-channel  = { workspace = true }
 symphonia          = { workspace = true }
-ureq               = { workspace = true }
+ureq               = { workspace = true }  # native-tls (OpenSSL) — see workspace note
+native-tls         = { workspace = true }  # TLS connector for ureq (vendored OpenSSL)
 alsa               = { workspace = true }

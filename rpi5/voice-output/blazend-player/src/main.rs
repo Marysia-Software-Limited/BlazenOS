@@ -147,6 +147,21 @@ fn open_http_icy(source: &str) -> Result<(StreamReader, Option<String>)> {
     Ok((Box::new(reader), content_type))
 }
 
+/// A ureq agent with a native-tls (OpenSSL) connector. ureq's `native-tls`
+/// feature provides support but does NOT auto-configure the default agent, so it
+/// must be built explicitly — otherwise HTTPS fails with "no TLS backend
+/// configured". OpenSSL also accepts servers rustls rejects (nadaje.com / Radio
+/// Kraków fail the rustls handshake).
+fn https_agent() -> ureq::Agent {
+    match native_tls::TlsConnector::new() {
+        Ok(c) => ureq::AgentBuilder::new().tls_connector(std::sync::Arc::new(c)).build(),
+        Err(e) => {
+            tracing::warn!("native-tls init failed ({e}); using default agent");
+            ureq::agent()
+        }
+    }
+}
+
 /// A `.m3u8` URL → HLS. Reliable path for capacity-capped Shoutcast stations
 /// (e.g. Trójka) whose CDN HLS has no listener cap.
 fn is_hls(s: &str) -> bool {
@@ -194,7 +209,7 @@ struct HlsReader {
 
 impl HlsReader {
     fn new(url: &str) -> Result<Self> {
-        let agent = ureq::agent();
+        let agent = https_agent();
         let media = Self::resolve_media(&agent, url)?;
         Ok(Self { agent, origin: url.to_string(), media, next_seq: 0, started: false, buf: Vec::new(), pos: 0 })
     }
@@ -292,8 +307,9 @@ fn open_media(source: &str) -> Result<(MediaSourceStream, Hint)> {
                 tracing::info!(%source, "opening HLS stream (aac segments)");
                 (Box::new(HlsReader::new(source)?), Some("audio/aac".to_string()))
             } else if source.trim().to_ascii_lowercase().starts_with("https://") {
-                // TLS path: ureq handles the rustls handshake (assumes proper HTTP).
-                let resp = ureq::get(source)
+                // TLS path via native-tls/OpenSSL (assumes proper HTTP).
+                let resp = https_agent()
+                    .get(source)
                     .set("Icy-MetaData", "0")
                     .set("User-Agent", "blazend-player")
                     .call()

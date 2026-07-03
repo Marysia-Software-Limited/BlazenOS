@@ -7,11 +7,12 @@
 [build.env]
 volumes = ["BLAZEN_REPO"]
 
-# cpal/alsa-sys link libasound; the default cross image lacks the arm64 dev
-# package, so install it in the container before building.
+# cpal/alsa-sys link libasound (arm64 dev pkg); blazend-player's native-tls uses
+# a VENDORED (source-built) OpenSSL → needs perl + make + a C toolchain. Install
+# them in the container before building.
 [target.aarch64-unknown-linux-gnu]
 pre-build = [
   "dpkg --add-architecture arm64",
   "apt-get update",
-  "apt-get install --assume-yes libasound2-dev:arm64",
+  "apt-get install --assume-yes libasound2-dev:arm64 perl make",
 ]
