@@ -39,8 +39,13 @@ def load_items(music: Path, books: Path) -> list[dict]:
     try:
         for b in json.loads(books.read_text(encoding="utf-8")).get("books", []):
             who = b.get("author", "")
-            text = f"Audiobook, książka „{b.get('title','')}”. Autor: {who}."
+            extra = ". ".join(x for x in (
+                f"Gatunek: {b.get('genre','')}" if b.get("genre") else "",
+                f"Epoka: {b.get('epoch','')}" if b.get("epoch") else "") if x)
+            text = f"Audiobook, książka „{b.get('title','')}”. Autor: {who}." + (f" {extra}." if extra else "")
             items.append({"type": "book", "title": b.get("title", ""), "who": who,
+                          "genre": b.get("genre", ""), "epoch": b.get("epoch", ""),
+                          "downloaded": bool(b.get("downloaded", bool(b.get("chapters")))),
                           "chapters": b.get("chapters", []), "text": text})
     except (OSError, ValueError):
         pass

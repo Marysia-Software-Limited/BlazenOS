@@ -66,14 +66,21 @@ def main() -> int:
     books = get_json(API_LIST)
     print(f"{len(books)} audiobooks listed", file=sys.stderr)
 
-    catalog, total = [], 0
+    # Seed the running total with audio already on disk so --max-gb stays correct
+    # across resumes (this is a multi-hour run; it may be interrupted + restarted).
+    total = sum(f.stat().st_size for f in out.rglob("*.mp3"))
+    catalog, dl = [], 0
     budget = int(args.max_gb * (1 << 30)) if args.max_gb else 0
+    audio_full = False  # flipped once the size budget is reached — then metadata-only
+    if total:
+        print(f"resuming: {total/1e9:.1f} GB of audio already on disk", file=sys.stderr)
     for i, meta in enumerate(books):
-        if args.limit and len(catalog) >= args.limit:
-            break
-        if budget and total >= budget:
-            print(f"reached --max-gb ({args.max_gb}) — stopping", file=sys.stderr)
-            break
+        if args.limit and dl >= args.limit:
+            audio_full = True  # keep cataloging remaining titles for suggestions
+        if budget and total >= budget and not audio_full:
+            audio_full = True
+            print(f"reached --max-gb ({args.max_gb}) — remaining books catalogued metadata-only",
+                  file=sys.stderr)
         try:
             detail = get_json(meta["href"] + "?format=json")
         except Exception as e:  # noqa: BLE001
@@ -81,32 +88,45 @@ def main() -> int:
             continue
         author = meta.get("author") or detail.get("author") or "Nieznany"
         title = meta.get("title") or detail.get("title") or meta.get("slug", "")
+        genre = meta.get("genre") or detail.get("genre") or ""
+        epoch = meta.get("epoch") or detail.get("epoch") or ""
         mp3s = [m["url"] for m in detail.get("media", []) if m.get("type") == "mp3"]
-        if not mp3s:
-            continue
-        bdir = out / ascii_safe(author) / ascii_safe(title)
-        chapters = []
-        for n, url in enumerate(sorted(mp3s), 1):
-            name = ascii_safe(Path(url).stem)[-60:] or f"ch{n:03d}"
-            dest = bdir / f"{n:03d}_{name}.mp3"
-            rel = dest.relative_to(out).as_posix()
-            if not dest.exists():
-                try:
-                    total += download(url, dest)
-                except Exception as e:  # noqa: BLE001
-                    print(f"  chapter fail {url}: {e}", file=sys.stderr)
-                    continue
-            chapters.append(f"{args.root.rstrip('/')}/{rel}")
-        if chapters:
-            catalog.append({"author": author, "title": title, "slug": meta.get("slug", ""),
-                            "chapters": chapters, "n_chapters": len(chapters)})
-            print(f"  [{len(catalog)}] {author} — {title} ({len(chapters)} ch, {total/1e9:.1f} GB)",
-                  file=sys.stderr)
+        entry: dict = {"author": author, "title": title, "slug": meta.get("slug", ""),
+                       "genre": genre, "epoch": epoch, "downloaded": False}
+        # Metadata for EVERY book (so Jessica can list + suggest the whole library);
+        # audio only while under the size budget.
+        if mp3s and not audio_full:
+            bdir = out / ascii_safe(author) / ascii_safe(title)
+            chapters = []
+            for n, url in enumerate(sorted(mp3s), 1):
+                name = ascii_safe(Path(url).stem)[-60:] or f"ch{n:03d}"
+                dest = bdir / f"{n:03d}_{name}.mp3"
+                rel = dest.relative_to(out).as_posix()
+                if not dest.exists():
+                    try:
+                        total += download(url, dest)
+                    except Exception as e:  # noqa: BLE001
+                        print(f"  chapter fail {url}: {e}", file=sys.stderr)
+                        continue
+                chapters.append(f"{args.root.rstrip('/')}/{rel}")
+            if chapters:
+                entry.update(chapters=chapters, n_chapters=len(chapters), downloaded=True)
+                dl += 1
+                print(f"  [{dl}] {author} — {title} ({len(chapters)} ch, {total/1e9:.1f} GB)",
+                      file=sys.stderr)
+        catalog.append(entry)
+        # Write the catalog periodically so a multi-hour run that gets interrupted
+        # still leaves a usable (if partial) catalog for Jessica.
+        if len(catalog) % 50 == 0:
+            (args.catalog or (out / "catalog.json")).write_text(
+                json.dumps({"version": 1, "books": catalog}, ensure_ascii=False, indent=1),
+                encoding="utf-8")
 
     cat_path = args.catalog or (out / "catalog.json")
     cat_path.write_text(json.dumps({"version": 1, "books": catalog}, ensure_ascii=False, indent=1),
                         encoding="utf-8")
-    print(f"catalog: {len(catalog)} books → {cat_path} ({total/1e9:.1f} GB)", file=sys.stderr)
+    print(f"catalog: {len(catalog)} books ({dl} with audio) → {cat_path} ({total/1e9:.1f} GB)",
+          file=sys.stderr)
     return 0
 
 
