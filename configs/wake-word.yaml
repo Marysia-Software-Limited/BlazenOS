@@ -42,7 +42,7 @@ models:
     backend: openwakeword
     file: wake/jessica.onnx                   # under models/; gitignored, regen via train-wake.py
     trained_by: scripts/train-wake.py
-    sha256: "ce2527e498a182b6dc699e2fc6aa658cc3991bda806c60a6a59372db87b30a68"
+    sha256: "5e378d64de6ea786725052b9d4ce63ec4b01fab953a68c8968637796b615c989"
     size_mb: 1
     language: en
     phrases: ["jessica", "hey jessica"]
@@ -51,7 +51,7 @@ models:
     backend: openwakeword
     file: wake/jessica.onnx                   # same unified bilingual model
     trained_by: scripts/train-wake.py
-    sha256: "ce2527e498a182b6dc699e2fc6aa658cc3991bda806c60a6a59372db87b30a68"
+    sha256: "5e378d64de6ea786725052b9d4ce63ec4b01fab953a68c8968637796b615c989"
     size_mb: 1
     language: pl
     phrases: ["dżesika"]
