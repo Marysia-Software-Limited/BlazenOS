@@ -131,14 +131,24 @@ async def _real_loop(pub: Publisher) -> None:
         pcm = ring.read_range(begin, end)
         if len(pcm) < ring.sample_rate // 2:  # < 0.5 s captured — nothing to do
             continue
-        # Capture level (RMS): if this is near the noise floor the mic under-
-        # captured the command (e.g. the Jabra's DSP gated it) and ASR will misread.
-        rms = float(np.sqrt((np.asarray(pcm, dtype=np.float64) ** 2).mean())) if len(pcm) else 0.0
-        log.info("fixed-window read %.1fs rms=%.0f", len(pcm) / ring.sample_rate, rms)
+        # Capture level: gate on the PEAK over ~200 ms frames, not the whole-window
+        # average. A short command ("ciszej"/"stop"/"inny") is ~0.4 s of speech in a
+        # ~3 s window, so its average is low (~120) even though the word peaks loud
+        # (~600+); the old average gate dropped it as a false wake. A true false wake
+        # (uniform ambient / the mic's noise floor) stays low in EVERY frame (peak
+        # ~100-150), so peak still rejects it. Averages logged for calibration.
+        arr = np.asarray(pcm, dtype=np.float64)
+        rms = float(np.sqrt((arr ** 2).mean())) if len(arr) else 0.0
+        frame = max(1, ring.sample_rate // 5)  # 200 ms
+        peak = 0.0
+        for i in range(0, len(arr) - frame + 1, frame):
+            peak = max(peak, float(np.sqrt((arr[i : i + frame] ** 2).mean())))
+        peak = max(peak, rms)  # short-window guard: never below the whole-window RMS
+        log.info("fixed-window read %.1fs rms=%.0f peak=%.0f", len(pcm) / ring.sample_rate, rms, peak)
         # Noise-floor gate (lower while a stream plays → the Jabra ducks the mic).
         floor = min_rms_playing if speaker_busy.exists() else min_rms
-        if rms < floor:
-            log.info("fixed-window rms=%.0f below floor %.0f — dropping (false wake)", rms, floor)
+        if peak < floor:
+            log.info("fixed-window peak=%.0f below floor %.0f — dropping (false wake)", peak, floor)
             continue
         result = await asyncio.to_thread(transcriber.transcribe, pcm, ring.sample_rate)
         if result.text:
@@ -157,6 +167,10 @@ async def _real_loop(pub: Publisher) -> None:
                 "asr.final %s %r (conf=%.2f)", result.language, result.text, result.confidence
             )
         else:
+            # Passed the level gate but whisper found no words (too quiet/garbled,
+            # or a non-speech peak like a cough). Log it — otherwise the trace goes
+            # silent after "read" and the drop looks like a hang.
+            log.info("asr: no speech recognised (whisper empty) — rms=%.0f peak=%.0f", rms, peak)
             await pub.publish(
                 Envelope(
                     topic="error",
