@@ -325,49 +325,27 @@ class Orchestrator:
                 # Acting on a command keeps the conversation open for follow-ups.
                 self._awake_until = asyncio.get_running_loop().time() + self._wake_window_s
                 if reply is not None:
-                    self._mark_speaking()  # spoken reply → audio-out up
-                    await self._publisher.publish(reply)
+                    action = str(reply.data.get("action", ""))
+                    # Radio actions ARE the feedback (the stream starting/stopping),
+                    # so don't also speak the confirmation over the Jabra it needs.
+                    # Non-radio replies (volume, time, …) are spoken via TTS.
+                    if action not in ("radio_play", "radio_stop"):
+                        await self._publisher.publish(reply)
+                    # Execute the reply's action INLINE — a fast-path reply is never
+                    # received back as an incoming brain.reply, so play/stop the
+                    # stream (or raise audio-out for a spoken reply) here.
+                    await self._act_on_reply(reply.data)
                     patch["last_command"] = {
                         "intent": env.data.get("intent"),
                         "result": reply.data.get("action"),
                     }
                 # Keep the language pin authoritative in state (scenario 09).
                 patch["languages"] = {"pinned": self._dispatcher.pinned_language()}
-        # Radio: act on the brain's decision. Barge-in is wake-gated (see the
-        # wake.detected handler) rather than triggered by raw vad.start — on the
-        # Jabra speakerphone the stream's own audio loops back into the mic, so a
-        # vad.start barge-in would immediately stop the radio it just started.
-        # `_radio.*` block (subprocess) → run off the event loop.
+        # Radio + spoken replies from the brain (LLM). The fast-path dispatcher
+        # (nlu.intent, above) calls the SAME _act_on_reply, since its reply is
+        # published to TTS but never loops back here as an incoming brain.reply.
         if env.topic == "brain.reply":
-            action = str(env.data.get("action", ""))
-            if action == "radio_play":
-                payload = env.data.get("payload", {}) or {}
-                # A real radio command supersedes any pending duck-restore.
-                self._cancel_duck_restore()
-                # Free the Jabra output for the stream, then play. The reconciler
-                # keeps audio-out down while the stream is playing.
-                self._speak_until = 0.0
-                await self._apply_audio_out(False)
-                await asyncio.sleep(0.3)  # let the device release
-                await asyncio.to_thread(
-                    self._radio.play, str(payload.get("url", "")), str(payload.get("name", ""))
-                )
-                # New stream plays at the user's volume (un-duck if we ducked to
-                # hear the command that switched stations).
-                await self._duck_off()
-                # Suppress the VAD while the stream plays so the Jabra hearing its
-                # own output can't trigger a barge-in. Wake reads the raw ring, so
-                # "dżesika" still interrupts (handled above).
-                self._speaker_busy.touch()
-            elif action == "radio_stop":
-                self._cancel_duck_restore()
-                self._ducked = False
-                await asyncio.to_thread(self._radio.stop)
-                self._speaker_busy.unlink(missing_ok=True)
-                await self._set_volume(self._volume_pct)  # ready for next stream
-            elif env.data.get("text"):
-                # A spoken reply from the brain (LLM) — bring audio-out up to play it.
-                self._mark_speaking()
+            await self._act_on_reply(env.data)
         if env.topic == "health.status":
             # Mirror the level into state on every verdict (the orchestrator is
             # the dominant state writer); recovery details only on a fault.
@@ -432,6 +410,42 @@ class Orchestrator:
         # and bring the volume back up.
         if self._radio.playing and self._ducked:
             await self._duck_off()
+
+    async def _act_on_reply(self, data: dict[str, Any]) -> None:
+        """Execute a reply's action: play/stop the internet-radio stream, or bring
+        audio-out up for a spoken reply. Barge-in stays wake-gated (see the
+        wake.detected handler) — on the Jabra speakerphone the stream's own audio
+        loops into the mic, so a vad.start barge-in would stop the radio it just
+        started. `_radio.*` is a subprocess → run off the event loop.
+
+        Called for BOTH brain-produced brain.reply events and fast-path dispatcher
+        replies (which are published to TTS but never loop back as brain.reply)."""
+        action = str(data.get("action", ""))
+        if action == "radio_play":
+            payload = data.get("payload", {}) or {}
+            self._cancel_duck_restore()  # a real radio command supersedes a duck
+            # Free the Jabra output for the stream; the reconciler keeps audio-out
+            # down while the stream plays.
+            self._speak_until = 0.0
+            await self._apply_audio_out(False)
+            await asyncio.sleep(0.3)  # let the device release
+            await asyncio.to_thread(
+                self._radio.play, str(payload.get("url", "")), str(payload.get("name", ""))
+            )
+            await self._duck_off()  # new stream at the user's volume
+            # Suppress the VAD while the stream plays so the Jabra hearing its own
+            # output can't trigger a barge-in ("dżesika" still interrupts via wake).
+            self._speaker_busy.touch()
+        elif action == "radio_stop":
+            self._cancel_duck_restore()
+            self._ducked = False
+            await asyncio.to_thread(self._radio.stop)
+            self._speaker_busy.unlink(missing_ok=True)
+            await self._set_volume(self._volume_pct)  # ready for next stream
+        elif data.get("text"):
+            # A spoken reply (LLM chat, or a non-radio command confirmation) —
+            # bring audio-out up to play it.
+            self._mark_speaking()
 
     def _dispatch_intent(self, env: Envelope) -> Envelope | None:
         """Act on a fast-path `nlu.intent`; return the spoken reply (if any)."""
