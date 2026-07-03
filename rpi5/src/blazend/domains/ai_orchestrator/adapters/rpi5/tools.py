@@ -28,6 +28,7 @@ from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.news import (
     NewsClient,
     NewsError,
 )
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.audiobooks import AudiobookDirectory
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.music import MusicDirectory
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.radio import RadioDirectory
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.weather import (
@@ -119,6 +120,7 @@ class Tools:
         self.news = news or NewsClient()
         self.radio = radio or RadioDirectory()
         self.music = music or MusicDirectory()
+        self.audiobooks = AudiobookDirectory()
         self.persona = persona
 
     # -- dispatch ----------------------------------------------------------
@@ -146,6 +148,8 @@ class Tools:
             return self.radio_stop(lang)
         if tool == "music.play":
             return self.music_play(str(args.get("query", "")), lang)
+        if tool == "audiobook.play":
+            return self.audiobook_play(str(args.get("query", "")), lang)
         return ToolResult(False, _t(lang, "Nie znam tego narzędzia.", "I don't know that tool."), "error")
 
     # -- context -----------------------------------------------------------
@@ -344,4 +348,23 @@ class Tools:
         return ToolResult(
             True, _t(lang, f"Gram {who}.", f"Playing {who}."),
             "music_play", {"path": track.path, "name": who},
+        )
+
+    # -- audiobooks (offline, from catalog.json) ---------------------------
+    def audiobook_play(self, query: str, lang: str) -> ToolResult:
+        if not self.audiobooks.available:
+            return ToolResult(True, _t(lang, "Nie mam jeszcze audiobooków.", "I have no audiobooks yet."), "audiobook_offer")
+        book = self.audiobooks.resolve(query)
+        if book is None:
+            titles = ", ".join(b.title for b in self.audiobooks.offer())
+            return ToolResult(
+                True,
+                _t(lang, f"Nie znalazłam „{query}”. Mam: {titles}.", f"I couldn't find “{query}”. I have: {titles}."),
+                "audiobook_offer",
+            )
+        who = f"{book.author} — {book.title}" if book.author else book.title
+        # Start at the first chapter (played as a local file, like music).
+        return ToolResult(
+            True, _t(lang, f"Czytam: {who}.", f"Reading: {who}."),
+            "music_play", {"path": book.chapters[0], "name": who},
         )

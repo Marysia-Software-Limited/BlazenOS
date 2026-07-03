@@ -497,7 +497,7 @@ class Orchestrator:
                 "url": str(result.data["url"]),
                 "name": str(result.data.get("name", "")),
             }
-        elif tool == "music.play" and result.data.get("path"):
+        elif tool in ("music.play", "audiobook.play") and result.data.get("path"):
             data["action"] = "music_play"  # local file → same exclusive player
             data["payload"] = {
                 "path": str(result.data["path"]),

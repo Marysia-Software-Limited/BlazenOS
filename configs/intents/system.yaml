@@ -663,6 +663,17 @@ intents:
     action: tool_call
     tool: context.add_reminder
 
+  # AUDIOBOOKS (offline) — listed first; keyed on książka/audiobook/lektura so it
+  # wins over music/radio. "włącz/przeczytaj/znajdź/puść książkę <tytuł/autor>".
+  - name: audiobook_play
+    triggers:
+      pl:
+        - "\\b(w(ł|l)(ą|a)cz|przeczytaj|czytaj|pu(ś|s)(ć|c)|znajd(ź|z)|szukaj|otw(ó|o)rz)\\b.*\\b(ksi(ą|a)(ż|z)k\\w*|audiobook\\w*|lektur\\w*|powie(ś|s)(ć|c)\\w*|s(ł|l)uchowisk\\w*)\\b\\s*(?P<query>.*)"
+      en:
+        - "\\b(play|read|open|find|search)\\b.*\\b(audiobook|book)\\b\\s*(?P<query>.*)"
+    action: tool_call
+    tool: audiobook.play
+
   # MUSIC (offline local library) — listed BEFORE radio_play. "zagraj X" is the
   # unambiguous music verb; "puść/graj MUZYKĘ/piosenkę X" also music; "zagraj coś"
   # → random. The query resolves against the on-device music index (artist/title/
