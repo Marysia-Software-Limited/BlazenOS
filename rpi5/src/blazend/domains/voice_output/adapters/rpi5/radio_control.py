@@ -13,6 +13,7 @@ narrow sudoers rule (``/etc/sudoers.d/blazen-audio-out``).
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 
 log = logging.getLogger("blazend.domains.systems.adapters.rpi5.orchestrator.radio")
@@ -57,10 +58,14 @@ class RadioControl:
         if not url:
             return
         try:
+            # Let the player's warnings/errors reach the orchestrator journal
+            # (DEVNULL previously hid a silent ALSA-busy death → "no reaction").
+            env = {**os.environ, "RUST_LOG": os.environ.get("RUST_LOG", "warn,symphonia=error")}
             self._proc = subprocess.Popen(
                 [_PLAYER, "--source", url, "--device", _DEVICE],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=None,
+                env=env,
             )
             log.info("radio play %s", name or url)
         except OSError as exc:

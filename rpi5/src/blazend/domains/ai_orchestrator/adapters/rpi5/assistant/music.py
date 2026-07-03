@@ -18,6 +18,17 @@ from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.radio import _fold,
 
 _DEFAULT_INDEX = "/var/lib/blazen/music-index.json"
 _RANDOM_WORDS = frozenset({"cos", "cokolwiek", "losowo", "random", "muzyk", "muzyke", "muzyka"})
+# Skip dead rips: some ripped albums contain 0-byte / header-only stubs. A random
+# pick that lands on one plays nothing ("no reaction"), so drop anything too small
+# to hold even ~1 s of audio (128 kbps ≈ 16 kB/s) at load time.
+_MIN_BYTES = 16 * 1024
+
+
+def _playable(path: str) -> bool:
+    try:
+        return os.path.getsize(path) >= _MIN_BYTES
+    except OSError:
+        return False
 
 
 @dataclass
@@ -47,6 +58,8 @@ class MusicDirectory:
             raw = []
         for e in raw:
             if not isinstance(e, dict) or not e.get("path"):
+                continue
+            if not _playable(str(e["path"])):
                 continue
             title, artist, album = str(e.get("title", "")), str(e.get("artist", "")), str(e.get("album", ""))
             self.tracks.append(Track(

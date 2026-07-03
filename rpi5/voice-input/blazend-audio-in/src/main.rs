@@ -39,10 +39,10 @@ struct Args {
     /// Emit synthetic frames instead of touching real hardware.
     #[arg(long)]
     mock: bool,
-    /// ALSA capture PCM. A `plughw:…` name is RW-shareable, so the HAT stays
-    /// full-duplex (TTS can play on the same card while we capture). A bare
-    /// token is wrapped as `plughw:CARD=<token>,DEV=0`.
-    #[arg(long, default_value = "plughw:CARD=wm8960soundcard,DEV=0")]
+    /// ALSA capture PCM. A `plughw:…` name is RW-shareable, so the single Jabra
+    /// SPEAK 410 USB stays full-duplex (TTS can play on the same card while we
+    /// capture). A bare token is wrapped as `plughw:CARD=<token>,DEV=0`.
+    #[arg(long, default_value = "plughw:CARD=USB,DEV=0")]
     device: String,
     /// Ring buffer length in seconds (mirrors `audio.yaml input.ring_buffer_seconds`).
     #[arg(long, default_value_t = 3)]

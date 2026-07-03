@@ -41,8 +41,9 @@ struct Args {
     /// `http(s)://…` live stream, or a local file path.
     #[arg(long)]
     source: String,
-    /// ALSA output PCM (full name), e.g. `plughw:CARD=wm8960soundcard,DEV=0`.
-    #[arg(long, default_value = "plughw:CARD=wm8960soundcard,DEV=0")]
+    /// ALSA output PCM (full name). The appliance ships a single Jabra SPEAK
+    /// 410 USB as the only audio device, so that is the default.
+    #[arg(long, default_value = "plughw:CARD=USB,DEV=0")]
     device: String,
     /// Prebuffer filled before playback starts (ms) — smooths startup + jitter.
     #[arg(long, default_value_t = 1500)]

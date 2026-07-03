@@ -217,7 +217,7 @@ def _build(data_dir: Path, *, use_llm: bool, speak: bool) -> tuple[Assistant, _D
     )
     voices = _voices()
     piper = os.environ.get("BLAZEN_PIPER", "piper")
-    out = os.environ.get("PTT_OUT", "plughw:CARD=wm8960soundcard,DEV=0")
+    out = os.environ.get("PTT_OUT", "plughw:CARD=USB,DEV=0")
     sink = _DiagSink(PiperSink(piper=piper, voices=voices, out_device=out), voices, speak=speak)
     return brain, sink
 
@@ -242,7 +242,7 @@ def _preflight(data_dir: Path, *, use_llm: bool, speak: bool) -> None:
     for lang, path in voices.items():
         _log("CFG", "TTS voice[%s]=%s exists=%s", lang, Path(path).name, Path(path).exists())
     _log("CFG", "TTS speak=%s out=%s piper=%s", speak,
-         os.environ.get("PTT_OUT", "plughw:CARD=wm8960soundcard,DEV=0"),
+         os.environ.get("PTT_OUT", "plughw:CARD=USB,DEV=0"),
          os.environ.get("BLAZEN_PIPER", "piper"))
     _log("CFG", "cloud keys: OPENAI=%s GEMINI=%s",
          bool(os.environ.get("OPENAI_API_KEY")), bool(os.environ.get("GEMINI_API_KEY")))
@@ -412,7 +412,7 @@ def main() -> int:
         from blazend.domains.systems.adapters.rpi5.led_hw import open_status_led
         from blazend.domains.voice_input.adapters.rpi5.voice.runner import StreamPlayer
         capture_s = float(load("wake-word").get("capture_window_s", 4.5))
-        out = os.environ.get("PTT_OUT", "plughw:CARD=wm8960soundcard,DEV=0")
+        out = os.environ.get("PTT_OUT", "plughw:CARD=USB,DEV=0")
         led = open_status_led()
         _log("LED", "status LED: %s", type(led).__name__)
         radio = StreamPlayer(device=out, player=os.environ.get("BLAZEN_PLAYER", "blazend-player"))

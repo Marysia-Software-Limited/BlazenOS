@@ -326,10 +326,12 @@ class Orchestrator:
                 self._awake_until = asyncio.get_running_loop().time() + self._wake_window_s
                 if reply is not None:
                     action = str(reply.data.get("action", ""))
-                    # Radio actions ARE the feedback (the stream starting/stopping),
-                    # so don't also speak the confirmation over the Jabra it needs.
-                    # Non-radio replies (volume, time, …) are spoken via TTS.
-                    if action not in ("radio_play", "radio_stop"):
+                    # Playback actions ARE the feedback (the stream/track starting
+                    # or stopping), so don't also speak the confirmation over the
+                    # Jabra it needs — a spoken reply brings audio-out UP and grabs
+                    # the single output PCM out from under the player (silent death).
+                    # Non-playback replies (volume, time, …) are spoken via TTS.
+                    if action not in ("radio_play", "radio_stop", "music_play", "music_stop"):
                         await self._publisher.publish(reply)
                     # Execute the reply's action INLINE — a fast-path reply is never
                     # received back as an incoming brain.reply, so play/stop the

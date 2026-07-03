@@ -78,7 +78,7 @@ async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     rt = runtime_dir()
     piper = os.environ.get("BLAZEN_PIPER", str(REPO / ".venv/bin/piper"))
-    out = os.environ.get("PTT_OUT", "plughw:CARD=wm8960soundcard,DEV=0")
+    out = os.environ.get("PTT_OUT", "plughw:CARD=USB,DEV=0")
 
     ring = RingReader(rt / "audio-ring.shm")
     capturer = RingCapturer(ring)
