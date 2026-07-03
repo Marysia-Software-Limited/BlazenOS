@@ -314,6 +314,16 @@ class Orchestrator:
             if self._radio.playing:
                 await self._duck_on()
                 self._arm_duck_restore()
+                # Guarantee the low ASR floor for the command that follows: while a
+                # stream plays the Jabra DSP attenuates the mic (voice lands at
+                # ~50-180 RMS), so the post-wake capture must use min_capture_rms_playing.
+                # The ASR keys that on speaker-busy; (re)assert it here so a context
+                # command ("ciszej"/"stop"/"zagraj inny") over the stream isn't
+                # dropped as a false wake by the idle floor.
+                try:
+                    self._speaker_busy.touch()
+                except OSError as exc:
+                    log.warning("could not assert speaker-busy marker: %s", exc)
         if env.topic == "nlu.intent" and self._dispatcher is not None:
             if not self._awake():
                 # Heard a command but not addressed ("Hej Jessico" not said) —
@@ -454,11 +464,21 @@ class Orchestrator:
         """Act on a fast-path `nlu.intent`; return the spoken reply (if any)."""
         if self._dispatcher is None:
             return None
+        intent_name = str(env.data.get("intent", ""))
         result = self._dispatcher.dispatch(
-            env.data.get("intent", ""),
+            intent_name,
             env.data.get("params", {}),
             env.data.get("language", "pl"),
         )
+        # Stateful context: a bare "stop"/"przestań" normally just interrupts TTS
+        # (stop_talking → tts_interrupt), but while a stream plays it means STOP THE
+        # STREAM — the current activity. Redirect to music_stop so "stop" over the
+        # radio/music actually stops it. See stateful-command-context.
+        if self._radio.playing and (result.signal == "tts_interrupt" or intent_name == "stop_talking"):
+            return Envelope(
+                topic="brain.reply", source="blazend-orchestrator",
+                data={"action": "music_stop"},
+            )
         if result.signal in ("reboot", "shutdown"):
             # In the VM / dev we never actually power off; on the device a
             # power unit consumes this. Log it loudly.
@@ -499,7 +519,7 @@ class Orchestrator:
                 "url": str(result.data["url"]),
                 "name": str(result.data.get("name", "")),
             }
-        elif tool in ("music.play", "audiobook.play") and result.data.get("path"):
+        elif tool in ("music.play", "music.next", "audiobook.play") and result.data.get("path"):
             data["action"] = "music_play"  # local file → same exclusive player
             data["payload"] = {
                 "path": str(result.data["path"]),

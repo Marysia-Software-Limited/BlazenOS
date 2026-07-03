@@ -674,6 +674,21 @@ intents:
     action: tool_call
     tool: audiobook.play
 
+  # NEXT TRACK — "zagraj inny", "coś innego", "następny"/"kolejny", "dalej" while
+  # something plays. Listed BEFORE music_play so these route to ANOTHER track
+  # (music.next replays the last request → a fresh random track of the same pool)
+  # instead of being read as a title search for the word "inny".
+  - name: music_next
+    triggers:
+      pl:
+        - "\\b(zagraj|pu(ś|s)(ć|c)|w(ł|l)(ą|a)cz|graj)\\b\\s+(co(ś|s)\\s+)?(inn\\w+|nast(ę|e)pn\\w+|kolejn\\w+)\\b.*"
+        - "\\b(nast(ę|e)pn\\w+|kolejn\\w+|dalej|pomi(ń|n))\\b.*"
+        - "\\bco(ś|s)\\s+inn\\w+\\b.*"
+      en:
+        - "\\b(play\\s+)?(another|next|different|skip)(\\s+(song|track|one))?\\b.*"
+    action: tool_call
+    tool: music.next
+
   # MUSIC (offline local library) — listed BEFORE radio_play. "zagraj X" is the
   # unambiguous music verb; "puść/graj MUZYKĘ/piosenkę X" also music; "zagraj coś"
   # → random. The query resolves against the on-device music index (artist/title/

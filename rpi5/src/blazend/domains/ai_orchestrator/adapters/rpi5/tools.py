@@ -124,6 +124,9 @@ class Tools:
         self.audiobooks = AudiobookDirectory()
         self.semantic = SemanticLibrary()  # voice semantic search over music + books
         self.persona = persona
+        # Last music request ("coś Kazika" / "Kazika"), so "zagraj inny" replays it
+        # → resolve() picks a fresh random track from the same pool (same artist).
+        self._last_query = ""
 
     # -- dispatch ----------------------------------------------------------
     def run(self, tool: str, args: dict[str, Any], lang: str) -> ToolResult:
@@ -150,6 +153,8 @@ class Tools:
             return self.radio_stop(lang)
         if tool == "music.play":
             return self.music_play(str(args.get("query", "")), lang)
+        if tool == "music.next":
+            return self.music_next(lang)
         if tool == "audiobook.play":
             return self.audiobook_play(str(args.get("query", "")), lang)
         if tool == "library.search":
@@ -341,6 +346,7 @@ class Tools:
     def music_play(self, query: str, lang: str) -> ToolResult:
         if not self.music.available:
             return ToolResult(True, _t(lang, "Biblioteka muzyki jest pusta.", "The music library is empty."), "music_offer")
+        self._last_query = query  # remember context for "zagraj inny"
         track = self.music.resolve(query)
         if track is None:
             # No literal match → fall back to MEANING (e.g. "coś spokojnego").
@@ -350,6 +356,12 @@ class Tools:
             True, _t(lang, f"Gram {who}.", f"Playing {who}."),
             "music_play", {"path": track.path, "name": who},
         )
+
+    def music_next(self, lang: str) -> ToolResult:
+        """"Zagraj inny" — play ANOTHER track. Replays the last request so a bare
+        artist pool ("coś Kazika") yields a fresh random track of the same artist;
+        with no prior request it just plays a random track."""
+        return self.music_play(self._last_query, lang)
 
     # -- audiobooks (offline, from catalog.json) ---------------------------
     def audiobook_play(self, query: str, lang: str) -> ToolResult:
