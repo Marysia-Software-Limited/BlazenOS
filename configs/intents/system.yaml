@@ -663,19 +663,32 @@ intents:
     action: tool_call
     tool: context.add_reminder
 
+  # MUSIC (offline local library) — listed BEFORE radio_play. "zagraj X" is the
+  # unambiguous music verb; "puść/graj MUZYKĘ/piosenkę X" also music; "zagraj coś"
+  # → random. The query resolves against the on-device music index (artist/title/
+  # album). Radio keeps "włącz/puść RADIO/<station>" (below), so they don't clash.
+  - name: music_play
+    triggers:
+      pl:
+        - "\\bzagraj\\b\\s+(?P<query>[\\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ].*)"
+        - "\\b(pu(ś|s)(ć|c)|w(ł|l)(ą|a)cz|graj|pos(ł|l)uchaj\\w*)\\b.*\\b(muzyk\\w*|piosenk\\w*|utw(ó|o)r\\w*|kaw(a|ą)(ł|l)\\w*|album\\w*|p(ł|l)yt\\w*|nagran\\w*)\\b\\s*(?P<query>.*)"
+        - "\\b(zagraj|pu(ś|s)(ć|c))\\s+co(ś|s)\\b"
+      en:
+        - "\\bplay\\b\\s+(?:some\\s+)?(?:music|a song|track)?\\s*(?P<query>.*)"
+    action: tool_call
+    tool: music.play
+
   - name: radio_play
     triggers:
       pl:
-        # PLAY verb + optional "radio", then capture the REST as the station
-        # query — resolved against radio.yaml aliases, so EVERY station works
-        # (kraków, 357, kultura, …), not a hard-coded list. "wyłącz" isn't a play
-        # verb, so stop commands fall through to radio_stop.
-        - "(?:w(ł|l)(ą|a)cz|pu(ś|s)(ć|c)|nastaw|graj|pos(ł|l)uchaj)\\s+(?:radi[ao]\\s+)?(?P<query>[\\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ].*)"
-        # bare "włącz radio" (no station) → the tool offers the headline stations
-        - "(?:w(ł|l)(ą|a)cz|pu(ś|s)(ć|c)|nastaw|graj) radi[ao]\\b"
+        # PLAY verb + "radio" → capture the REST as the station query (resolved
+        # against radio.yaml aliases — every station works: kraków, 357, …).
+        - "\\b(w(ł|l)(ą|a)cz|pu(ś|s)(ć|c)|nastaw)\\b.*\\bradi[ao]\\b(?:\\s+(?P<query>[\\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ].*))?"
+        # bare station name after a play verb (the common Polish channels)
+        - "\\b(w(ł|l)(ą|a)cz|pu(ś|s)(ć|c)|nastaw)\\b\\s+(?P<query>tr(ó|o)jk\\w*|jedynk\\w*|dw(ó|o)jk\\w*|czw(ó|o)rk\\w*|rmf\\w*|nowy (ś|s)wiat\\w*|krak(ó|o)w\\w*|kultur\\w*|357|off)\\b.*"
       en:
         - "play (the )?(?P<query>radio|rmf|[a-z0-9 ]+? (radio|station|fm))"
-        - "(turn on|put on) (the )?(?:radio )?(?P<query>[a-z0-9 ]+)"
+        - "(turn on|put on) (the )?radio(?:\\s+(?P<query>[a-z0-9 ]+))?"
     action: tool_call
     tool: radio.play
 

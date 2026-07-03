@@ -28,6 +28,7 @@ from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.news import (
     NewsClient,
     NewsError,
 )
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.music import MusicDirectory
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.radio import RadioDirectory
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.weather import (
     WeatherClient,
@@ -109,6 +110,7 @@ class Tools:
         gemini: GeminiClient | None = None,
         news: NewsClient | None = None,
         radio: RadioDirectory | None = None,
+        music: MusicDirectory | None = None,
         persona: str = PERSONA,
     ) -> None:
         self.memory = memory or MemoryStore()
@@ -116,6 +118,7 @@ class Tools:
         self.gemini = gemini or GeminiClient()
         self.news = news or NewsClient()
         self.radio = radio or RadioDirectory()
+        self.music = music or MusicDirectory()
         self.persona = persona
 
     # -- dispatch ----------------------------------------------------------
@@ -141,6 +144,8 @@ class Tools:
             return self.radio_play(str(args.get("query", "")), lang)
         if tool == "radio.stop":
             return self.radio_stop(lang)
+        if tool == "music.play":
+            return self.music_play(str(args.get("query", "")), lang)
         return ToolResult(False, _t(lang, "Nie znam tego narzędzia.", "I don't know that tool."), "error")
 
     # -- context -----------------------------------------------------------
@@ -323,3 +328,20 @@ class Tools:
 
     def radio_stop(self, lang: str) -> ToolResult:
         return ToolResult(True, _t(lang, "Wyłączam radio.", "Turning off the radio."), "radio_stop")
+
+    # -- music (offline local library) -------------------------------------
+    def music_play(self, query: str, lang: str) -> ToolResult:
+        if not self.music.available:
+            return ToolResult(True, _t(lang, "Biblioteka muzyki jest pusta.", "The music library is empty."), "music_offer")
+        track = self.music.resolve(query)
+        if track is None:
+            return ToolResult(
+                True,
+                _t(lang, f"Nie znalazłam „{query}” w muzyce.", f"I couldn't find “{query}” in the music."),
+                "music_offer",
+            )
+        who = f"{track.artist} — {track.title}" if track.artist else track.title
+        return ToolResult(
+            True, _t(lang, f"Gram {who}.", f"Playing {who}."),
+            "music_play", {"path": track.path, "name": who},
+        )

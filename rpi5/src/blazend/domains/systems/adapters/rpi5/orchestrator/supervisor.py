@@ -421,22 +421,23 @@ class Orchestrator:
         Called for BOTH brain-produced brain.reply events and fast-path dispatcher
         replies (which are published to TTS but never loop back as brain.reply)."""
         action = str(data.get("action", ""))
-        if action == "radio_play":
+        # radio_play (stream url) and music_play (local file path) both hand a
+        # single source to the exclusive player; the only difference is the source.
+        if action in ("radio_play", "music_play"):
             payload = data.get("payload", {}) or {}
-            self._cancel_duck_restore()  # a real radio command supersedes a duck
-            # Free the Jabra output for the stream; the reconciler keeps audio-out
-            # down while the stream plays.
+            source = str(payload.get("url") or payload.get("path", ""))
+            self._cancel_duck_restore()  # a real play command supersedes a duck
+            # Free the Jabra output for playback; the reconciler keeps audio-out
+            # down while it plays.
             self._speak_until = 0.0
             await self._apply_audio_out(False)
             await asyncio.sleep(0.3)  # let the device release
-            await asyncio.to_thread(
-                self._radio.play, str(payload.get("url", "")), str(payload.get("name", ""))
-            )
-            await self._duck_off()  # new stream at the user's volume
-            # Suppress the VAD while the stream plays so the Jabra hearing its own
-            # output can't trigger a barge-in ("dżesika" still interrupts via wake).
+            await asyncio.to_thread(self._radio.play, source, str(payload.get("name", "")))
+            await self._duck_off()  # play at the user's volume
+            # Suppress the VAD while it plays so the Jabra hearing its own output
+            # can't trigger a barge-in ("dżesika" still interrupts via wake).
             self._speaker_busy.touch()
-        elif action == "radio_stop":
+        elif action in ("radio_stop", "music_stop"):
             self._cancel_duck_restore()
             self._ducked = False
             await asyncio.to_thread(self._radio.stop)
@@ -494,6 +495,12 @@ class Orchestrator:
             data["action"] = "radio_play"
             data["payload"] = {
                 "url": str(result.data["url"]),
+                "name": str(result.data.get("name", "")),
+            }
+        elif tool == "music.play" and result.data.get("path"):
+            data["action"] = "music_play"  # local file → same exclusive player
+            data["payload"] = {
+                "path": str(result.data["path"]),
                 "name": str(result.data.get("name", "")),
             }
         elif tool == "radio.stop":

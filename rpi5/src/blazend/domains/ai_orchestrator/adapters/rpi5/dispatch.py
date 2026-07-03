@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 # current pipeline; the Rust mind takes this over at the cutover. The tool names
 # mirror jessica_core::dispatch + configs/intents/system.yaml.
 _TOOL_INTENTS: frozenset[str] = frozenset({
-    "weather.query", "news.brief", "web.lookup", "radio.play", "radio.stop",
+    "weather.query", "news.brief", "web.lookup", "radio.play", "radio.stop", "music.play",
     "context.recall", "context.recall_reminders", "context.remember", "context.set_name",
     "context.add_reminder",
 })
