@@ -22,8 +22,7 @@ from pathlib import Path
 
 from blazend.config import load
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import Assistant, Reply
-from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.openai import OpenAiClient
-from blazend.domains.ai_orchestrator.core.registry import select_chat_llm
+from blazend.domains.ai_orchestrator.core.registry import build_model_router
 from blazend.events import Envelope, system_event
 from blazend.ipc import Publisher, Subscriber, runtime_dir
 
@@ -148,13 +147,12 @@ async def run(mock: bool) -> None:
         require_wake = bool(load("wake-word").get("require_wake", True))
     except Exception:  # noqa: BLE001
         require_wake = True
-    # LLM for freeform chat. The ai-orchestrator backend registry picks the
-    # primary backend (reachable LAN Ollama via BLAZEN_LLM_OLLAMA_URL, else the
-    # on-device Bielik), or None to degrade to the engine's cloud fallback.
-    llm = select_chat_llm()
-    # Cloud second layer (OpenAI) behind the local model; activates if the key
-    # is set. Local stays first, so normal operation is on-device.
-    await serve(Assistant(always_awake=not require_wake, llm=llm, openai=OpenAiClient()))
+    # Task-based model router: COMMAND→Bielik 1.5B, RECOMMEND→Bielik 4.5B,
+    # OPEN_QA→gpt-5.5, all preferring the LAN Ollama 11B when reachable. It owns
+    # backend selection + graceful fallback; the engine degrades to Gemini/canned
+    # if the router (or every backend) is unavailable.
+    router = build_model_router()
+    await serve(Assistant(always_awake=not require_wake, router=router))
 
 
 def main() -> None:

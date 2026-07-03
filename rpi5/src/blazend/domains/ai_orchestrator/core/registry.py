@@ -14,10 +14,23 @@ import logging
 import os
 
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.ollama import OllamaLlm
+from blazend.domains.ai_orchestrator.core.model_router import ModelRouter
 from blazend.domains.local_ai.adapters.rpi5.localllm import LocalLlm
 from blazend.domains.local_ai.core.ports import LlmPort
 
 log = logging.getLogger("blazend.domains.ai_orchestrator.registry")
+
+
+def build_model_router() -> ModelRouter | None:
+    """Build the brain's task-based :class:`ModelRouter` (COMMAND→1.5B,
+    RECOMMEND→4.5B, OPEN_QA→gpt-5.5, all→11B-Ollama when reachable). Backends are
+    built lazily and individual build/availability failures degrade to the next
+    entry, so this returns a router unless construction itself fails."""
+    try:
+        return ModelRouter()
+    except Exception:  # noqa: BLE001 — degrade to the engine's Gemini/canned fallback
+        log.warning("ModelRouter unavailable; freeform chat falls back to Gemini/canned")
+        return None
 
 
 def select_chat_llm() -> LlmPort | None:

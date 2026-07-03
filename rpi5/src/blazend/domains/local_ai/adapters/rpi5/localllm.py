@@ -52,13 +52,16 @@ def models_root() -> Path:
     return repo_root() / "models"
 
 
-def resolve_model_path(cfg: Config) -> Path | None:
-    """Resolve the active CPU GGUF from ``llm.yaml``, or ``None`` if unset.
+def resolve_model_path(cfg: Config, name: str | None = None) -> Path | None:
+    """Resolve a CPU GGUF from ``llm.yaml``, or ``None`` if unset.
 
-    The model *name* contains dots (``qwen2.5-…``) so we index the ``models``
-    mapping directly rather than via :meth:`Config.get`'s dotted walk.
+    ``name`` picks a specific catalogue entry (e.g. ``bielik-1.5b-v3-instruct-q4_k_m``)
+    so the :class:`ModelRouter` can serve different local models per task; it
+    defaults to ``active_model``. The model *name* contains dots (``qwen2.5-…``)
+    so we index the ``models`` mapping directly rather than via
+    :meth:`Config.get`'s dotted walk.
     """
-    active = cfg.get("active_model")
+    active = name or cfg.get("active_model")
     if not active:
         return None
     active = str(active)
@@ -124,6 +127,13 @@ class _LlamaCppBackend:
         self._seed = seed
         self._max_tokens = max_tokens
 
+    def close(self) -> None:
+        """Release the native llama.cpp context + weights (frees RAM)."""
+        llm, self._llm = self._llm, None
+        close = getattr(llm, "close", None)
+        if callable(close):
+            close()
+
     def _messages(self, system: str, user: str) -> list[dict[str, str]]:
         return [
             {"role": "system", "content": system},
@@ -171,10 +181,12 @@ class LocalLlm:
         backend: LlmBackend | None = None,
         config_name: str = "llm",
         system_prompt: str | None = None,
+        model_name: str | None = None,
     ) -> None:
         cfg = load(config_name)
         self._cfg = cfg
-        self._model_path = resolve_model_path(cfg)
+        self.model_name = model_name or str(cfg.get("active_model", ""))
+        self._model_path = resolve_model_path(cfg, model_name)
         self.system_prompt = system_prompt or str(cfg.get("system_prompt", ""))
         self._backend = backend
         # Sampling / runtime, defaulting to the llm.yaml values.
@@ -240,3 +252,16 @@ class LocalLlm:
             yield backend.generate(system=sys, user=user)
             return
         yield from stream(system=sys, user=user)
+
+    def close(self) -> None:
+        """Free the loaded model's RAM. The :class:`ModelRouter` calls this to
+        evict one local Bielik before loading another on the 8 GB Pi (only one
+        large local model fits alongside Whisper + Piper). llama.cpp releases the
+        native weights when the backend is dropped; re-loads lazily on next chat."""
+        backend, self._backend = self._backend, None
+        close = getattr(backend, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:  # noqa: BLE001 — best-effort teardown
+                pass

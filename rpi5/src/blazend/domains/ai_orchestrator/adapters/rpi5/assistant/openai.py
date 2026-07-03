@@ -17,7 +17,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -91,6 +91,12 @@ class OpenAiClient:
         }
         resp = self._transport(_ENDPOINT, headers, body)
         return _extract_text(resp)
+
+    def chat_stream(self, user: str, *, system: str | None = None) -> Iterator[str]:
+        """Satisfy the ``Llm`` protocol: yield the whole reply as one chunk (no
+        token streaming from the completions transport). The engine's sentence
+        slicer still splits it for TTS."""
+        yield self.chat(user, system=system)
 
 
 def _extract_text(resp: dict[str, Any]) -> str:

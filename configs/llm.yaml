@@ -22,6 +22,31 @@ n_ctx: 4096
 summarise_at_tokens: 3072
 keep_last_turns: 8
 
+# Task-based model routing (the brain's ModelRouter). Each task lists the
+# backends to try IN ORDER; the first *available* one answers, the rest are
+# graceful fallbacks. Backend names: `ollama-11b` (remote GPU on paul, preferred
+# when reachable), `bielik-1.5b` / `bielik-4.5b` (on-device, one resident at a
+# time on the 8 GB Pi), `gpt-5.5` (OpenAI, only when a key is present).
+#   - command : quick brain replies / simple command-like chat  → small + fast
+#   - recommend: book & music recommendations, metadata/ontology/semantic
+#                reasoning (the multi-layer RAG)                 → richer Bielik
+#   - open_qa : open questions & web research (deep weather, advanced science,
+#               newest news)                                     → cloud first
+# `active_model` above stays the default for anything unrouted.
+routing:
+  single_local_model: true               # 8 GB: evict one local Bielik before loading another
+  ollama_probe_ttl_s: 30                 # cache the Ollama /api/version probe this long
+  tasks:
+    command:   [ollama-11b, bielik-1.5b]
+    recommend: [ollama-11b, bielik-4.5b]
+    open_qa:   [gpt-5.5, ollama-11b, bielik-4.5b]
+  # Per-backend catalogue mapping + optional per-call caps.
+  backends:
+    bielik-1.5b: { model: bielik-1.5b-v3-instruct-q4_k_m, max_tokens: 192 }
+    bielik-4.5b: { model: bielik-4.5b-v3-instruct-q6_k,   max_tokens: 320 }
+    ollama-11b:  { max_tokens: 512 }
+    gpt-5.5:     { max_tokens: 512 }
+
 system_prompt: |
   You are Dżesika (the Polish spelling of "Jessica" — always write your name
   this way), a voice-first personal assistant. You run on a Raspberry Pi 5 in

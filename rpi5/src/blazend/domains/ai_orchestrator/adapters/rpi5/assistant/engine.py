@@ -27,6 +27,7 @@ from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.weather import (
     WeatherError,
     describe_code,
 )
+from blazend.domains.ai_orchestrator.core.model_router import ModelRouter, Task
 from blazend.domains.context.adapters.rpi5.embeddings import EmbedderError, EmbedderLike
 from blazend.domains.context.adapters.rpi5.memory import MemoryStore, Note
 from blazend.domains.context.adapters.rpi5.timeparse import parse_when
@@ -171,6 +172,17 @@ _SITE = re.compile(
     r"\b(stron[aęy]|otwórz|otworz|sprawdź\s+na|sprawdz\s+na|site|open|summari[sz]e|streść|stresc)\b|https?://",
     re.IGNORECASE,
 )
+# Open knowledge questions (advanced science, "why/how does…", explanations,
+# web research) → route to OPEN_QA (gpt-5.5 first). Simple chat/commands stay on
+# the fast local model. Misrouting is harmless: with no OpenAI key OPEN_QA just
+# falls to the 11B/local Bielik anyway.
+_OPEN_QA = re.compile(
+    r"\b(dlaczego|czemu|wyja(ś|s)nij|wyt(ł|l)umacz|co\s+to\s+(jest|za)|czym\s+(jest|s(ą|a))|"
+    r"jak\s+(dzia(ł|l)a|dzia(ł|l)aj(ą|a)|powsta(ł|l)|to\s+mo(ż|z)liwe)|opowiedz\s+o|"
+    r"why|how\s+(does|do|did|to|is|are|can)|what\s+(is|are|causes|caused|happens)|"
+    r"explain|tell\s+me\s+about|who\s+(is|was|were))\b",
+    re.IGNORECASE,
+)
 # Strip the leading "to/że/mi/that" filler after a command verb.
 _REMEMBER_TAIL = re.compile(r"^(że|ze|to|that|:|,)\s+", re.IGNORECASE)
 # A time expression to split off a reminder's task text.
@@ -244,6 +256,7 @@ class Assistant:
         memory: MemoryStore | None = None,
         gemini: GeminiClient | None = None,
         llm: Llm | None = None,
+        router: ModelRouter | None = None,
         openai: OpenAiClient | None = None,
         embedder: EmbedderLike | None = None,
         weather: WeatherClient | None = None,
@@ -261,6 +274,10 @@ class Assistant:
         # On-device LLM for freeform chat. Defaults to None so unit tests stay
         # offline/deterministic; the runner injects a real LocalLlm().
         self.llm = llm
+        # Task-based backend router (COMMAND→1.5B, RECOMMEND→4.5B, OPEN_QA→gpt-5.5,
+        # all→11B-Ollama when up). When set it supersedes the legacy `llm`/`openai`
+        # chain in `_chat`; when None (unit tests) the legacy chain is used.
+        self.router = router
         # Weather via Open-Meteo (keyless, on-device HTTP). Lazily built so the
         # default (Kraków) is always available; tests inject a fake transport.
         self.weather = weather or WeatherClient()
@@ -409,7 +426,19 @@ class Assistant:
             return self._radio_stop(lang)
         if _RADIO_KW.search(text) or self.radio.resolve(text) is not None:
             return self._radio(text, lang)
-        return self._chat(text, lang, on_sentence=on_sentence, on_token=on_token)
+        return self._chat(text, lang, task=self._task_for(text),
+                          on_sentence=on_sentence, on_token=on_token)
+
+    def _task_for(self, text: str) -> Task:
+        """Pick the routing task for a freeform utterance. Open knowledge
+        questions (science, 'why/how does…', web research) → OPEN_QA (gpt-5.5
+        first); everything else → COMMAND (the fast on-device 1.5B)."""
+        t = text.strip()
+        if _OPEN_QA.search(t):
+            return Task.OPEN_QA
+        if t.endswith("?") and len(t.split()) >= 4:
+            return Task.OPEN_QA
+        return Task.COMMAND
 
     def _remember(self, text: str, lang: str, *, now: datetime) -> Reply:
         body = _REMEMBER.sub("", text, count=1).strip(" ,.:!")
@@ -685,6 +714,7 @@ class Assistant:
         text: str,
         lang: str,
         *,
+        task: Task = Task.COMMAND,
         on_sentence: OnSentence | None = None,
         on_token: OnToken | None = None,
     ) -> Reply:
@@ -694,28 +724,31 @@ class Assistant:
         if name:
             system += _t(lang, f" Użytkownik ma na imię {name}.", f" The user's name is {name}.")
         # Retrieve the user's relevant stored notes and inject them. Shared
-        # `system=` kwarg → this covers local LLM, OpenAI and Gemini uniformly.
+        # `system=` kwarg → this covers every backend uniformly.
         system += self._notes_context(text, lang)
-        # DOUBT fallback: when its key is set, the OpenAI cloud model (gpt-5.5) is
-        # PREFERRED for freeform / unclear requests — it interprets an ambiguous
-        # command-with-context better than the local model. It degrades gracefully:
-        # any OpenAI failure (incl. a connection outage) falls through to the local
-        # Bielik, which is also the private default when no key is set. Then Gemini,
-        # then the canned "needs a model/key" line.
-        if self.openai is not None and self.openai.available:
-            try:
-                answer = self.openai.chat(text, system=system)
-                return Reply(answer, lang, "chat", {"engine": "openai"})
-            except OpenAiError as e:
-                log.warning("OpenAI doubt-fallback failed (%s) — using local model", e)
-        if self.llm is not None and self.llm.available:
-            if on_sentence is not None:
-                return self._chat_stream_local(text, system, lang, on_sentence, on_token)
-            try:
-                answer = self.llm.chat(text, system=system)
-            except LlmError as e:
-                return Reply(_t(lang, f"Coś poszło nie tak: {e}", f"Something went wrong: {e}"), lang, "error")
-            return Reply(answer, lang, "chat", {"engine": "local"})
+        # Router path (production): try each available backend for this task in the
+        # configured order — COMMAND→1.5B, RECOMMEND→4.5B, OPEN_QA→gpt-5.5, all
+        # preferring the 11B-Ollama when reachable. Falls through to Gemini/canned.
+        if self.router is not None:
+            reply = self._route_chat(text, system, lang, task, on_sentence, on_token)
+            if reply is not None:
+                return reply
+        else:
+            # Legacy single-backend chain (unit tests inject llm/openai directly,
+            # no router). Local-first — OpenAI is only a fallback here; the new
+            # policy reserves the cloud for OPEN_QA, which the router handles.
+            if self.llm is not None and self.llm.available:
+                if on_sentence is not None:
+                    return self._chat_stream_backend(self.llm, "local", text, system, lang, on_sentence, on_token)
+                try:
+                    return Reply(self.llm.chat(text, system=system), lang, "chat", {"engine": "local"})
+                except LlmError as e:
+                    log.warning("local model failed (%s) — trying OpenAI/Gemini", e)
+            if self.openai is not None and self.openai.available:
+                try:
+                    return Reply(self.openai.chat(text, system=system), lang, "chat", {"engine": "openai"})
+                except OpenAiError as e:
+                    log.warning("OpenAI fallback failed (%s)", e)
         if self.gemini.available:
             try:
                 answer = self.gemini.chat(text, system=system)
@@ -729,27 +762,55 @@ class Assistant:
             lang, "chat", {"needs_key": True},
         )
 
-    def _chat_stream_local(
+    def _route_chat(
         self,
+        text: str,
+        system: str,
+        lang: str,
+        task: Task,
+        on_sentence: OnSentence | None,
+        on_token: OnToken | None,
+    ) -> Reply | None:
+        """Try each available backend for ``task`` in order; return the first
+        success, or ``None`` so ``_chat`` falls through to Gemini/canned. A
+        backend that fails BEFORE emitting anything is skipped for the next."""
+        for name, backend in self.router.route(task):  # type: ignore[union-attr]
+            try:
+                if on_sentence is not None:
+                    return self._chat_stream_backend(
+                        backend, name, text, system, lang, on_sentence, on_token, task=task)
+                answer = backend.chat(text, system=system)
+                return Reply(answer, lang, "chat", {"engine": name, "task": task.value})
+            except (LlmError, OpenAiError) as e:
+                log.warning("backend %s failed for %s (%s) — trying next", name, task.value, e)
+                continue
+        return None
+
+    def _chat_stream_backend(
+        self,
+        backend: Llm,
+        name: str,
         text: str,
         system: str,
         lang: str,
         on_sentence: OnSentence,
         on_token: OnToken | None,
+        *,
+        task: Task | None = None,
     ) -> Reply:
-        """Stream the local LLM, slicing into sentences for immediate TTS.
+        """Stream ``backend``, slicing into sentences for immediate TTS.
 
         Each completed sentence is handed to ``on_sentence`` the moment it ends,
-        so the runner can start speaking while later tokens are still generating.
-        Returns the full reply (``data["streamed"]=True`` so the caller knows the
-        sentences were already dispatched and must not re-speak the whole text).
+        so the runner can start speaking while later tokens generate. If the
+        backend fails BEFORE any token, the error propagates so the router can try
+        the next backend; a failure mid-stream keeps the partial (already-spoken)
+        reply. ``data["streamed"]=True`` tells the caller not to re-speak.
         """
-        assert self.llm is not None
         slicer = SentenceSlicer()
         parts: list[str] = []
         seen_token = False
         try:
-            for chunk in self.llm.chat_stream(text, system=system):
+            for chunk in backend.chat_stream(text, system=system):
                 if not seen_token:
                     seen_token = True
                     if on_token is not None:
@@ -759,9 +820,14 @@ class Assistant:
                     on_sentence(sentence, lang)
             for sentence in slicer.flush():
                 on_sentence(sentence, lang)
-        except LlmError as e:
-            return Reply(_t(lang, f"Coś poszło nie tak: {e}", f"Something went wrong: {e}"), lang, "error")
-        return Reply("".join(parts).strip(), lang, "chat", {"engine": "local", "streamed": True})
+        except (LlmError, OpenAiError):
+            if not seen_token:
+                raise  # nothing spoken yet → let the router fall to the next backend
+            log.warning("backend %s failed mid-stream — keeping partial reply", name)
+        data = {"engine": name, "streamed": True}
+        if task is not None:
+            data["task"] = task.value
+        return Reply("".join(parts).strip(), lang, "chat", data)
 
     # -- reminders due -------------------------------------------------
     def due_reminders(self, now: datetime) -> list[Reply]:
