@@ -80,10 +80,16 @@ async def _real_loop(pub: Publisher) -> None:
     rt = runtime_dir()
     ring = await _open_ring(rt / "audio-ring.shm")
     cap_s = float(load("wake-word").get("capture_window_s", 4.5))
-    # Below this i16 RMS the post-wake window is treated as a false wake (ambient
-    # /echo) and skipped rather than transcribed. Real speech into the Jabra is
-    # ~400+; ambient/echo false wakes sit ~100-370; real commands 440+.
-    min_rms = float(load("asr").get("min_capture_rms", 350.0))
+    # Noise-floor gate for the post-wake window. TWO floors: idle (no stream) uses
+    # the high floor — a clear command is ~400+, ambient false wakes ~100-200, so
+    # this drops hallucination-bait when nothing is playing. While a stream plays
+    # (speaker-busy marker) the Jabra's DSP attenuates the mic, so a command spoken
+    # over the (ducked) radio lands at only ~50-120 — use the low floor so real
+    # commands aren't dropped.
+    _cfg = load("asr")
+    min_rms = float(_cfg.get("min_capture_rms", 200.0))
+    min_rms_playing = float(_cfg.get("min_capture_rms_playing", 40.0))
+    speaker_busy = rt / "speaker-busy"
     transcriber = Transcriber()
     log.info("asr real path: model=%s ring=%dHz fixed-window=%.1fs",
              transcriber.model, ring.sample_rate, cap_s)
@@ -129,13 +135,10 @@ async def _real_loop(pub: Publisher) -> None:
         # captured the command (e.g. the Jabra's DSP gated it) and ASR will misread.
         rms = float(np.sqrt((np.asarray(pcm, dtype=np.float64) ** 2).mean())) if len(pcm) else 0.0
         log.info("fixed-window read %.1fs rms=%.0f", len(pcm) / ring.sample_rate, rms)
-        # Noise-floor gate: a wake fired but the window is near-silent → this was a
-        # false wake (the loose wake model firing on ambient/echo), not a spoken
-        # command. Transcribing it makes whisper hallucinate text → the LLM answers
-        # → endless unsolicited chatter. Drop it. A real command spoken into the
-        # Jabra sits well above this floor.
-        if rms < min_rms:
-            log.info("fixed-window rms=%.0f below floor %.0f — dropping (false wake)", rms, min_rms)
+        # Noise-floor gate (lower while a stream plays → the Jabra ducks the mic).
+        floor = min_rms_playing if speaker_busy.exists() else min_rms
+        if rms < floor:
+            log.info("fixed-window rms=%.0f below floor %.0f — dropping (false wake)", rms, floor)
             continue
         result = await asyncio.to_thread(transcriber.transcribe, pcm, ring.sample_rate)
         if result.text:

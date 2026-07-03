@@ -466,8 +466,12 @@ class Orchestrator:
         if result.data.get("key") == "audio.volume":
             try:
                 self._volume_pct = max(0, min(100, int(result.data.get("value"))))
-                if not self._ducked:  # while ducked, keep the low level until restore
-                    self._amixer(f"{self._volume_pct}%")
+                # Apply immediately, whichever the state. A volume command spoken
+                # over a playing stream ends the wake-duck too, so the radio jumps
+                # to the new level right away instead of waiting for the restore.
+                self._cancel_duck_restore()
+                self._ducked = False
+                self._amixer(f"{self._volume_pct}%")
                 log.info("volume → %d%%", self._volume_pct)
             except (TypeError, ValueError):
                 pass

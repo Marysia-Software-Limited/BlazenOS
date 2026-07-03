@@ -679,7 +679,10 @@ intents:
     triggers:
       pl:
         - "(wy(ł|l)(ą|a)cz|zatrzymaj|zga(ś|s)|przesta(ń|n)).*(radio|muzyk\\w*|stacj\\w*|gra\\w*)"
+        # bare stop commands (no "radio") — natural while a stream is playing
+        - "^\\W*(wy(ł|l)(ą|a)cz|zatrzymaj|przesta(ń|n)|stop|cisza|pauza|do(ś|s)(ć|c)|koniec)\\W*$"
       en:
         - "(stop|turn off|pause).*(radio|music|station|playing)"
+        - "^\\W*(stop|quiet|silence|pause|enough)\\W*$"
     action: tool_call
     tool: radio.stop

@@ -8,12 +8,14 @@ version: 1
 # EN-only `small.en` is kept for the `lang_mode: en_only` build flavour.
 # See docs/13-LANGUAGES.md and docs/05-MODELS.md.
 active: small                          # 8 GB baked default (medium needs 16 GB + a separate download)
-# Noise-floor gate for the post-wake capture window: below this i16 RMS the
-# window is treated as a FALSE wake (the loose wake model firing on ambient/echo)
-# and skipped instead of transcribed — otherwise whisper hallucinates text on
-# near-silence and the LLM answers it, spamming unsolicited chatter. Real speech
-# into the Jabra is ~400+; ambient/echo false wakes sit ~100-200.
-min_capture_rms: 350
+# Noise-floor gate for the post-wake capture window (below this i16 RMS the
+# window is skipped, not transcribed — avoids whisper hallucinating on silence).
+# TWO floors: `min_capture_rms` applies when idle (a clear command is ~400+, so
+# this drops ambient false wakes ~100-200); `min_capture_rms_playing` applies
+# while a stream plays (speaker-busy) — the Jabra's DSP attenuates the mic so a
+# command over the ducked radio lands at ~50-120, needing a much lower floor.
+min_capture_rms: 200
+min_capture_rms_playing: 40
 backend: faster-whisper
 compute_type: int8                     # int8 | int8_float32 | float16 (Hailo path overrides)
 beam_size: 5                           # push-to-talk → one short utterance at a time, so the

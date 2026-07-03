@@ -22,7 +22,7 @@ Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 # soft — no LED wired or SPI off → led.json stays the only status surface.
 # Override BLAZEN_LED_TYPE=apa102 for the legacy HAT chain, or =none to disable.
 Environment=BLAZEN_LED_TYPE=ws2812
-Environment=BLAZEN_LED_COUNT=1
+Environment=BLAZEN_LED_COUNT=3
 ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.domains.systems.adapters.rpi5.orchestrator
 Restart=on-failure
 RestartSec=2
