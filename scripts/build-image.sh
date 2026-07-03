@@ -107,14 +107,16 @@ EOF
 
 run_pi_gen() {
   log "Running pi-gen (this takes a while)"
-  local rc=0
-  ( cd "$BUILD_DIR/pi-gen" && CLEAN=1 ./build-docker.sh ) || rc=$?
   # pi-gen's build-docker.sh can exit non-zero during container teardown even
   # after the image was built successfully (it prints "Done!" then trips on a
-  # cleanup step). With `set -e` that would abort before post_convert and leave
-  # the finished image stranded in deploy/. So only fail if pi-gen did NOT
-  # finish — the authoritative signal is the "Build finished" line pi-gen writes
-  # to deploy/build.log at the end of a successful run.
+  # cleanup step). Under `set -e` that abort happens AT the subshell — before
+  # `|| rc=$?` runs — so bracket the call with an explicit `set +e`/`set -e`
+  # (the reliable form). Only fail if pi-gen did NOT finish — the authoritative
+  # signal is the "Build finished" line pi-gen writes to deploy/build.log.
+  set +e
+  ( cd "$BUILD_DIR/pi-gen" && CLEAN=1 ./build-docker.sh )
+  local rc=$?
+  set -e
   if [ "$rc" -ne 0 ]; then
     if grep -q "Build finished" "$BUILD_DIR/pi-gen/deploy/build.log" 2>/dev/null; then
       warn "build-docker.sh exited $rc after 'Build finished' (cleanup quirk); continuing to post_convert"
@@ -123,6 +125,7 @@ run_pi_gen() {
       exit "$rc"
     fi
   fi
+  return 0
 }
 
 post_convert() {
