@@ -147,12 +147,151 @@ fn open_http_icy(source: &str) -> Result<(StreamReader, Option<String>)> {
     Ok((Box::new(reader), content_type))
 }
 
+/// A `.m3u8` URL → HLS. Reliable path for capacity-capped Shoutcast stations
+/// (e.g. Trójka) whose CDN HLS has no listener cap.
+fn is_hls(s: &str) -> bool {
+    s.trim().split('?').next().unwrap_or("").to_ascii_lowercase().ends_with(".m3u8")
+}
+
+/// Resolve a possibly-relative playlist/segment reference against a playlist URL.
+fn resolve_url(base: &str, r: &str) -> String {
+    let r = r.trim();
+    if r.starts_with("http://") || r.starts_with("https://") {
+        return r.to_string();
+    }
+    match base.rfind('/') {
+        Some(i) => format!("{}{}", &base[..=i], r),
+        None => r.to_string(),
+    }
+}
+
+/// Length of a leading ID3v2 tag (Polskie Radio's `.aac` segments carry one), so
+/// the bytes handed to symphonia are clean ADTS-AAC.
+fn id3_len(buf: &[u8]) -> usize {
+    if buf.len() >= 10 && &buf[0..3] == b"ID3" {
+        let sz = ((buf[6] as usize & 0x7f) << 21)
+            | ((buf[7] as usize & 0x7f) << 14)
+            | ((buf[8] as usize & 0x7f) << 7)
+            | (buf[9] as usize & 0x7f);
+        (10 + sz).min(buf.len())
+    } else {
+        0
+    }
+}
+
+/// Live-HLS reader: polls a media (chunk) playlist and serves its `.aac` segments
+/// as one continuous ADTS-AAC byte stream for symphonia. Fetches block the decode
+/// thread — the ~10 s segments keep the jitter buffer well ahead.
+struct HlsReader {
+    agent: ureq::Agent,
+    origin: String,   // the URL we were given (master or media playlist)
+    media: String,    // resolved media (chunk) playlist URL
+    next_seq: u64,    // next EXT-X-MEDIA-SEQUENCE to play
+    started: bool,
+    buf: Vec<u8>,
+    pos: usize,
+}
+
+impl HlsReader {
+    fn new(url: &str) -> Result<Self> {
+        let agent = ureq::agent();
+        let media = Self::resolve_media(&agent, url)?;
+        Ok(Self { agent, origin: url.to_string(), media, next_seq: 0, started: false, buf: Vec::new(), pos: 0 })
+    }
+
+    fn get_text(agent: &ureq::Agent, url: &str) -> Result<String> {
+        Ok(agent.get(url).set("User-Agent", "blazend-player").call()?.into_string()?)
+    }
+
+    /// A master playlist (has EXT-X-STREAM-INF) → its first variant; else the URL
+    /// is already a media playlist.
+    fn resolve_media(agent: &ureq::Agent, url: &str) -> Result<String> {
+        let text = Self::get_text(agent, url)?;
+        if text.contains("#EXT-X-STREAM-INF") {
+            for line in text.lines() {
+                let l = line.trim();
+                if !l.is_empty() && !l.starts_with('#') {
+                    return Ok(resolve_url(url, l));
+                }
+            }
+        }
+        Ok(url.to_string())
+    }
+
+    /// Download the next unplayed segment into `buf` (polls for new segments; the
+    /// per-request chunklist token can expire → re-resolve from the origin).
+    fn load_next(&mut self) -> Result<()> {
+        for _ in 0..60 {
+            let text = match Self::get_text(&self.agent, &self.media) {
+                Ok(t) => t,
+                Err(_) => {
+                    self.media = Self::resolve_media(&self.agent, &self.origin)?;
+                    Self::get_text(&self.agent, &self.media)?
+                }
+            };
+            let mut base_seq = 0u64;
+            let mut segs: Vec<String> = Vec::new();
+            for line in text.lines() {
+                let l = line.trim();
+                if let Some(v) = l.strip_prefix("#EXT-X-MEDIA-SEQUENCE:") {
+                    base_seq = v.trim().parse().unwrap_or(0);
+                } else if !l.is_empty() && !l.starts_with('#') {
+                    segs.push(l.to_string());
+                }
+            }
+            if segs.is_empty() {
+                thread::sleep(Duration::from_secs(1));
+                continue;
+            }
+            let last = base_seq + segs.len() as u64 - 1;
+            if !self.started {
+                self.next_seq = last; // start at the live edge for low latency
+                self.started = true;
+            } else if self.next_seq < base_seq {
+                self.next_seq = base_seq; // fell behind (segments expired) → catch up
+            }
+            if self.next_seq > last {
+                thread::sleep(Duration::from_secs(2)); // wait for a fresh segment
+                continue;
+            }
+            let seg = &segs[(self.next_seq - base_seq) as usize];
+            let url = resolve_url(&self.media, seg);
+            let mut bytes = Vec::new();
+            self.agent.get(&url).set("User-Agent", "blazend-player").call()?
+                .into_reader().read_to_end(&mut bytes)?;
+            let skip = id3_len(&bytes);
+            self.buf = bytes.split_off(skip);
+            self.pos = 0;
+            self.next_seq += 1;
+            return Ok(());
+        }
+        Err(anyhow!("HLS: no playable segment after polling"))
+    }
+}
+
+impl Read for HlsReader {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        while self.pos >= self.buf.len() {
+            self.load_next()
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        }
+        let n = (self.buf.len() - self.pos).min(out.len());
+        out[..n].copy_from_slice(&self.buf[self.pos..self.pos + n]);
+        self.pos += n;
+        Ok(n)
+    }
+}
+
 /// Open the source as a symphonia media stream plus a format hint.
 fn open_media(source: &str) -> Result<(MediaSourceStream, Hint)> {
     let mut hint = Hint::new();
     if is_url(source) {
         let (reader, ct): (StreamReader, Option<String>) =
-            if source.trim().to_ascii_lowercase().starts_with("https://") {
+            if is_hls(source) {
+                // HLS: fetch + concatenate the .aac segments as one ADTS stream.
+                tracing::info!(%source, "opening HLS stream (aac segments)");
+                (Box::new(HlsReader::new(source)?), Some("audio/aac".to_string()))
+            } else if source.trim().to_ascii_lowercase().starts_with("https://") {
                 // TLS path: ureq handles the rustls handshake (assumes proper HTTP).
                 let resp = ureq::get(source)
                     .set("Icy-MetaData", "0")

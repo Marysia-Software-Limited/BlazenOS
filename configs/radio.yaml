@@ -27,7 +27,10 @@ stations:
     default: true
     aliases: [trójka, trojka, "program trzeci", "trzeci program", "polskie radio trójka",
               "polskie radio program 3", "program 3", "radio trójka", "channel three"]
-    url: "http://mp3.polskieradio.pl:8904/"
+    # CDN HLS (no listener cap). The Shoutcast mount (mp3.polskieradio.pl:8904)
+    # 401s "Service Unavailable" whenever Trójka is at capacity; the HLS stream
+    # (played by blazend-player's HLS reader) is reliable.
+    url: "https://stream13.polskieradio.pl/pr3/pr3.sdp/playlist.m3u8"
     tags: [polskie-radio, music, talk, pl]
 
   - id: radio-krakow
