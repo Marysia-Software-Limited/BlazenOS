@@ -31,6 +31,7 @@ from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.news import (
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.audiobooks import AudiobookDirectory
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.music import MusicDirectory
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.radio import RadioDirectory
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.semantic import SemanticLibrary
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.weather import (
     WeatherClient,
     WeatherError,
@@ -121,6 +122,7 @@ class Tools:
         self.radio = radio or RadioDirectory()
         self.music = music or MusicDirectory()
         self.audiobooks = AudiobookDirectory()
+        self.semantic = SemanticLibrary()  # voice semantic search over music + books
         self.persona = persona
 
     # -- dispatch ----------------------------------------------------------
@@ -150,6 +152,8 @@ class Tools:
             return self.music_play(str(args.get("query", "")), lang)
         if tool == "audiobook.play":
             return self.audiobook_play(str(args.get("query", "")), lang)
+        if tool == "library.search":
+            return self.library_search(str(args.get("query", "")), lang)
         return ToolResult(False, _t(lang, "Nie znam tego narzędzia.", "I don't know that tool."), "error")
 
     # -- context -----------------------------------------------------------
@@ -339,11 +343,8 @@ class Tools:
             return ToolResult(True, _t(lang, "Biblioteka muzyki jest pusta.", "The music library is empty."), "music_offer")
         track = self.music.resolve(query)
         if track is None:
-            return ToolResult(
-                True,
-                _t(lang, f"Nie znalazłam „{query}” w muzyce.", f"I couldn't find “{query}” in the music."),
-                "music_offer",
-            )
+            # No literal match → fall back to MEANING (e.g. "coś spokojnego").
+            return self.library_search(query, lang, kinds=("music",))
         who = f"{track.artist} — {track.title}" if track.artist else track.title
         return ToolResult(
             True, _t(lang, f"Gram {who}.", f"Playing {who}."),
@@ -356,6 +357,11 @@ class Tools:
             return ToolResult(True, _t(lang, "Nie mam jeszcze audiobooków.", "I have no audiobooks yet."), "audiobook_offer")
         book = self.audiobooks.resolve(query)
         if book is None:
+            # No literal match → try MEANING over the books before offering titles.
+            for item in self.semantic.search(query, k=1, kinds=("book",)):
+                played = self._play_item(item, lang)
+                if played is not None:
+                    return played
             titles = ", ".join(b.title for b in self.audiobooks.offer())
             return ToolResult(
                 True,
@@ -368,3 +374,24 @@ class Tools:
             True, _t(lang, f"Czytam: {who}.", f"Reading: {who}."),
             "music_play", {"path": book.chapters[0], "name": who},
         )
+
+    # -- semantic search (music + books BY MEANING) ------------------------
+    def _play_item(self, item: dict[str, Any], lang: str) -> ToolResult | None:
+        who = " — ".join(x for x in (item.get("who", ""), item.get("title", "")) if x)
+        if item.get("type") == "book":
+            ch = item.get("chapters") or []
+            return ToolResult(True, _t(lang, f"Czytam: {who}.", f"Reading: {who}."),
+                              "music_play", {"path": ch[0], "name": who}) if ch else None
+        path = str(item.get("path", ""))
+        return ToolResult(True, _t(lang, f"Gram {who}.", f"Playing {who}."),
+                          "music_play", {"path": path, "name": who}) if path else None
+
+    def library_search(self, query: str, lang: str, *, kinds: tuple[str, ...] | None = None) -> ToolResult:
+        """Semantic (meaning-based) search over the music + audiobook index → play
+        the best hit. Backs 'znajdź coś spokojnego' and the resolve fallbacks."""
+        for item in self.semantic.search(query, k=1, kinds=kinds):
+            played = self._play_item(item, lang)
+            if played is not None:
+                return played
+        return ToolResult(True, _t(lang, f"Nie znalazłam nic pasującego do „{query}”.",
+                                   f"I found nothing matching “{query}”."), "music_offer")

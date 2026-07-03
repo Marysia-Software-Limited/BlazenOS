@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 # mirror jessica_core::dispatch + configs/intents/system.yaml.
 _TOOL_INTENTS: frozenset[str] = frozenset({
     "weather.query", "news.brief", "web.lookup", "radio.play", "radio.stop", "music.play", "audiobook.play",
+    "library.search",
     "context.recall", "context.recall_reminders", "context.remember", "context.set_name",
     "context.add_reminder",
 })

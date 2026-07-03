@@ -703,6 +703,20 @@ intents:
     action: tool_call
     tool: radio.play
 
+  # SEMANTIC library search (music + audiobooks BY MEANING) — after the specific
+  # play intents, so "poszukaj/znajdź <coś>" that isn't a station/książka/zagraj
+  # lands here and searches the on-device e5 vector index. Notes/emails later.
+  - name: library_search
+    triggers:
+      pl:
+        - "\\b(poszukaj|wyszukaj|wy-?szukaj)\\b\\s+(?P<query>.+)"
+        - "\\bznajd(ź|z)\\b\\s+(?:co(ś|s)\\s+)?(?P<query>.+)"
+        - "\\b(pu(ś|s)(ć|c)|zagraj|w(ł|l)(ą|a)cz)\\s+co(ś|s)\\s+(?P<query>.+)"
+      en:
+        - "\\b(find|search)\\b\\s+(?:for\\s+|something\\s+)?(?P<query>.+)"
+    action: tool_call
+    tool: library.search
+
   - name: radio_stop
     triggers:
       pl:
