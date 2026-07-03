@@ -16,6 +16,11 @@ Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 # "set GEMINI_API_KEY / a local model" reply. Points at the real bake location
 # (same tree the embeddings + memory vector store use).
 Environment=BLAZEN_MODELS_DIR=/var/lib/blazen/models
+# Dev-rig GPU acceleration: prefer the remote Ollama Bielik 11B on paul (RTX 3090)
+# when reachable; the registry falls back to the baked local Bielik (4.5B/1.5B
+# GGUF) if the URL is unreachable (e.g. off the dev LAN), so this is safe to ship.
+Environment=BLAZEN_LLM_OLLAMA_URL=http://192.168.50.102:11434
+Environment=BLAZEN_LLM_OLLAMA_MODEL=SpeakLeash/bielik-11b-v2.3-instruct:Q8_0
 ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.domains.ai_orchestrator.adapters.rpi5.brain
 Restart=on-failure
 RestartSec=3

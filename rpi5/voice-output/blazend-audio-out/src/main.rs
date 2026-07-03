@@ -1,12 +1,12 @@
 //! `blazend-audio-out` — speaker playback.
 //!
 //! Real mode (M4): opens a `cpal` output stream on the configured device
-//! (temporarily HDMI — `vc4hdmi0` — since the ReSpeaker HAT has no speaker
-//! attached), subscribes to `tts.frame` from `blazend-tts`, reads the
-//! just-synthesised utterance's PCM from the shared-memory TTS ring
-//! (`tts-ring.shm`), resamples it to the device rate and plays it. With no
-//! usable output device it drops frames (like `--mock`). The mic path stays on
-//! the ReSpeaker HAT (`blazend-audio-in`); only output is HDMI.
+//! (the Jabra SPEAK 410 speakerphone — matched by the `USB` substring — which
+//! is both the mic and the speaker), subscribes to `tts.frame` from
+//! `blazend-tts`, reads the just-synthesised utterance's PCM from the
+//! shared-memory TTS ring (`tts-ring.shm`), resamples it to the device rate and
+//! plays it. With no usable output device it drops frames (like `--mock`). The
+//! mic path (`blazend-audio-in`) is the same Jabra USB device.
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -26,7 +26,7 @@ struct Args {
     /// Drop incoming TTS frames instead of touching audio hardware.
     #[arg(long)]
     mock: bool,
-    /// Output device name substring to prefer (e.g. `vc4hdmi0` for HDMI).
+    /// Output device name substring to prefer (e.g. `USB` for the Jabra SPEAK 410).
     #[arg(long, default_value = "default")]
     device: String,
 }

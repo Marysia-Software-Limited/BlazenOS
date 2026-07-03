@@ -8,7 +8,10 @@ Type=simple
 User=blazen
 Group=blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
-ExecStart=/usr/lib/blazen/bin/blazend-audio-out
+# --device is a case-insensitive substring of the cpal output name. The Jabra
+# SPEAK 410 speakerphone enumerates as CARD=USB, so `USB` selects it (mic + speaker
+# are the same device); falls back to the default sink if the Jabra is absent.
+ExecStart=/usr/lib/blazen/bin/blazend-audio-out --device USB
 Restart=on-failure
 RestartSec=2
 SupplementaryGroups=audio

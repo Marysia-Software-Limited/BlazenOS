@@ -33,9 +33,11 @@ input:
     max_speech_ms: 1500               # force-close cap → ~command-length segments
 
 output:
-  device: vc4hdmi0                    # TEMPORARY: HDMI, no speaker on the ReSpeaker
-                                      # HAT yet. Name-matched substring; falls back
-                                      # to any working HDMI port. Input stays the HAT.
+  device: USB                         # Jabra SPEAK 410 speakerphone (speaker). Same
+                                      # device as input — the Jabra is mic + speaker.
+                                      # Case-insensitive substring matched against the
+                                      # cpal device name (Jabra enumerates as CARD=USB);
+                                      # falls back to the default output if not found.
   sample_rate_hz: 22050               # Piper medium voices' native rate
   channels: 1
   ducking_db: -12                     # when wake fires, duck the rest by 12 dB
