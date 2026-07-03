@@ -666,13 +666,16 @@ intents:
   - name: radio_play
     triggers:
       pl:
-        - "(?:w(ł|l)(ą|a)cz|pu(ś|s)(ć|c)|nastaw|graj)\\b.*\\b(?P<query>trójk\\w*|trojk\\w*|jedynk\\w*|dwójk\\w*|dwojk\\w*|czwórk\\w*|czwork\\w*|rmf|nowy (ś|s)wiat)\\b"
-        # A PLAY verb + "radio" (NOT bare \bradio\b — that stole "wyłącz radio"
-        # from radio_stop; "wyłącz" is not a play verb so it no longer matches).
-        - "(?:w(ł|l)(ą|a)cz|pu(ś|s)(ć|c)|nastaw|graj|pos(ł|l)uchaj)\\b.*\\bradi[ao]\\b"
+        # PLAY verb + optional "radio", then capture the REST as the station
+        # query — resolved against radio.yaml aliases, so EVERY station works
+        # (kraków, 357, kultura, …), not a hard-coded list. "wyłącz" isn't a play
+        # verb, so stop commands fall through to radio_stop.
+        - "(?:w(ł|l)(ą|a)cz|pu(ś|s)(ć|c)|nastaw|graj|pos(ł|l)uchaj)\\s+(?:radi[ao]\\s+)?(?P<query>[\\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ].*)"
+        # bare "włącz radio" (no station) → the tool offers the headline stations
+        - "(?:w(ł|l)(ą|a)cz|pu(ś|s)(ć|c)|nastaw|graj) radi[ao]\\b"
       en:
-        - "play (the )?(?P<query>radio|rmf|[a-z ]+? (radio|station|fm))"
-        - "(turn on|put on) (the )?radio"
+        - "play (the )?(?P<query>radio|rmf|[a-z0-9 ]+? (radio|station|fm))"
+        - "(turn on|put on) (the )?(?:radio )?(?P<query>[a-z0-9 ]+)"
     action: tool_call
     tool: radio.play
 
