@@ -134,24 +134,61 @@ fi
 install -d -m 0755 /etc/sudoers.d
 printf 'blazen ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/010-blazen
 chmod 0440 /etc/sudoers.d/010-blazen
+
+# Operator login `beret` (the maintainer's account — the blazend services still
+# run as `blazen`). Same admin groups + NOPASSWD sudo; the SSH key is seeded into
+# ~beret/.ssh/authorized_keys in the DEV block below. A MISSING
+# ~beret/.ssh/authorized_keys has blocked SSH-after-reboot before, so it is baked
+# here rather than left to firstboot.
+if ! id beret >/dev/null 2>&1; then
+  useradd --create-home --shell /bin/bash --groups audio,plugdev,sudo,spi,gpio,i2c beret
+else
+  usermod --shell /bin/bash --append --groups audio,plugdev,sudo,spi,gpio,i2c beret
+  [ -d /home/beret ] || { mkhomedir_helper beret 2>/dev/null || true; }
+fi
+printf 'beret ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/011-beret
+chmod 0440 /etc/sudoers.d/011-beret
 systemctl enable ssh
 
 if [ -f "$STAGE/DEV_IMAGE" ]; then
-  echo "=== blazend chroot: DEV image (login blazen + ssh on + dev creds) ==="
-  # Known dev password for the serial console fallback; SSH prefers the
+  echo "=== blazend chroot: DEV image (login blazen + beret + ssh on + dev creds) ==="
+  # Known dev passwords for the serial console fallback; SSH prefers the
   # baked-in key. Never ships in a release image.
   echo 'blazen:blazen' | chpasswd
+  echo 'beret:beret' | chpasswd
   if [ -f "$STAGE/dev_authorized_keys" ]; then
-    install -d -m 0700 /home/blazen/.ssh
-    install -m 0600 "$STAGE/dev_authorized_keys" /home/blazen/.ssh/authorized_keys
-    chown -R blazen:blazen /home/blazen/.ssh
+    for u in blazen beret; do
+      install -d -m 0700 "/home/$u/.ssh"
+      install -m 0600 "$STAGE/dev_authorized_keys" "/home/$u/.ssh/authorized_keys"
+      chown -R "$u:$u" "/home/$u/.ssh"
+    done
   fi
 else
-  echo "=== blazend chroot: RELEASE image (login blazen + ssh on, key-only) ==="
-  # Fail-closed: lock the password so only an operator-provisioned pubkey
+  echo "=== blazend chroot: RELEASE image (login blazen + beret + ssh on, key-only) ==="
+  # Fail-closed: lock the passwords so only an operator-provisioned pubkey
   # (via firstboot) can authenticate. No key ships in the image.
   passwd --lock blazen || true
+  passwd --lock beret || true
 fi
+
+# --- System locale (English) + keyboard (Polish) --------------------------
+# The maintainer's setup: English UI/locale, physical Polish keyboard. This is
+# the OS locale for the shell/SSH only — the VOICE language stays Polish-first at
+# runtime (languages.enabled: [pl]); the two are independent.
+if [ -f /etc/locale.gen ]; then
+  sed -i 's/^# *\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen
+  grep -q '^en_US.UTF-8 UTF-8' /etc/locale.gen || echo 'en_US.UTF-8 UTF-8' >> /etc/locale.gen
+  locale-gen 2>/dev/null || true
+fi
+echo 'LANG=en_US.UTF-8' > /etc/default/locale
+cat > /etc/default/keyboard <<'KBD'
+XKBMODEL="pc105"
+XKBLAYOUT="pl"
+XKBVARIANT=""
+XKBOPTIONS=""
+BACKSPACE="guess"
+KBD
+echo "=== blazend chroot: locale en_US.UTF-8 + keyboard pl ==="
 
 mkdir -p /var/lib/blazen /run/blazen
 chown -R blazen:blazen /var/lib/blazen /run/blazen "$INSTALL_DIR"

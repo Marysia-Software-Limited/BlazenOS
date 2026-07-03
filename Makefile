@@ -98,7 +98,7 @@ rust-aarch64: ## Cross-build Rust crates for Pi 5 (aarch64-unknown-linux-gnu)
 	@if [ -x "$(CROSS)" ] || command -v "$(CROSS)" >/dev/null 2>&1; then \
 	  echo "Using $(CROSS) for aarch64 cross-build"; \
 	  cd "$(REPO_ROOT)/domains" && "$(CROSS)" build --release --workspace --target $(RUST_TARGET); \
-	  cd "$(REPO_ROOT)/rpi5/crates" && "$(CROSS)" build --release --workspace --target $(RUST_TARGET); \
+	  cd "$(REPO_ROOT)/rpi5/crates" && BLAZEN_REPO="$(REPO_ROOT)" "$(CROSS)" build --release --workspace --target $(RUST_TARGET); \
 	else \
 	  echo "cross not found at $(CROSS); falling back to cargo (needs ALSA aarch64 sysroot)"; \
 	  cd "$(REPO_ROOT)/domains" && $(CARGO) build --release --workspace --target $(RUST_TARGET); \

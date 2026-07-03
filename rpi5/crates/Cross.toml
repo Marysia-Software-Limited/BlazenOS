@@ -1,0 +1,17 @@
+# The rpi5/crates workspace has members + path deps that live OUTSIDE this
+# directory (../voice-input, ../voice-output, ../../domains) after the Phase-3
+# domain relocation. cross only mounts the crate dir by default, so those paths
+# vanish inside the container ("failed to read …/blazend-audioring/Cargo.toml").
+# Mount the whole repo (env var → host path mounted at the identical container
+# path) so every member/dep resolves.
+[build.env]
+volumes = ["BLAZEN_REPO"]
+
+# cpal/alsa-sys link libasound; the default cross image lacks the arm64 dev
+# package, so install it in the container before building.
+[target.aarch64-unknown-linux-gnu]
+pre-build = [
+  "dpkg --add-architecture arm64",
+  "apt-get update",
+  "apt-get install --assume-yes libasound2-dev:arm64",
+]
