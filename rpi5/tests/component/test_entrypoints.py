@@ -110,14 +110,16 @@ async def test_asr_open_ring_timeout(monkeypatch, tmp_path):
 
 class _FakeRing:
     sample_rate = 16_000
+    capacity = 16_000 * 10  # 10 s ring
 
     def __init__(self) -> None:
-        self.write_pos = 1000
+        self.write_pos = 16_000 * 5  # 5 s of audio written
 
     def read_range(self, start, end):  # noqa: ANN001
         import numpy as np
 
-        return np.zeros(end - start, dtype=np.int16)
+        # Loud constant tone so the post-wake capture clears the RMS/peak floor.
+        return np.full(max(0, end - start), 4000, dtype=np.int16)
 
 
 class _FakeTranscript:
@@ -135,7 +137,7 @@ class _FakeTranscriber:
 
 
 class _OneShotSub:
-    """Async-iterable subscriber that yields vad.start then vad.end, then stops."""
+    """Async-iterable subscriber that yields the given envelopes, then stops."""
 
     def __init__(self, envs: list[Envelope]) -> None:
         self._envs = iter(envs)
@@ -152,7 +154,7 @@ class _OneShotSub:
 
 @pytest.mark.asyncio
 async def test_asr_real_loop_transcribes_and_publishes(monkeypatch, tmp_path):
-    """`_real_loop`: vad.start/vad.end → transcribe → asr.final published."""
+    """`_real_loop`: wake.detected → fixed-window capture → transcribe → asr.final published."""
     import blazend.domains.voice_input.adapters.rpi5.asr.engine as engine
 
     monkeypatch.setattr(engine, "Transcriber", _FakeTranscriber)
@@ -161,15 +163,13 @@ async def test_asr_real_loop_transcribes_and_publishes(monkeypatch, tmp_path):
     async def fake_open_ring(_path, timeout=30.0):  # noqa: ANN001
         return _FakeRing()
 
-    sub = _OneShotSub(
-        [
-            Envelope(topic="vad.start", source="audio", data={}),
-            Envelope(topic="vad.end", source="audio", data={}),
-        ]
-    )
+    async def fast_sleep(_s: float) -> None:  # skip the post-wake capture wait
+        return None
+
+    monkeypatch.setattr(asr_main.asyncio, "sleep", fast_sleep)
 
     async def fake_connect(_sock):  # noqa: ANN001
-        return sub
+        return _OneShotSub([Envelope(topic="wake.detected", source="wake", data={}, ts_ms=3000)])
 
     monkeypatch.setattr(asr_main, "_open_ring", fake_open_ring)
     monkeypatch.setattr(asr_main, "_connect", fake_connect)
@@ -225,13 +225,13 @@ async def test_asr_real_loop_no_text_emits_error(monkeypatch, tmp_path):
     async def fake_open_ring(_path, timeout=30.0):  # noqa: ANN001
         return _FakeRing()
 
+    async def fast_sleep(_s: float) -> None:
+        return None
+
+    monkeypatch.setattr(asr_main.asyncio, "sleep", fast_sleep)
+
     async def fake_connect(_sock):  # noqa: ANN001
-        return _OneShotSub(
-            [
-                Envelope(topic="vad.start", source="audio", data={}),
-                Envelope(topic="vad.end", source="audio", data={}),
-            ]
-        )
+        return _OneShotSub([Envelope(topic="wake.detected", source="wake", data={}, ts_ms=3000)])
 
     monkeypatch.setattr(asr_main, "_open_ring", fake_open_ring)
     monkeypatch.setattr(asr_main, "_connect", fake_connect)
@@ -282,8 +282,7 @@ async def test_brain_run_real_builds_engine_and_serves(monkeypatch):
         served["engine"] = engine
 
     monkeypatch.setattr(brain_main, "serve", fake_serve)
-    monkeypatch.setattr(brain_main, "select_chat_llm", lambda: object())
-    monkeypatch.setattr(brain_main, "OpenAiClient", lambda: object())
+    monkeypatch.setattr(brain_main, "build_model_router", lambda: object())
 
     await brain_main.run(mock=False)
     assert served["engine"] is not None
@@ -298,8 +297,7 @@ async def test_brain_run_real_degrades_when_llm_unavailable(monkeypatch):
         served["engine"] = engine
 
     monkeypatch.setattr(brain_main, "serve", fake_serve)
-    monkeypatch.setattr(brain_main, "select_chat_llm", lambda: None)
-    monkeypatch.setattr(brain_main, "OpenAiClient", lambda: object())
+    monkeypatch.setattr(brain_main, "build_model_router", lambda: None)
 
     await brain_main.run(mock=False)
     assert served["engine"] is not None
@@ -317,8 +315,7 @@ async def test_brain_run_real_degrades_when_wake_config_unreadable(monkeypatch):
 
     monkeypatch.setattr(brain_main, "load", bad_load)
     monkeypatch.setattr(brain_main, "serve", fake_serve)
-    monkeypatch.setattr(brain_main, "select_chat_llm", lambda: object())
-    monkeypatch.setattr(brain_main, "OpenAiClient", lambda: object())
+    monkeypatch.setattr(brain_main, "build_model_router", lambda: object())
 
     await brain_main.run(mock=False)
     assert served["engine"] is not None
