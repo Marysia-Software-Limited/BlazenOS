@@ -18,6 +18,13 @@ Each surface owns its own `README.md`, `AGENTS.md`, `CLAUDE.md`, and
 `Makefile`. The monorepo root never overrides per-surface behaviour —
 it provides the **shared core** and the **shared docs**.
 
+> **New: a fourth node — [`macos/`](../macos/) (rachel).** Not a phone app but a
+> full Jessica **host** on Apple Silicon that uses MLX/Metal for on-device LLM and
+> joins a **shared LLM mesh + context** with the Pi (`jessica`) and Linux (`paul`)
+> nodes via DSPy + `blazend-fabric`. See [`macos/docs/00-CONTEXT.md`](../macos/docs/00-CONTEXT.md)
+> and [`macos/docs/03-LLM-MESH.md`](../macos/docs/03-LLM-MESH.md). Scaffold/design
+> only so far — to be built by a separate Claude session on the Mac.
+
 ## 2. The shared core
 
 ```
