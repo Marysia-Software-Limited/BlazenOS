@@ -32,8 +32,12 @@ log = logging.getLogger("blazend.domains.systems.adapters.rpi5.orchestrator")
 # Jabra SPEAK 410 output-volume control (voice volume commands + radio ducking).
 _JABRA_CARD = "USB"       # ALSA card id of the Jabra speakerphone
 _JABRA_MIXER = "PCM"      # its playback volume control
-_DUCK_PCT = 8             # Jabra output % while listening over a playing stream
-_DUCK_WINDOW_S = 6.0      # restore volume if no radio command follows the wake
+# Duck HARD (near-mute) while listening over a playing stream: the Jabra is a
+# speakerphone whose DSP gates the mic when it plays loud, so at 8% commands still
+# came through at only ~45-180 RMS (often dropped). ~2% un-gates the mic for a
+# clean capture; the stream keeps running (not stopped), so it restores instantly.
+_DUCK_PCT = 2             # Jabra output % while listening over a playing stream
+_DUCK_WINDOW_S = 7.0      # restore volume if no command follows the wake (covers the ~5 s ASR window)
 _DEFAULT_VOLUME_PCT = 30  # startup output volume (kept low: less speaker→mic echo)
 
 DEFAULT_PEERS: tuple[str, ...] = (
