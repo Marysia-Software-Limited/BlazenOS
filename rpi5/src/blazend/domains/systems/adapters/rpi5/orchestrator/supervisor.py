@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import subprocess
 from collections.abc import Iterable
 from pathlib import Path
@@ -68,6 +69,11 @@ class Orchestrator:
         self._require_wake, self._wake_window_s = self._load_wake_gating()
         self._awake_until = 0.0  # loop-clock deadline; speech acts only before it
         self._radio = RadioControl()  # internet-radio playback
+        # Local music/audiobook playback KILL SWITCH. Its in-play controls (stop /
+        # next / volume) are being fixed; while BLAZEN_MUSIC_ENABLED=0 the fast
+        # path speaks a notice instead of starting an unstoppable local track.
+        # Radio (internet streams) is unaffected. Default: enabled.
+        self._music_enabled = os.environ.get("BLAZEN_MUSIC_ENABLED", "1") != "0"
         self._stop = asyncio.Event()
         self._subscribers: list[tuple[str, Subscriber]] = []
         # Half-duplex speaker: the Jabra is a speakerphone whose echo-cancellation
@@ -520,11 +526,20 @@ class Orchestrator:
                 "name": str(result.data.get("name", "")),
             }
         elif tool in ("music.play", "music.next", "audiobook.play") and result.data.get("path"):
-            data["action"] = "music_play"  # local file → same exclusive player
-            data["payload"] = {
-                "path": str(result.data["path"]),
-                "name": str(result.data.get("name", "")),
-            }
+            if not self._music_enabled:
+                # Local music/audiobook playback is temporarily disabled (its
+                # in-play controls — stop / next / volume — are being fixed). Speak
+                # a notice instead of starting an unstoppable track. Radio is
+                # unaffected. Re-enable by unsetting BLAZEN_MUSIC_ENABLED=0.
+                msg = "Odtwarzacz muzyki jest chwilowo wyłączony, naprawiam sterowanie."
+                data["text"] = data["chunk"] = msg
+                data["action"] = "command.music_disabled"
+            else:
+                data["action"] = "music_play"  # local file → same exclusive player
+                data["payload"] = {
+                    "path": str(result.data["path"]),
+                    "name": str(result.data.get("name", "")),
+                }
         elif tool == "radio.stop":
             data["action"] = "radio_stop"
         return Envelope(
