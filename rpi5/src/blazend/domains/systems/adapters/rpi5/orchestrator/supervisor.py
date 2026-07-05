@@ -10,14 +10,19 @@ M1 scope:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import subprocess
 from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from blazend.config import load as load_config
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.audiobook_progress import (
+    AudiobookProgress,
+)
 from blazend.domains.ai_orchestrator.adapters.rpi5.dispatch import IntentDispatcher, SettingsStore
 from blazend.domains.systems.adapters.rpi5.led import PipelineLeds
 from blazend.domains.systems.adapters.rpi5.led_hw import open_status_led
@@ -83,6 +88,13 @@ class Orchestrator:
         # can restore it after a stop.
         self._last_source = ""
         self._last_source_name = ""
+        # Now-playing AUDIOBOOK state: {slug, chapters:[...], index, name} (None for
+        # music/radio). The player writes its live position to `_position_file`; the
+        # orchestrator reads it to remember/resume and to auto-advance chapters.
+        self._book: dict[str, Any] | None = None
+        self._position_file = self._runtime_dir / "player-position"
+        self._book_stopping = False  # user stop (vs natural EOF) — suppresses auto-advance
+        self._book_progress = AudiobookProgress()  # sole writer of progress.json
         self._stop = asyncio.Event()
         self._subscribers: list[tuple[str, Subscriber]] = []
         # Half-duplex speaker: the Jabra is a speakerphone whose echo-cancellation
@@ -255,6 +267,7 @@ class Orchestrator:
 
         # Own audio-out for half-duplex (keeps the Jabra mic un-ducked while idle).
         asyncio.create_task(self._speaker_manager())
+        asyncio.create_task(self._book_watcher())  # auto-advance audiobook chapters
 
         # Connect to every peer (idempotent; missing peers are retried lazily).
         for name in self._peers:
@@ -457,18 +470,38 @@ class Orchestrator:
             # Remember the last source so "kontynuj" can restore it after a stop.
             self._last_source = source
             self._last_source_name = str(payload.get("name", ""))
+            # Audiobook? track the book so we can auto-advance chapters, remember
+            # position (via the player's position-file) and resume.
+            start_seconds, position_file = 0.0, ""
+            if payload.get("is_audiobook"):
+                self._book = {
+                    "slug": str(payload.get("slug", "")),
+                    "chapters": list(payload.get("chapters", [])),
+                    "index": int(payload.get("chapter", 0)),
+                    "name": self._last_source_name,
+                }
+                self._book_stopping = False
+                start_seconds = float(payload.get("start_seconds", 0.0))
+                position_file = str(self._position_file)
+                self._position_file.unlink(missing_ok=True)  # stale-guard
+            else:
+                self._book = None  # music/radio → not a book
             self._cancel_duck_restore()  # a real play command supersedes a duck
             # Free the Jabra output for playback; the reconciler keeps audio-out
             # down while it plays.
             self._speak_until = 0.0
             await self._apply_audio_out(False)
             await asyncio.sleep(0.3)  # let the device release
-            await asyncio.to_thread(self._radio.play, source, str(payload.get("name", "")))
+            await asyncio.to_thread(self._radio.play, source, self._last_source_name,
+                                    position_file=position_file, start_seconds=start_seconds)
             await self._duck_off()  # play at the user's volume
             # Suppress the VAD while it plays so the Jabra hearing its own output
             # can't trigger a barge-in ("dżesika" still interrupts via wake).
             self._speaker_busy.touch()
         elif action in ("radio_stop", "music_stop"):
+            self._book_stopping = True  # a user stop → the watcher must not auto-advance
+            self._save_book_progress()  # remember where we were before killing the player
+            self._book = None
             self._cancel_duck_restore()
             self._ducked = False
             await asyncio.to_thread(self._radio.stop)
@@ -478,6 +511,67 @@ class Orchestrator:
             # A spoken reply (LLM chat, or a non-radio command confirmation) —
             # bring audio-out up to play it.
             self._mark_speaking()
+
+    # -- audiobook engine ----------------------------------------------
+    def _read_position(self) -> tuple[float, bool]:
+        """Read ``{seconds, done}`` the player writes to the position-file."""
+        try:
+            d = json.loads(self._position_file.read_text(encoding="utf-8"))
+            return float(d.get("seconds", 0.0)), bool(d.get("done", False))
+        except (OSError, ValueError):
+            return 0.0, False
+
+    def _save_book_progress(self) -> None:
+        """Persist the current book's chapter + offset so 'czytaj dalej' resumes here."""
+        if not self._book or not self._book.get("slug"):
+            return
+        offset, _done = self._read_position()
+        self._book_progress.save(
+            self._book["slug"], chapter=int(self._book["index"]), offset_s=offset,
+            title=str(self._book.get("name", "")),
+            updated=datetime.now(UTC).isoformat(timespec="seconds"))
+
+    async def _speak(self, text: str, lang: str = "pl") -> None:
+        """Say something proactively (attention prompt / 'finished the book')."""
+        self._mark_speaking()
+        await self._publisher.publish(Envelope(
+            topic="brain.reply", source="blazend-orchestrator",
+            data={"language": lang, "text": text, "chunk": text, "final_": True,
+                  "action": "system.notice"}))
+
+    async def _play_book_chapter(self, book: dict[str, Any], index: int) -> None:
+        """Play chapter ``index`` of ``book`` from the top (auto-advance / nav)."""
+        book["index"] = index
+        self._book = book
+        self._book_stopping = False
+        self._position_file.unlink(missing_ok=True)
+        self._last_source = str(book["chapters"][index])
+        self._last_source_name = str(book.get("name", ""))
+        await self._apply_audio_out(False)
+        await asyncio.sleep(0.3)
+        await asyncio.to_thread(self._radio.play, self._last_source, self._last_source_name,
+                                position_file=str(self._position_file), start_seconds=0.0)
+        self._speaker_busy.touch()
+        log.info("audiobook chapter %d/%d — %s", index + 1, len(book["chapters"]), self._last_source_name)
+
+    async def _book_watcher(self) -> None:
+        """Auto-advance chapters: when an audiobook's player exits on its OWN (a
+        chapter reached EOF, not a user stop), start the next chapter; at the last
+        chapter, announce the end and clear progress."""
+        while not self._stop.is_set():
+            await asyncio.sleep(1.0)
+            book = self._book
+            if book is None or self._book_stopping or self._radio.playing:
+                continue
+            _offset, done = self._read_position()
+            nxt = int(book["index"]) + 1
+            if done and nxt < len(book["chapters"]):
+                await self._play_book_chapter(book, nxt)
+            else:
+                if done:  # ran off the end of the last chapter → finished
+                    self._book_progress.clear(str(book.get("slug", "")))
+                    await self._speak("Skończyłam książkę.")
+                self._book = None  # not playing anymore
 
     def _dispatch_intent(self, env: Envelope) -> Envelope | None:
         """Act on a fast-path `nlu.intent`; return the spoken reply (if any)."""
@@ -529,7 +623,7 @@ class Orchestrator:
         # actually audible (the dispatcher only updates the stored value).
         if result.data.get("key") == "audio.volume":
             try:
-                self._volume_pct = max(0, min(100, int(result.data.get("value"))))
+                self._volume_pct = max(0, min(100, int(result.data.get("value") or 0)))
                 # Apply immediately, whichever the state. A volume command spoken
                 # over a playing stream ends the wake-duck too, so the radio jumps
                 # to the new level right away instead of waiting for the restore.
@@ -575,6 +669,16 @@ class Orchestrator:
                     "path": str(result.data["path"]),
                     "name": str(result.data.get("name", "")),
                 }
+                # Audiobooks carry the whole book so the orchestrator can auto-advance
+                # chapters, remember the position, and resume.
+                if result.data.get("is_audiobook"):
+                    data["payload"].update({
+                        "is_audiobook": True,
+                        "slug": str(result.data.get("slug", "")),
+                        "chapters": list(result.data.get("chapters", [])),
+                        "chapter": int(result.data.get("chapter", 0)),
+                        "start_seconds": float(result.data.get("start_seconds", 0.0)),
+                    })
         elif tool == "radio.stop":
             data["action"] = "radio_stop"
         return Envelope(

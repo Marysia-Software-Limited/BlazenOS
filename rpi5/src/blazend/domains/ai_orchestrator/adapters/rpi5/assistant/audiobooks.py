@@ -28,6 +28,7 @@ class Book:
     title: str
     author: str
     chapters: tuple[str, ...]
+    slug: str = ""                       # stable id — the progress key
     _title: set[str] = field(default_factory=set, repr=False)
     _author: set[str] = field(default_factory=set, repr=False)
 
@@ -45,8 +46,12 @@ class AudiobookDirectory:
             if not chapters:
                 continue
             title, author = str(b.get("title", "")), str(b.get("author", ""))
-            self.books.append(Book(title=title, author=author, chapters=chapters,
+            slug = str(b.get("slug", "")) or _fold(title).replace(" ", "-")
+            self.books.append(Book(title=title, author=author, chapters=chapters, slug=slug,
                                    _title=_tokens(title), _author=_tokens(author)))
+
+    def by_slug(self, slug: str) -> Book | None:
+        return next((b for b in self.books if b.slug == slug), None)
 
     @property
     def available(self) -> bool:

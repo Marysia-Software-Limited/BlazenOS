@@ -20,7 +20,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.audiobooks import AudiobookDirectory
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.audiobook_progress import (
+    AudiobookProgress,
+)
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.audiobooks import (
+    AudiobookDirectory,
+    Book,
+)
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.gemini import (
     GeminiClient,
     GeminiError,
@@ -392,28 +398,44 @@ class Tools:
         return ToolResult(True, _t(lang, "To już pierwszy utwór.", "This is the first track."), "music_offer")
 
     # -- audiobooks (offline, from catalog.json) ---------------------------
+    def _book_result(self, book: Book, lang: str) -> ToolResult:
+        """Play a book — RESUME at the saved chapter+offset if we've heard it
+        before, else start from chapter 0. The payload carries the whole book so
+        the orchestrator can auto-advance chapters, remember position, and resume."""
+        who = f"{book.author} — {book.title}" if book.author else book.title
+        prog = AudiobookProgress().get(book.slug) or {}  # fresh read; supervisor is the writer
+        chapter = int(prog.get("chapter", 0))
+        offset = float(prog.get("offset_s", 0.0))
+        resumed = bool(prog) and (chapter > 0 or offset > 5.0)
+        if chapter >= len(book.chapters):
+            chapter, offset, resumed = 0, 0.0, False
+        lead = (_t(lang, f"Wznawiam: {who}.", f"Resuming: {who}.") if resumed
+                else _t(lang, f"Czytam: {who}.", f"Reading: {who}."))
+        return ToolResult(True, lead, "music_play", {
+            "path": book.chapters[chapter], "name": who,
+            "is_audiobook": True, "slug": book.slug,
+            "chapters": list(book.chapters), "chapter": chapter,
+            "start_seconds": offset,
+        })
+
     def audiobook_play(self, query: str, lang: str) -> ToolResult:
         if not self.audiobooks.available:
             return ToolResult(True, _t(lang, "Nie mam jeszcze audiobooków.", "I have no audiobooks yet."), "audiobook_offer")
         book = self.audiobooks.resolve(query)
         if book is None:
-            # No literal match → try MEANING over the books before offering titles.
+            # No literal match → try MEANING; map the top book hit back to a Book
+            # (by title) so it still gets the full resume/chapter engine.
             for item in self.semantic.search(query, k=1, kinds=("book",)):
-                played = self._play_item(item, lang)
-                if played is not None:
-                    return played
+                b = self.audiobooks.resolve(item.get("title", ""))
+                if b is not None:
+                    return self._book_result(b, lang)
             titles = ", ".join(b.title for b in self.audiobooks.offer())
             return ToolResult(
                 True,
                 _t(lang, f"Nie znalazłam „{query}”. Mam: {titles}.", f"I couldn't find “{query}”. I have: {titles}."),
                 "audiobook_offer",
             )
-        who = f"{book.author} — {book.title}" if book.author else book.title
-        # Start at the first chapter (played as a local file, like music).
-        return ToolResult(
-            True, _t(lang, f"Czytam: {who}.", f"Reading: {who}."),
-            "music_play", {"path": book.chapters[0], "name": who},
-        )
+        return self._book_result(book, lang)
 
     # -- semantic search (music + books BY MEANING) ------------------------
     def _play_item(self, item: dict[str, Any], lang: str) -> ToolResult | None:
