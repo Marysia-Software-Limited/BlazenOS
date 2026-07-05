@@ -1,0 +1,353 @@
+{
+ "version": 1,
+ "generated_from": "/tmp/claude-1000/-home-beret-dev-blazen-os/34096747-9e51-453d-9906-3f2fbece0c95/scratchpad/catalog.json",
+ "genres": [
+  "Akt prawny",
+  "Anakreontyk, Fraszka",
+  "Bajka",
+  "Bajka ludowa",
+  "Bajka, Przypowieść",
+  "Ballada",
+  "Ballada, Wiersz",
+  "Baśń",
+  "Baśń, powieść obyczajowa",
+  "Dedykacja",
+  "Dedykacja, Motto",
+  "Dialog",
+  "Dramat poetycki",
+  "Dramat romantyczny",
+  "Dramat szekspirowski, Tragedia",
+  "Dramat współczesny",
+  "Epigramat",
+  "Epos",
+  "Esej",
+  "Fraszka",
+  "Hymn",
+  "Kazanie",
+  "Komedia",
+  "Komedia, Tragifarsa",
+  "Legenda",
+  "List",
+  "Nowela",
+  "Oda",
+  "Opowiadanie",
+  "Pamiętnik",
+  "Pieśń",
+  "Plankt",
+  "Poemat",
+  "Poemat alegoryczny",
+  "Poemat dygresyjny",
+  "Poemat heroikomiczny",
+  "Powiastka filozoficzna",
+  "Powieść",
+  "Powieść epistolarna",
+  "Powieść poetycka",
+  "Reportaż podróżniczy",
+  "Romans",
+  "Rozprawa",
+  "Rozprawa polityczna",
+  "Satyra",
+  "Sielanka",
+  "Sonet",
+  "Tragedia",
+  "Traktat",
+  "Tren",
+  "Wiersz",
+  "Wiersz sylabotoniczny",
+  "Wiersz, Wiersz sylabotoniczny",
+  "chanson de geste",
+  "powieść dla dzieci i młodzieży",
+  "powieść dworna",
+  "powieść fantastyczna",
+  "powieść grozy",
+  "powieść historyczna",
+  "powieść kryminalna",
+  "powieść obyczajowa",
+  "powieść przygodowa",
+  "powieść psychologiczna"
+ ],
+ "epochs": [
+  "Barok",
+  "Dwudziestolecie międzywojenne",
+  "Modernizm",
+  "Modernizm, Dwudziestolecie międzywojenne",
+  "Oświecenie",
+  "Pozytywizm",
+  "Pozytywizm, Modernizm",
+  "Renesans",
+  "Romantyzm",
+  "Starożytność",
+  "Współczesność",
+  "nie dotyczy",
+  "Średniowiecze"
+ ],
+ "genre_synonyms": {
+  "poezja": [
+   "wiersz",
+   "sonet",
+   "piesn",
+   "fraszka",
+   "tren",
+   "ballada",
+   "poemat"
+  ],
+  "poetry": [
+   "wiersz",
+   "sonet",
+   "piesn",
+   "fraszka",
+   "tren",
+   "ballada",
+   "poemat"
+  ],
+  "wiersz": [
+   "wiersz",
+   "sonet",
+   "poemat"
+  ],
+  "wiersze": [
+   "wiersz",
+   "sonet",
+   "poemat"
+  ],
+  "bajka": [
+   "bajka",
+   "przypowiesc"
+  ],
+  "bajki": [
+   "bajka",
+   "przypowiesc"
+  ],
+  "fable": [
+   "bajka",
+   "przypowiesc"
+  ],
+  "basn": [
+   "basn",
+   "legenda"
+  ],
+  "basnie": [
+   "basn",
+   "legenda"
+  ],
+  "fairy tale": [
+   "basn",
+   "legenda"
+  ],
+  "powiesc": [
+   "powiesc"
+  ],
+  "novel": [
+   "powiesc"
+  ],
+  "opowiadanie": [
+   "opowiadanie",
+   "nowela"
+  ],
+  "opowiadania": [
+   "opowiadanie",
+   "nowela"
+  ],
+  "nowela": [
+   "nowela",
+   "opowiadanie"
+  ],
+  "short story": [
+   "opowiadanie",
+   "nowela"
+  ],
+  "dla dzieci": [
+   "basn",
+   "bajka",
+   "dla dzieci"
+  ],
+  "children": [
+   "basn",
+   "bajka",
+   "dla dzieci"
+  ],
+  "przygodowe": [
+   "przygodow"
+  ],
+  "przygodowa": [
+   "przygodow"
+  ],
+  "adventure": [
+   "przygodow"
+  ],
+  "obyczajowe": [
+   "obyczajow"
+  ],
+  "obyczajowa": [
+   "obyczajow"
+  ],
+  "dramat": [
+   "tragedia",
+   "komedia",
+   "dramat"
+  ],
+  "teatr": [
+   "tragedia",
+   "komedia",
+   "dramat"
+  ],
+  "drama": [
+   "tragedia",
+   "komedia",
+   "dramat"
+  ]
+ },
+ "epoch_synonyms": {
+  "klasyka": [
+   "starozytnosc",
+   "renesans",
+   "barok",
+   "oswiecenie"
+  ],
+  "klasyczne": [
+   "starozytnosc",
+   "renesans",
+   "barok",
+   "oswiecenie"
+  ],
+  "classic": [
+   "starozytnosc",
+   "renesans",
+   "barok",
+   "oswiecenie"
+  ],
+  "classical": [
+   "starozytnosc",
+   "renesans",
+   "barok",
+   "oswiecenie"
+  ],
+  "antyczne": [
+   "starozytnosc"
+  ],
+  "starozytne": [
+   "starozytnosc"
+  ],
+  "antiquity": [
+   "starozytnosc"
+  ],
+  "romantyczne": [
+   "romantyzm"
+  ],
+  "romantyzm": [
+   "romantyzm"
+  ],
+  "romantic": [
+   "romantyzm"
+  ],
+  "wspolczesne": [
+   "wspolczesnosc",
+   "dwudziestolecie"
+  ],
+  "nowoczesne": [
+   "wspolczesnosc",
+   "dwudziestolecie"
+  ],
+  "contemporary": [
+   "wspolczesnosc",
+   "dwudziestolecie"
+  ],
+  "oswiecenie": [
+   "oswiecenie"
+  ],
+  "enlightenment": [
+   "oswiecenie"
+  ],
+  "renesans": [
+   "renesans"
+  ],
+  "renaissance": [
+   "renesans"
+  ],
+  "sredniowiecze": [
+   "sredniowiecze"
+  ],
+  "medieval": [
+   "sredniowiecze"
+  ],
+  "pozytywizm": [
+   "pozytywizm"
+  ],
+  "modernizm": [
+   "modernizm"
+  ],
+  "mloda polska": [
+   "modernizm"
+  ],
+  "barok": [
+   "barok"
+  ],
+  "baroque": [
+   "barok"
+  ]
+ },
+ "nationality_synonyms": {
+  "francuska": "francuski",
+  "francuskie": "francuski",
+  "french": "francuski",
+  "angielska": "angielski",
+  "angielskie": "angielski",
+  "english": "angielski",
+  "brytyjska": "angielski",
+  "british": "angielski",
+  "rosyjska": "rosyjski",
+  "rosyjskie": "rosyjski",
+  "russian": "rosyjski",
+  "amerykanska": "amerykanski",
+  "american": "amerykanski",
+  "niemiecka": "niemiecki",
+  "german": "niemiecki",
+  "polska": "polski",
+  "polskie": "polski",
+  "polish": "polski",
+  "grecka": "grecki",
+  "greek": "grecki",
+  "wloska": "wloski",
+  "italian": "wloski",
+  "hiszpanska": "hiszpanski",
+  "spanish": "hiszpanski",
+  "dunska": "dunski",
+  "danish": "dunski"
+ },
+ "author_nationality": {
+  "Jules Gabriel Verne": "francuski",
+  "Horacy": "rzymski",
+  "Louisa May Alcott": "amerykanski",
+  "Aleksander Dumas (ojciec)": "francuski",
+  "Hans Christian Andersen": "dunski",
+  "Sofokles": "grecki",
+  "Anton Czechow": "rosyjski",
+  "Arystofanes": "grecki",
+  "Arystoteles": "grecki",
+  "Józef Czechowicz": "rosyjski",
+  "Honoré de Balzac": "francuski",
+  "Edgar Allan Poe": "amerykanski",
+  "Jacob i Wilhelm Grimm": "niemiecki",
+  "Dante Alighieri": "wloski",
+  "Johann Wolfgang von Goethe": "niemiecki",
+  "Joseph Conrad": "angielski",
+  "Charles Dickens": "angielski",
+  "Miguel de Cervantes Saavedra": "hiszpanski",
+  "Fiodor Dostojewski": "rosyjski",
+  "William Shakespeare (Szekspir)": "angielski",
+  "E. T. A. Hoffmann": "niemiecki",
+  "Homer": "grecki",
+  "François-Marie Arouet (Voltaire / Wolter)": "francuski",
+  "Rudyard Kipling": "angielski",
+  "Mark Twain": "amerykanski",
+  "Charles Baudelaire": "francuski",
+  "Subcomandante Marcos": "wloski",
+  "Platon": "grecki",
+  "Jonathan Swift": "angielski",
+  "Aleksander Puszkin": "rosyjski",
+  "Daniel Defoe": "angielski",
+  "Owidiusz": "rzymski",
+  "Wergiliusz": "rzymski",
+  "Oscar Wilde": "angielski"
+ }
+}

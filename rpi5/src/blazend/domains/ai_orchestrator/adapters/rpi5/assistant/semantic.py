@@ -37,10 +37,18 @@ class SemanticLibrary:
     def available(self) -> bool:
         return self._mat is not None and len(self._items) == (self._mat.shape[0] if self._mat is not None else -1)
 
+    def count(self, kind: str | None = None) -> int:
+        """How many indexed items (optionally of one ``type`` — 'music'/'book')."""
+        if kind is None:
+            return len(self._items)
+        return sum(1 for it in self._items if it.get("type") == kind)
+
     def _embed_query(self, query: str):
         if not self._loaded_embedder:
             try:
-                from blazend.domains.context.adapters.rpi5.embeddings import Embedder  # noqa: PLC0415
+                from blazend.domains.context.adapters.rpi5.embeddings import (
+                    Embedder,  # noqa: PLC0415
+                )
 
                 self._embedder = Embedder()
             except Exception:  # noqa: BLE001

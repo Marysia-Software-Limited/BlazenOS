@@ -1,0 +1,12 @@
+{
+ "name": "book_recommendation",
+ "demos": [
+  "Użytkownik prosi o książkę: „coś przygodowego na morzu”. Oto dostępne pozycje:\n1. 20 000 mil podmorskiej żeglugi — Jules Gabriel Verne (powieść przygodowa, Pozytywizm)\n2. Sonety krymskie — Adam Mickiewicz (Sonet, Romantyzm)\n3. Trzej muszkieterowie — Aleksander Dumas (powieść, Romantyzm)\nNUMER: 1\nPOLECAM: Klasyka przygody morskiej od Verne'a — podróż w nieznane głębiny oceanu.",
+  "Użytkownik prosi o książkę: „francuska klasyka”. Oto dostępne pozycje:\n1. Eugenia Grandet — Honoré de Balzac (powieść, Romantyzm)\n2. Pan Tadeusz — Adam Mickiewicz (Epopeja, Romantyzm)\n3. Zbrodnia i kara — Fiodor Dostojewski (powieść, Pozytywizm)\nNUMER: 1\nPOLECAM: Balzac i jego \"Komedia ludzka\" — francuski realizm w pełnej krasie.",
+  "Użytkownik prosi o książkę: „baśń dla dzieci na dobranoc”. Oto dostępne pozycje:\n1. Mała syrenka — Hans Christian Andersen (Baśń, Romantyzm)\n2. Dziady — Adam Mickiewicz (Dramat, Romantyzm)\n3. Chłopi — Władysław Reymont (powieść, Modernizm)\nNUMER: 1\nPOLECAM: Ponadczasowa opowieść o syrence, która pragnie zostać człowiekiem. Idealna do czytania przed snem.",
+  "Użytkownik prosi o książkę: „romantyczna poezja”. Oto dostępne pozycje:\n1. Ballady i romanse — Adam Mickiewicz (Ballada, Romantyzm)\n2. Folwark zwierzęcy — George Orwell (powieść, Współczesność)\n3. Antygona — Sofokles (Tragedia, Starożytność)\nNUMER: 1\nPOLECAM: \"Ballady i romanse\" Mickiewicza to zbiór wierszy, który zapoczątkował polski romantyzm. Poezja pełna emocji, tajemniczości i romantycznych klimatów."
+ ],
+ "compiled_with": "dspy-bootstrap+bielik-11b",
+ "trainset": "scripts/prompt-trainset/books.jsonl",
+ "compiled_at": ""
+}

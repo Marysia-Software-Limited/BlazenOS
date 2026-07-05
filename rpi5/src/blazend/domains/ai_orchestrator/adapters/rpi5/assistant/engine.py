@@ -19,7 +19,14 @@ from blazend.domains.ai_orchestrator.adapters.rpi5.assistant import wake
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.gemini import GeminiClient, GeminiError
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.news import NewsClient, NewsError
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.openai import OpenAiClient, OpenAiError
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.prompts import (
+    PromptLibrary,
+    format_candidates,
+    parse_choice,
+)
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.radio import RadioDirectory
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.recommend import RecommendationEngine
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.semantic import SemanticLibrary
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.sentences import SentenceSlicer
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.weather import (
     Place,
@@ -183,6 +190,27 @@ _OPEN_QA = re.compile(
     r"explain|tell\s+me\s+about|who\s+(is|was|were))\b",
     re.IGNORECASE,
 )
+# Recommendation ("poleć coś", "co warto przeczytać") vs direct play ("zagraj X",
+# fast-path). A recommendation reaches the brain (nlu.miss) and runs the RAG.
+_RECOMMEND = re.compile(
+    r"\b(pole(ć|c)|polecisz|poleci(ł|l)ab?y?(ś|s)?|zasugeruj|zaproponuj|doradz(isz|(ł|l))|"
+    r"co\s+(mi\s+)?(polecasz|proponujesz|byś\s+poleci(ł|l)a)|"
+    r"co\s+warto\s+(przeczyta(ć|c)|pos(ł|l)ucha(ć|c))|"
+    r"masz\s+(jak(ą|a)(ś|s)|co(ś|s))\s+(dobr\w+\s+)?(do\s+(czytania|s(ł|l)uchania)|ksi(ą|a)(ż|z)k\w*)|"
+    r"recommend|suggest\s+(a\s+|some)?(book|music|something)|what\s+should\s+i\s+(read|listen))\b",
+    re.IGNORECASE,
+)
+# List / browse the library ("jakie masz książki", "co masz do czytania").
+_LIST_BOOKS = re.compile(
+    r"\b(jakie\s+(masz|s(ą|a)\s+dost(ę|e)pne)\s+(ksi(ą|a)(ż|z)k\w*|audiobook\w*|lektur\w*)|"
+    r"co\s+masz\s+do\s+(czytania|s(ł|l)uchania)|jak(ą|a)\s+masz\s+bibliotek\w*|"
+    r"ile\s+masz\s+(ksi(ą|a)(ż|z)ek|audiobook(ó|o)w)|"
+    r"(list|what)\s+(of\s+)?(books|audiobooks)|what\s+can\s+i\s+(read|listen))\b",
+    re.IGNORECASE,
+)
+# Music vs book context for a recommendation.
+_MUSIC_CTX = re.compile(r"\b(muzyk\w*|piosenk\w*|utw(ó|o)r\w*|kaw(a|ą)(ł|l)\w*|music|song|track)\b", re.IGNORECASE)
+_BOOK_CTX = re.compile(r"\b(ksi(ą|a)(ż|z)k\w*|audiobook\w*|lektur\w*|powie(ś|s)(ć|c)\w*|czyta\w*|book|read)\b", re.IGNORECASE)
 # Strip the leading "to/że/mi/that" filler after a command verb.
 _REMEMBER_TAIL = re.compile(r"^(że|ze|to|that|:|,)\s+", re.IGNORECASE)
 # A time expression to split off a reminder's task text.
@@ -262,6 +290,8 @@ class Assistant:
         weather: WeatherClient | None = None,
         radio: RadioDirectory | None = None,
         news: NewsClient | None = None,
+        recommender: RecommendationEngine | None = None,
+        prompts: PromptLibrary | None = None,
         persona: str = PERSONA,
         always_awake: bool = False,
         notes_top_k: int = 4,
@@ -298,8 +328,25 @@ class Assistant:
         self.persona = persona
         self.awake = always_awake
         self._always_awake = always_awake
+        # Book/music recommendation RAG (semantic + ontology). Injected in tests;
+        # built lazily otherwise (loads the semantic index only on first use).
+        self._recommender = recommender
+        self._recommender_built = recommender is not None
+        self._prompts = prompts or PromptLibrary()
         if embedder is not None and embedder.available:
             self._backfill_embeddings()
+
+    @property
+    def recommender(self) -> RecommendationEngine | None:
+        """The RAG recommender, built on first use (None if no semantic index)."""
+        if not self._recommender_built:
+            self._recommender_built = True
+            try:
+                sem = SemanticLibrary()
+                self._recommender = RecommendationEngine(semantic=sem) if sem.available else None
+            except Exception:  # noqa: BLE001 — no index / no numpy → no recommendations
+                self._recommender = None
+        return self._recommender
 
     # -- semantic note embeddings --------------------------------------
     def _backfill_embeddings(self) -> None:
@@ -422,6 +469,10 @@ class Assistant:
             return self._news(lang)
         if _SITE.search(text):
             return self._lookup(text, lang)
+        if _LIST_BOOKS.search(text):
+            return self._list_books(lang)
+        if _RECOMMEND.search(text):
+            return self._recommend(text, lang)
         if _RADIO_STOP.search(text):
             return self._radio_stop(lang)
         if _RADIO_KW.search(text) or self.radio.resolve(text) is not None:
@@ -439,6 +490,81 @@ class Assistant:
         if t.endswith("?") and len(t.split()) >= 4:
             return Task.OPEN_QA
         return Task.COMMAND
+
+    # -- recommendations (multi-layer RAG) -----------------------------
+    def _recommend_kinds(self, text: str) -> tuple[str, ...]:
+        music, book = bool(_MUSIC_CTX.search(text)), bool(_BOOK_CTX.search(text))
+        if music and not book:
+            return ("music",)
+        if book and not music:
+            return ("book",)
+        return ("book", "music")
+
+    def _recommend(self, text: str, lang: str) -> Reply:
+        """Suggest a book/track: ontology + semantic retrieval → LLM reasoning
+        (RECOMMEND task, DSPy-compiled prompt) → spoken pitch. Falls back to a
+        template pick when no model is reachable."""
+        rec = self.recommender
+        if rec is None:
+            return Reply(_t(lang, "Nie mam jeszcze biblioteki do polecania.",
+                            "I don't have a library to recommend from yet."), lang, "recommend")
+        kinds = self._recommend_kinds(text)
+        cands = rec.candidates(text, kinds=kinds, k=6)
+        if not cands:
+            return Reply(_t(lang, "Nie znalazłam nic pasującego. Spróbuj inaczej.",
+                            "I couldn't find a match. Try phrasing it differently."), lang, "recommend")
+        reasoned = self._reason_recommend(text, cands, lang, kinds)
+        if reasoned is not None:
+            return reasoned
+        return self._recommend_reply(cands[0], "", lang)  # template fallback
+
+    def _reason_recommend(self, text: str, cands: list[dict[str, Any]], lang: str,
+                          kinds: tuple[str, ...]) -> Reply | None:
+        """Run the compiled recommendation prompt through the RECOMMEND backends
+        (Bielik 4.5B / 11B). Returns None if no backend answered."""
+        if self.router is None:
+            return None
+        name = "music_recommendation" if kinds == ("music",) else "book_recommendation"
+        system, user = self._prompts.render(name, query=text, candidates=format_candidates(cands))
+        for backend_name, backend in self.router.route(Task.RECOMMEND):
+            try:
+                raw = backend.chat(user, system=system)
+            except (LlmError, OpenAiError) as e:
+                log.warning("recommend backend %s failed (%s) — next", backend_name, e)
+                continue
+            idx, pitch = parse_choice(raw, len(cands))
+            return self._recommend_reply(cands[idx], pitch, lang, engine=backend_name)
+        return None
+
+    def _recommend_reply(self, item: dict[str, Any], pitch: str, lang: str, *, engine: str = "template") -> Reply:
+        """Build the spoken recommendation, naming the title (so the user can then
+        say "zagraj <title>"). No auto-play — a suggestion is spoken, not started."""
+        title, who = str(item.get("title", "")), str(item.get("who", ""))
+        lead = _t(lang, f"Polecam „{title}”" + (f", {who}. " if who else ". "),
+                  f"I recommend “{title}”" + (f" by {who}. " if who else ". "))
+        # If the model already named the book, use its pitch alone; else prepend.
+        text = pitch if (pitch and title and title.lower() in pitch.lower()) else (lead + pitch).strip()
+        if not pitch:
+            text = lead.strip() + _t(lang, " Powiedz „zagraj to”, aby posłuchać.",
+                                     " Say “play it” to listen.")
+        return Reply(text, lang, "recommend",
+                     {"title": title, "who": who, "kind": item.get("type"), "engine": engine})
+
+    def _list_books(self, lang: str) -> Reply:
+        """Point the user at the library — with 1500+ audiobooks, guide by ask
+        rather than enumerate (voice-first)."""
+        rec = self.recommender
+        n = rec.semantic.count("book") if rec is not None else 0
+        if not n:
+            return Reply(_t(lang, "Nie mam jeszcze audiobooków.",
+                            "I don't have any audiobooks yet."), lang, "book_offer")
+        return Reply(
+            _t(lang,
+               f"Mam {n} audiobooków — klasyka, powieści, baśnie i poezja. "
+               "Powiedz na przykład „poleć coś przygodowego” albo „zagraj Trzej muszkieterowie”.",
+               f"I have {n} audiobooks — classics, novels, fairy tales and poetry. "
+               "Say for example “recommend something adventurous” or “play The Three Musketeers”."),
+            lang, "book_offer", {"count": n})
 
     def _remember(self, text: str, lang: str, *, now: datetime) -> Reply:
         body = _REMEMBER.sub("", text, count=1).strip(" ,.:!")
