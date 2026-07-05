@@ -38,6 +38,7 @@ _JABRA_MIXER = "PCM"      # its playback volume control
 # clean capture; the stream keeps running (not stopped), so it restores instantly.
 _DUCK_PCT = 2             # Jabra output % while listening over a playing stream
 _DUCK_WINDOW_S = 7.0      # restore volume if no command follows the wake (covers the ~5 s ASR window)
+_DUCK_MIN_VOLUME_PCT = 15  # only duck when playback is above this — quiet music doesn't gate the mic
 _DEFAULT_VOLUME_PCT = 30  # startup output volume (kept low: less speaker→mic echo)
 
 DEFAULT_PEERS: tuple[str, ...] = (
@@ -320,14 +321,15 @@ class Orchestrator:
                 (self._runtime_dir / "activate").touch()
             except OSError as exc:
                 log.warning("could not write activate marker: %s", exc)
-            # If a stream is playing, DUCK it (don't stop) so the command after
-            # "dżesika" is heard over a quieter stream — then arm an auto-restore.
-            # A real radio_stop/radio_play acts on it; a false wake (the stream's
-            # own audio echoing into the Jabra mic) just restores the volume, so
-            # the radio no longer stops itself on every echo-triggered wake.
-            if self._radio.playing:
+            # If a stream is playing LOUD, DUCK it (don't stop) so the command
+            # after "dżesika" is heard over it — then arm an auto-restore. Quiet
+            # playback (<= _DUCK_MIN_VOLUME_PCT) doesn't gate the mic, so skip the
+            # duck: no point dropping already-quiet music. A real radio_stop/play
+            # acts on it; a false wake just restores the volume.
+            if self._radio.playing and self._volume_pct > _DUCK_MIN_VOLUME_PCT:
                 await self._duck_on()
                 self._arm_duck_restore()
+            if self._radio.playing:
                 # Guarantee the low ASR floor for the command that follows: while a
                 # stream plays the Jabra DSP attenuates the mic (voice lands at
                 # ~50-180 RMS), so the post-wake capture must use min_capture_rms_playing.
