@@ -50,10 +50,15 @@ class RadioControl:
             pass
         self._proc = None
 
-    def play(self, url: str, name: str = "") -> None:
+    def play(self, url: str, name: str = "", *, position_file: str = "",
+             start_seconds: float = 0.0) -> None:
         """Start a stream: kill any current one, spawn the player. The orchestrator
         frees the Jabra output (stops audio-out via its half-duplex reconciler)
-        before calling this, so the player can hold the speaker exclusively."""
+        before calling this, so the player can hold the speaker exclusively.
+
+        For audiobooks the orchestrator passes ``position_file`` (the player writes
+        its live position there for resume/attention) and ``start_seconds`` (seek
+        into a chapter on resume)."""
         self._kill()
         if not url:
             return
@@ -61,13 +66,16 @@ class RadioControl:
             # Let the player's warnings/errors reach the orchestrator journal
             # (DEVNULL previously hid a silent ALSA-busy death → "no reaction").
             env = {**os.environ, "RUST_LOG": os.environ.get("RUST_LOG", "warn,symphonia=error")}
+            cmd = [_PLAYER, "--source", url, "--device", _DEVICE]
+            if position_file:
+                cmd += ["--position-file", position_file]
+            if start_seconds > 0:
+                cmd += ["--start-seconds", str(start_seconds)]
             self._proc = subprocess.Popen(
-                [_PLAYER, "--source", url, "--device", _DEVICE],
-                stdout=subprocess.DEVNULL,
-                stderr=None,
-                env=env,
+                cmd, stdout=subprocess.DEVNULL, stderr=None, env=env,
             )
-            log.info("radio play %s", name or url)
+            log.info("radio play %s%s", name or url,
+                     f" (from {start_seconds:.0f}s)" if start_seconds > 0 else "")
         except OSError as exc:
             log.warning("radio play failed: %s", exc)
             self._proc = None

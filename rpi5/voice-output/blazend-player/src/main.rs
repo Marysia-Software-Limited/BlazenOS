@@ -26,10 +26,11 @@ use crossbeam_channel::{bounded, Receiver, Sender, TryRecvError};
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{Decoder, DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error as SymError;
-use symphonia::core::formats::{FormatOptions, FormatReader};
+use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo};
 use symphonia::core::io::{MediaSourceStream, ReadOnlySource};
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
+use symphonia::core::units::Time;
 
 /// Max decoded chunks queued between the decode thread and the ALSA writer.
 /// Generous headroom; the producer blocks on a full channel (backpressure).
@@ -60,6 +61,13 @@ struct Args {
     /// Loop a local file on EOF (ignored for streams).
     #[arg(long, default_value_t = false)]
     r#loop: bool,
+    /// Seek this many seconds into a local file before playing (audiobook resume).
+    #[arg(long, default_value_t = 0.0)]
+    start_seconds: f64,
+    /// If set, write the current playback position (JSON) here every ~2 s, so the
+    /// orchestrator can remember where an audiobook was stopped.
+    #[arg(long)]
+    position_file: Option<String>,
 }
 
 /// `http(s)` source → live stream; anything else → local file.
@@ -155,7 +163,9 @@ fn open_http_icy(source: &str) -> Result<(StreamReader, Option<String>)> {
 /// Kraków fail the rustls handshake).
 fn https_agent() -> ureq::Agent {
     match native_tls::TlsConnector::new() {
-        Ok(c) => ureq::AgentBuilder::new().tls_connector(std::sync::Arc::new(c)).build(),
+        Ok(c) => ureq::AgentBuilder::new()
+            .tls_connector(std::sync::Arc::new(c))
+            .build(),
         Err(e) => {
             tracing::warn!("native-tls init failed ({e}); using default agent");
             ureq::agent()
@@ -166,7 +176,12 @@ fn https_agent() -> ureq::Agent {
 /// A `.m3u8` URL → HLS. Reliable path for capacity-capped Shoutcast stations
 /// (e.g. Trójka) whose CDN HLS has no listener cap.
 fn is_hls(s: &str) -> bool {
-    s.trim().split('?').next().unwrap_or("").to_ascii_lowercase().ends_with(".m3u8")
+    s.trim()
+        .split('?')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .ends_with(".m3u8")
 }
 
 /// Resolve a possibly-relative playlist/segment reference against a playlist URL.
@@ -200,9 +215,9 @@ fn id3_len(buf: &[u8]) -> usize {
 /// thread — the ~10 s segments keep the jitter buffer well ahead.
 struct HlsReader {
     agent: ureq::Agent,
-    origin: String,   // the URL we were given (master or media playlist)
-    media: String,    // resolved media (chunk) playlist URL
-    next_seq: u64,    // next EXT-X-MEDIA-SEQUENCE to play
+    origin: String, // the URL we were given (master or media playlist)
+    media: String,  // resolved media (chunk) playlist URL
+    next_seq: u64,  // next EXT-X-MEDIA-SEQUENCE to play
     started: bool,
     buf: Vec<u8>,
     pos: usize,
@@ -212,11 +227,23 @@ impl HlsReader {
     fn new(url: &str) -> Result<Self> {
         let agent = https_agent();
         let media = Self::resolve_media(&agent, url)?;
-        Ok(Self { agent, origin: url.to_string(), media, next_seq: 0, started: false, buf: Vec::new(), pos: 0 })
+        Ok(Self {
+            agent,
+            origin: url.to_string(),
+            media,
+            next_seq: 0,
+            started: false,
+            buf: Vec::new(),
+            pos: 0,
+        })
     }
 
     fn get_text(agent: &ureq::Agent, url: &str) -> Result<String> {
-        Ok(agent.get(url).set("User-Agent", "blazend-player").call()?.into_string()?)
+        Ok(agent
+            .get(url)
+            .set("User-Agent", "blazend-player")
+            .call()?
+            .into_string()?)
     }
 
     /// A master playlist (has EXT-X-STREAM-INF) → its first variant; else the URL
@@ -273,8 +300,12 @@ impl HlsReader {
             let seg = &segs[(self.next_seq - base_seq) as usize];
             let url = resolve_url(&self.media, seg);
             let mut bytes = Vec::new();
-            self.agent.get(&url).set("User-Agent", "blazend-player").call()?
-                .into_reader().read_to_end(&mut bytes)?;
+            self.agent
+                .get(&url)
+                .set("User-Agent", "blazend-player")
+                .call()?
+                .into_reader()
+                .read_to_end(&mut bytes)?;
             let skip = id3_len(&bytes);
             self.buf = bytes.split_off(skip);
             self.pos = 0;
@@ -289,7 +320,7 @@ impl Read for HlsReader {
     fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
         while self.pos >= self.buf.len() {
             self.load_next()
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
         }
         let n = (self.buf.len() - self.pos).min(out.len());
         out[..n].copy_from_slice(&self.buf[self.pos..self.pos + n]);
@@ -302,24 +333,26 @@ impl Read for HlsReader {
 fn open_media(source: &str) -> Result<(MediaSourceStream, Hint)> {
     let mut hint = Hint::new();
     if is_url(source) {
-        let (reader, ct): (StreamReader, Option<String>) =
-            if is_hls(source) {
-                // HLS: fetch + concatenate the .aac segments as one ADTS stream.
-                tracing::info!(%source, "opening HLS stream (aac segments)");
-                (Box::new(HlsReader::new(source)?), Some("audio/aac".to_string()))
-            } else if source.trim().to_ascii_lowercase().starts_with("https://") {
-                // TLS path via native-tls/OpenSSL (assumes proper HTTP).
-                let resp = https_agent()
-                    .get(source)
-                    .set("Icy-MetaData", "0")
-                    .set("User-Agent", "blazend-player")
-                    .call()
-                    .with_context(|| format!("HTTPS GET {source}"))?;
-                let ct = resp.content_type().to_string();
-                (resp.into_reader(), Some(ct))
-            } else {
-                open_http_icy(source)?
-            };
+        let (reader, ct): (StreamReader, Option<String>) = if is_hls(source) {
+            // HLS: fetch + concatenate the .aac segments as one ADTS stream.
+            tracing::info!(%source, "opening HLS stream (aac segments)");
+            (
+                Box::new(HlsReader::new(source)?),
+                Some("audio/aac".to_string()),
+            )
+        } else if source.trim().to_ascii_lowercase().starts_with("https://") {
+            // TLS path via native-tls/OpenSSL (assumes proper HTTP).
+            let resp = https_agent()
+                .get(source)
+                .set("Icy-MetaData", "0")
+                .set("User-Agent", "blazend-player")
+                .call()
+                .with_context(|| format!("HTTPS GET {source}"))?;
+            let ct = resp.content_type().to_string();
+            (resp.into_reader(), Some(ct))
+        } else {
+            open_http_icy(source)?
+        };
         if let Some(ct) = &ct {
             if let Some(ext) = hint_for_content_type(ct) {
                 hint.with_extension(ext);
@@ -463,6 +496,7 @@ fn decode_loop(
 
 /// Consumer: prebuffer, then drain the jitter buffer to ALSA with paced
 /// blocking writes. Underruns are recovered, never garbled.
+#[allow(clippy::too_many_arguments)]
 fn run_output(
     device: &str,
     rate: u32,
@@ -470,6 +504,8 @@ fn run_output(
     prebuffer_frames: usize,
     alsa_buffer_ms: u32,
     gain: f32,
+    start_seconds: f64,
+    position_file: Option<&str>,
     rx: Receiver<Vec<i16>>,
 ) -> Result<()> {
     use alsa::pcm::{Access, Format, HwParams, PCM};
@@ -518,7 +554,15 @@ fn run_output(
 
     let mut underruns = 0u64;
     let mut frames_played = 0u64;
+    let mut next_report_frames = 0u64; // report position now, then every ~2 s
     loop {
+        if let Some(pf) = position_file {
+            if frames_played >= next_report_frames {
+                let secs = start_seconds + frames_played as f64 / f64::from(rate.max(1));
+                write_position(pf, secs, false);
+                next_report_frames = frames_played + 2 * u64::from(rate.max(1));
+            }
+        }
         if !eof {
             loop {
                 match rx.try_recv() {
@@ -563,6 +607,15 @@ fn run_output(
         }
     }
     let _ = pcm.drain();
+    let final_secs = start_seconds + frames_played as f64 / f64::from(rate.max(1));
+    if let Some(pf) = position_file {
+        // Reaching here means the source ended naturally (the loop only breaks on
+        // eof) → done=true so the orchestrator advances to the next chapter. A kill
+        // mid-file never reaches this; the last periodic write (done=false) marks
+        // the resume point.
+        let _ = eof;
+        write_position(pf, final_secs, true);
+    }
     tracing::info!(
         underruns,
         seconds = frames_played / u64::from(rate.max(1)),
@@ -571,10 +624,44 @@ fn run_output(
     Ok(())
 }
 
+/// Atomically write the current playback position (seconds + whether the chapter
+/// reached its natural end) so the orchestrator can resume / auto-advance.
+fn write_position(path: &str, seconds: f64, done: bool) {
+    let tmp = format!("{path}.tmp");
+    if std::fs::write(
+        &tmp,
+        format!("{{\"seconds\":{seconds:.1},\"done\":{done}}}"),
+    )
+    .is_ok()
+    {
+        let _ = std::fs::rename(&tmp, path);
+    }
+}
+
 /// Play the source once (a stream plays until killed / the server closes).
 fn play_once(args: &Args) -> Result<()> {
     let (mss, hint) = open_media(&args.source)?;
     let (mut format, mut decoder, track_id, rate_opt, ch_opt) = make_decoder(mss, &hint)?;
+
+    // Resume: seek into a local file before decoding (audiobook chapter resume).
+    // Best-effort — an unseekable/short file just starts from the top.
+    if args.start_seconds > 0.0 && !is_url(&args.source) {
+        let to = SeekTo::Time {
+            time: Time::from(args.start_seconds),
+            track_id: Some(track_id),
+        };
+        match format.seek(SeekMode::Coarse, to) {
+            Ok(seeked) => tracing::info!(
+                requested = args.start_seconds,
+                ts = seeked.actual_ts,
+                "seeked"
+            ),
+            Err(e) => tracing::warn!(
+                "seek to {}s failed ({e}); starting from the top",
+                args.start_seconds
+            ),
+        }
+    }
 
     let (rate, channels, prime) = match (rate_opt, ch_opt) {
         (Some(r), Some(c)) if r > 0 && c > 0 => (r, c, None),
@@ -597,6 +684,8 @@ fn play_once(args: &Args) -> Result<()> {
         prebuffer_frames,
         args.alsa_buffer_ms,
         args.gain,
+        args.start_seconds,
+        args.position_file.as_deref(),
         rx,
     )?;
     let _ = decoder_thread.join();
