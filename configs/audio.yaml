@@ -48,7 +48,10 @@ processing:
   noise_suppression: moderate         # off | low | moderate | high
 
 volume:
-  default: 50                         # 0..100
+  default: 30                         # 0..100 — kept low so speaker output bleeds
+                                      # less into the Jabra mic. Matches the runtime
+                                      # default enforced in code (dispatch.SettingsStore
+                                      # _DEFAULTS + supervisor._DEFAULT_VOLUME_PCT).
   step: 10
   voice_mutable: true                 # see voice-policy.yaml
 

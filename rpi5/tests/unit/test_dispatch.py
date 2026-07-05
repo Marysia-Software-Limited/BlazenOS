@@ -49,8 +49,8 @@ def test_say_action_speaks_bilingual_response(tmp_path):
 
 def test_volume_mutate_no_confirm(tmp_path):
     d = _disp(tmp_path)
-    r = d.dispatch("volume_up", {}, "pl")
-    assert r.action == "applied" and r.data["value"] == 60 and "60%" in r.speak
+    r = d.dispatch("volume_up", {}, "pl")  # default 30 (echo-safe) + 10
+    assert r.action == "applied" and r.data["value"] == 40 and "40%" in r.speak
     r2 = d.dispatch("volume_set", {"value": "25"}, "pl")
     assert r2.action == "applied" and r2.data["value"] == 25
 
@@ -91,8 +91,8 @@ def test_signals_and_tools(tmp_path):
 
 
 def test_settings_persist(tmp_path):
-    _disp(tmp_path).dispatch("volume_up", {}, "pl")  # 50 → 60
-    assert _disp(tmp_path).dispatch("volume_up", {}, "pl").data["value"] == 70  # 60 → 70
+    _disp(tmp_path).dispatch("volume_up", {}, "pl")  # 30 → 40 (persisted)
+    assert _disp(tmp_path).dispatch("volume_up", {}, "pl").data["value"] == 50  # 40 → 50
 
 
 def test_language_switch_pins_and_follows(tmp_path):
@@ -160,7 +160,7 @@ def test_orchestrator_dispatches_nlu_intent(tmp_path):
         Envelope(topic="nlu.intent", source="blazend-nlu",
                  data={"intent": "volume_up", "language": "pl", "params": {}})
     )
-    assert reply is not None and reply.topic == "brain.reply" and "60%" in reply.data["text"]
+    assert reply is not None and reply.topic == "brain.reply" and "40%" in reply.data["text"]
     assert reply.data["action"] == "command.applied"
 
     none = orch._dispatch_intent(
