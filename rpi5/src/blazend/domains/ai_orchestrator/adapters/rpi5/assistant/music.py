@@ -40,10 +40,19 @@ class Track:
     _title: set[str] = field(default_factory=set, repr=False)
     _artist: set[str] = field(default_factory=set, repr=False)
     _album: set[str] = field(default_factory=set, repr=False)
+    # Folder names ("kazik i patyczak", "EL DOPA") — many rips group a band by
+    # directory but tag the ID3 artist as someone else, so match the path too.
+    _folder: set[str] = field(default_factory=set, repr=False)
 
 
 def _tokens(text: str) -> set[str]:
     return {t for t in _stem_phrase(text).split() if t}
+
+
+def _folder_tokens(path: str) -> set[str]:
+    """Tokens from the two enclosing folder names (band/collection + album)."""
+    p = Path(path)
+    return _tokens(f"{p.parent.name} {p.parent.parent.name}")
 
 
 class MusicDirectory:
@@ -65,6 +74,7 @@ class MusicDirectory:
             self.tracks.append(Track(
                 path=str(e["path"]), title=title, artist=artist, album=album,
                 _title=_tokens(title), _artist=_tokens(artist), _album=_tokens(album),
+                _folder=_folder_tokens(str(e["path"])),
             ))
 
     @property
@@ -90,10 +100,10 @@ class MusicDirectory:
                 # name ("Kazik") pools ALL their tracks → a random one plays, while
                 # a full title still matches its (usually single) track.
                 score = 100
-            elif q <= t._album and t._album:
-                score = 85                     # whole query is the album
+            elif (q <= t._folder and t._folder) or (q <= t._album and t._album):
+                score = 90                     # whole query is a band/collection folder or album
             else:
-                score = len(q & (t._title | t._artist | t._album))  # partial overlap
+                score = len(q & (t._title | t._artist | t._album | t._folder))  # partial overlap
             if score > best_score:
                 best_score, matches = score, [t]
             elif score == best_score and score > 0:
