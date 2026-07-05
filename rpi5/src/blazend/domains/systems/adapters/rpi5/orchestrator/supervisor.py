@@ -74,6 +74,10 @@ class Orchestrator:
         # path speaks a notice instead of starting an unstoppable local track.
         # Radio (internet streams) is unaffected. Default: enabled.
         self._music_enabled = os.environ.get("BLAZEN_MUSIC_ENABLED", "1") != "0"
+        # Last played source (radio url / music path) + its name, so "kontynuj"
+        # can restore it after a stop.
+        self._last_source = ""
+        self._last_source_name = ""
         self._stop = asyncio.Event()
         self._subscribers: list[tuple[str, Subscriber]] = []
         # Half-duplex speaker: the Jabra is a speakerphone whose echo-cancellation
@@ -444,6 +448,9 @@ class Orchestrator:
         if action in ("radio_play", "music_play"):
             payload = data.get("payload", {}) or {}
             source = str(payload.get("url") or payload.get("path", ""))
+            # Remember the last source so "kontynuj" can restore it after a stop.
+            self._last_source = source
+            self._last_source_name = str(payload.get("name", ""))
             self._cancel_duck_restore()  # a real play command supersedes a duck
             # Free the Jabra output for playback; the reconciler keeps audio-out
             # down while it plays.
@@ -471,6 +478,28 @@ class Orchestrator:
         if self._dispatcher is None:
             return None
         intent_name = str(env.data.get("intent", ""))
+        # Media transport (the dispatcher noops these — the orchestrator owns the
+        # exclusive player). "kontynuj"/media_resume restores the last playback
+        # (radio stream or music track — the source flows through here, so this is
+        # the one place that knows both; the player has no seek, so it restarts
+        # from the top). media_pause/"wstrzymaj" stops the current playback.
+        if intent_name == "media_resume":
+            if self._last_source:
+                return Envelope(
+                    topic="brain.reply", source="blazend-orchestrator",
+                    data={"action": "music_play",
+                          "payload": {"path": self._last_source, "name": self._last_source_name}},
+                )
+            return Envelope(
+                topic="brain.reply", source="blazend-orchestrator",
+                data={"language": "pl", "text": "Nie mam czego wznowić.",
+                      "chunk": "Nie mam czego wznowić.", "final_": True, "action": "command.resume"},
+            )
+        if intent_name == "media_pause" and self._radio.playing:
+            return Envelope(
+                topic="brain.reply", source="blazend-orchestrator",
+                data={"action": "music_stop"},
+            )
         result = self._dispatcher.dispatch(
             intent_name,
             env.data.get("params", {}),

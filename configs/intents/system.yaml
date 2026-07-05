@@ -375,12 +375,16 @@ intents:
     action: media_transport
     transport: pause
 
+  # RESUME — "kontynuj" restores the last playback (radio/music) after a stop.
+  # Handled by the orchestrator (it owns the exclusive player + last source);
+  # media_transport is a noop in the dispatcher, so the orchestrator intercepts
+  # this intent by name. Broadened to catch "kontynuj"/"kontynuuj"/"wznów".
   - name: media_resume
     triggers:
       en:
-        - "^(resume|continue|play)$"
+        - "\\b(resume|continue|keep\\s+playing)\\b"
       pl:
-        - "^(wzn(ó|o)w|kontynuuj|graj dalej)$"
+        - "\\b(kontynu\\w+|wzn(ó|o)w\\w*|graj\\s+dalej|graj\\s+znowu)\\b"
     action: media_transport
     transport: resume
 
