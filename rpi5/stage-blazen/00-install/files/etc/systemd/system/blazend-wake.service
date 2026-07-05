@@ -3,6 +3,11 @@ Description=blazen_os wake-word detector (Rust)
 PartOf=blazend.target
 After=blazend-audio-in.service
 Requires=blazend-audio-in.service
+# PartOf audio-in so a restart of audio-in (which recreates the shared-memory
+# input ring) RESTARTS wake too — otherwise wake keeps a handle to the dead ring
+# and goes silently deaf (no detections) until manually bounced. Requires alone
+# does not propagate restart; PartOf does.
+PartOf=blazend-audio-in.service
 
 [Service]
 Type=simple

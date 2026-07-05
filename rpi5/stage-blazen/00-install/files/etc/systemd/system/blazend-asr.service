@@ -3,6 +3,9 @@ Description=blazen_os ASR (Python, faster-whisper)
 PartOf=blazend.target
 After=blazend-audio-in.service
 Requires=blazend-audio-in.service
+# PartOf audio-in so restarting audio-in (which recreates the input ring) also
+# restarts ASR → it re-attaches, instead of reading a stale/dead ring handle.
+PartOf=blazend-audio-in.service
 
 [Service]
 Type=simple
