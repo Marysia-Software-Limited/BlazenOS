@@ -477,6 +477,13 @@ class Assistant:
             return self._radio_stop(lang)
         if _RADIO_KW.search(text) or self.radio.resolve(text) is not None:
             return self._radio(text, lang)
+        # A short bare phrase that maps to library signals ("francuska klasyka",
+        # "baśń dla dzieci", "poezja") is a recommendation ask, not open chat —
+        # route it to the RAG so the model picks from the shelf instead of rambling.
+        rec = self.recommender
+        if (rec is not None and not _OPEN_QA.search(text) and len(text.split()) <= 5
+                and rec.ontology.parse(text).any):
+            return self._recommend(text, lang)
         return self._chat(text, lang, task=self._task_for(text),
                           on_sentence=on_sentence, on_token=on_token)
 

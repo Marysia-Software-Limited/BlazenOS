@@ -139,12 +139,13 @@ class RecommendationEngine:
         return b
 
     def candidates(self, query: str, *, kinds: tuple[str, ...] = ("book",), k: int = 6) -> list[dict[str, Any]]:
-        """Top-``k`` candidates for ``query``, reranked by ontology/metadata match."""
+        """Top-``k`` candidates for ``query``, reranked by ontology/metadata match
+        and diversified by author (so a prolific poet can't crowd out the list)."""
         sig = self.ontology.parse(query)
         expanded = f"{query} {sig.expansion}".strip()
         # Retrieve a wide net, then rerank; a nationality/genre ask needs headroom
         # to pull matching authors up from below the pure-semantic top.
-        hits = self.semantic.search(expanded, k=max(k * 4, 24), kinds=kinds)
+        hits = self.semantic.search(expanded, k=max(k * 6, 36), kinds=kinds)
         scored = [(float(h.get("score", 0.0)) + self._boost(h, sig), h) for h in hits]
         # A nationality request hard-prefers matching authors when any exist.
         if sig.nationalities:
@@ -153,9 +154,25 @@ class RecommendationEngine:
             if matches:
                 rest = [(s, h) for s, h in scored if (s, h) not in matches]
                 scored = sorted(matches, key=lambda x: -x[0]) + sorted(rest, key=lambda x: -x[0])
-                return [h for _, h in scored[:k]]
+                return self._diversify(scored, k)
         scored.sort(key=lambda x: -x[0])
-        return [h for _, h in scored[:k]]
+        return self._diversify(scored, k)
+
+    @staticmethod
+    def _diversify(scored: list[tuple[float, dict[str, Any]]], k: int, *, per_author: int = 2) -> list[dict[str, Any]]:
+        """Take the top-``k`` but cap how many by any one author, so Dumas/Balzac
+        aren't buried under a single prolific poet's 30 entries."""
+        seen: dict[str, int] = {}
+        out: list[dict[str, Any]] = []
+        for _, h in scored:
+            who = str(h.get("who", ""))
+            if seen.get(who, 0) >= per_author:
+                continue
+            seen[who] = seen.get(who, 0) + 1
+            out.append(h)
+            if len(out) >= k:
+                break
+        return out
 
 
 __all__ = ["Ontology", "RecommendationEngine", "Signals"]

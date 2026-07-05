@@ -34,8 +34,9 @@ _DEFAULTS: dict[str, dict[str, Any]] = {
         ),
         "instruction": (
             "Użytkownik prosi o książkę: „{query}”. Oto dostępne pozycje:\n{candidates}\n"
-            "Wybierz JEDNĄ najlepiej pasującą. Odpowiedz dokładnie w formacie:\n"
-            "NUMER: <numer z listy>\nPOLECAM: <jedno-dwa zdania, dlaczego warto>"
+            "Wybierz JEDNĄ najlepiej pasującą pozycję z listy (podaj jej numer). "
+            "Nie wymyślaj własnej treści i nie powtarzaj instrukcji. Odpowiedz "
+            "krótko, dwoma liniami:\nNUMER: <numer>\nPOLECAM: <jedno-dwa zdania po polsku>"
         ),
         "user_template": "",
         "demos": [],
@@ -65,7 +66,7 @@ _DEFAULTS: dict[str, dict[str, Any]] = {
 }
 
 _PICK = re.compile(r"NUMER\s*[:\-]?\s*(\d+)", re.IGNORECASE)
-_PITCH = re.compile(r"POLECAM\s*[:\-]?\s*(.+)", re.IGNORECASE | re.DOTALL)
+_PITCH = re.compile(r"POLECAM\s*[:\-]?\s*([^\n<]+)", re.IGNORECASE)
 
 
 class PromptLibrary:
@@ -113,12 +114,14 @@ def parse_choice(reply: str, n: int) -> tuple[int, str]:
     """Parse ``NUMER: k`` / ``POLECAM: …`` from a model reply. Returns a 0-based
     index (clamped into range, default 0) and the pitch text (default: the whole
     reply)."""
+    # Take the LAST NUMER/POLECAM — a small model may echo the instruction's
+    # placeholder line before writing its real answer.
     idx = 0
-    m = _PICK.search(reply)
-    if m:
-        idx = max(0, min(n - 1, int(m.group(1)) - 1))
-    pm = _PITCH.search(reply)
-    pitch = pm.group(1).strip() if pm else reply.strip()
+    picks = _PICK.findall(reply)
+    if picks:
+        idx = max(0, min(n - 1, int(picks[-1]) - 1))
+    pitches = [p.strip() for p in _PITCH.findall(reply) if p.strip() and "<" not in p]
+    pitch = pitches[-1] if pitches else reply.strip()
     return idx, pitch
 
 
