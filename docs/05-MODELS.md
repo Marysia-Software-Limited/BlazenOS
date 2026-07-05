@@ -115,6 +115,43 @@ Community License; Phi-3.5 MIT; TinyLlama Apache-2.0.
   exceeds 3072 tokens.
 - KV cache stays in RAM; we do not page to disk.
 
+### Task-based routing (the brain's `ModelRouter`)
+
+The brain does **not** talk to one fixed model. A `ModelRouter`
+(`ai_orchestrator/core/model_router.py`, config in
+[`configs/llm.yaml`](../configs/llm.yaml) `routing:`) sends each request to the
+cheapest capable backend and falls back gracefully:
+
+| Task | Order (first *available* wins) |
+|------|--------------------------------|
+| `command`  (quick replies) | Ollama 11B → **Bielik 1.5B** |
+| `recommend` (book/music RAG reasoning) | Ollama 11B → **Bielik 4.5B** |
+| `open_qa` (advanced science / open questions) | **GPT-5.5** → Ollama 11B → Bielik 4.5B |
+
+- **Ollama 11B** is the LAN-GPU box on paul (`BLAZEN_LLM_OLLAMA_URL`); preferred
+  for everything when reachable (0 local RAM, GPU-fast). Its `/api/version`
+  probe is cached (`ollama_probe_ttl_s`).
+- On the 8 GB Pi only **one** local Bielik is resident at a time
+  (`single_local_model: true` → the router calls `LocalLlm.close()` to evict the
+  other). The 16 GB reference Pi fits both.
+- **GPT-5.5** (OpenAI) is used **only** for `open_qa` and only when a key is in
+  `/etc/blazen/secrets.env` — commands and recommendations never leave the box.
+  News stays on Gemini search-grounding (real web research, not a chat guess).
+
+### Book/music recommendations — multi-layer RAG
+
+`assistant/recommend.py` layers **semantic** (e5 over the
+`semantic-index.{npy,json}`) → **metadata** (catalogue genre/epoch) → **ontology**
+([`configs/ontology/books.json`](../configs/ontology/books.json): genre/epoch
+synonyms + a curated author→nationality table, built by
+`scripts/build-ontology.py`). A nationality ask ("francuska klasyka") hard-prefers
+matching authors and diversifies by author. The chosen candidate + spoken pitch
+come from a **DSPy-compiled prompt**: signatures are optimised **offline on paul**
+by `scripts/compile-prompts.py` (BootstrapFewShot, Ollama 11B teacher) and shipped
+as static JSON under [`configs/prompts/`](../configs/prompts/) — **the Pi imports
+no `dspy`**, it just fills the prompt (`assistant/prompts.py`). See
+[`14-RUST-PYTHON-SPLIT.md`](14-RUST-PYTHON-SPLIT.md).
+
 ### System prompt (default)
 
 The authoritative prompt lives in [`configs/llm.yaml`](../configs/llm.yaml)

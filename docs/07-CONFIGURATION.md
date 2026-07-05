@@ -115,13 +115,15 @@ where `<models>` is `BLAZEN_MODELS_DIR` (else `<repo>/models`) and `<file>` is
 the `runtime` extra) is imported lazily, so a host without it (or without the
 GGUF) simply reports the local engine as unavailable and falls through.
 
-The chat fallback chain is **local LLM → OpenAI → Gemini → canned reply**.
-The cloud layers activate only when their key is set in the environment
-(sourced from `.env`): `OPENAI_API_KEY` (+ optional `OPENAI_MODEL`, default
-`gpt-4o-mini`) for the OpenAI second layer; `GEMINI_API_KEY` (+ `GEMINI_MODEL`)
-for Gemini, which also remains the path for web-grounded **news/site** lookups.
-With local first, normal operation stays on-device; the cloud layers are opt-in
-via key presence.
+Backend selection is **task-based** via the brain's `ModelRouter`, configured in
+`llm.yaml` `routing:` — `command`→Bielik 1.5B, `recommend`→Bielik 4.5B,
+`open_qa`→GPT-5.5, all preferring the LAN Ollama 11B when reachable, then Gemini,
+then a canned reply. See [`05-MODELS.md`](05-MODELS.md#task-based-routing-the-brains-modelrouter)
+for the full table and the book/music RAG. Cloud layers activate only when their
+key is set (sourced from `/etc/blazen/secrets.env`): `OPENAI_API_KEY`
+(+ `OPENAI_MODEL`, e.g. `gpt-5.5`) is used **only for open questions**;
+`GEMINI_API_KEY` (+ `GEMINI_MODEL`) remains the path for web-grounded
+**news/site** lookups. Commands and recommendations never leave the box.
 
 ## Internet info — weather + news
 
