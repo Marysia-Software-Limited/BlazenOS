@@ -114,6 +114,23 @@ _AUTHOR_NATIONALITY: dict[str, str] = {
     "cervantes": "hiszpanski",
     "dante": "wloski", "boccaccio": "wloski",
     "ibsen": "norweski",
+    "conan doyle": "angielski", "stevenson": "angielski",
+    # Polish — the bulk of the Wolne Lektury catalogue.
+    "krasicki": "polski", "lesmian": "polski", "kochanowski": "polski",
+    "mickiewicz": "polski", "slowacki": "polski", "norwid": "polski",
+    "sienkiewicz": "polski", "boleslaw prus": "polski", "zeromski": "polski",
+    "orzeszkowa": "polski", "konopnicka": "polski", "reymont": "polski",
+    "tuwim": "polski", "zelenski": "polski", "baczynski": "polski",
+    "borowski": "polski", "schulz": "polski", "jasienski": "polski",
+    "grabinski": "polski", "zapolska": "polski", "morsztyn": "polski",
+    "nalkowska": "polski", "fredro": "polski", "kraszewski": "polski",
+    "galczynski": "polski", "staff": "polski", "asnyk": "polski",
+    "wyspianski": "polski", "przybos": "polski", "oppman": "polski",
+    "kornhauser": "polski", "beresewicz": "polski", "fraczek": "polski",
+    "braun": "polski", "biedrzycki": "polski",
+    # Others present in the catalogue.
+    "safona": "grecki", "ajschylos": "grecki",
+    "szewczenko": "ukrainski", "ukrainka": "ukrainski",
 }
 
 # User phrasing → nationality tag (folded).
@@ -129,6 +146,7 @@ _NATIONALITY_SYNONYMS: dict[str, str] = {
     "wloska": "wloski", "italian": "wloski",
     "hiszpanska": "hiszpanski", "spanish": "hiszpanski",
     "dunska": "dunski", "danish": "dunski",
+    "ukrainska": "ukrainski", "ukrainskie": "ukrainski", "ukrainian": "ukrainski",
 }
 
 
