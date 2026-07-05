@@ -20,16 +20,16 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.audiobooks import AudiobookDirectory
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.gemini import (
     GeminiClient,
     GeminiError,
 )
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.music import MusicDirectory
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.news import (
     NewsClient,
     NewsError,
 )
-from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.audiobooks import AudiobookDirectory
-from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.music import MusicDirectory
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.radio import RadioDirectory
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.semantic import SemanticLibrary
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.weather import (
@@ -127,6 +127,11 @@ class Tools:
         # Last music request ("coś Kazika" / "Kazika"), so "zagraj inny" replays it
         # → resolve() picks a fresh random track from the same pool (same artist).
         self._last_query = ""
+        # Play history for "następny" / "poprzedni": a list of {path,name} with a
+        # cursor. next steps forward (or plays a fresh track at the live edge);
+        # previous steps back. So navigation is deterministic, not just re-random.
+        self._history: list[dict[str, str]] = []
+        self._cursor = -1
 
     # -- dispatch ----------------------------------------------------------
     def run(self, tool: str, args: dict[str, Any], lang: str) -> ToolResult:
@@ -155,6 +160,8 @@ class Tools:
             return self.music_play(str(args.get("query", "")), lang)
         if tool == "music.next":
             return self.music_next(lang)
+        if tool == "music.prev":
+            return self.music_prev(lang)
         if tool == "audiobook.play":
             return self.audiobook_play(str(args.get("query", "")), lang)
         if tool == "library.search":
@@ -343,6 +350,20 @@ class Tools:
         return ToolResult(True, _t(lang, "Wyłączam radio.", "Turning off the radio."), "radio_stop")
 
     # -- music (offline local library) -------------------------------------
+    def _play_track(self, path: str, name: str, lang: str) -> ToolResult:
+        """Record a freshly-chosen track at the live edge of the history (dropping
+        any forward branch) and return the play result."""
+        self._history = self._history[: self._cursor + 1]
+        self._history.append({"path": path, "name": name})
+        self._cursor = len(self._history) - 1
+        return ToolResult(True, _t(lang, f"Gram {name}.", f"Playing {name}."),
+                          "music_play", {"path": path, "name": name})
+
+    def _play_from_history(self, lang: str) -> ToolResult:
+        item = self._history[self._cursor]
+        return ToolResult(True, _t(lang, f"Gram {item['name']}.", f"Playing {item['name']}."),
+                          "music_play", {"path": item["path"], "name": item["name"]})
+
     def music_play(self, query: str, lang: str) -> ToolResult:
         if not self.music.available:
             return ToolResult(True, _t(lang, "Biblioteka muzyki jest pusta.", "The music library is empty."), "music_offer")
@@ -352,16 +373,23 @@ class Tools:
             # No literal match → fall back to MEANING (e.g. "coś spokojnego").
             return self.library_search(query, lang, kinds=("music",))
         who = f"{track.artist} — {track.title}" if track.artist else track.title
-        return ToolResult(
-            True, _t(lang, f"Gram {who}.", f"Playing {who}."),
-            "music_play", {"path": track.path, "name": who},
-        )
+        return self._play_track(track.path, who, lang)
 
     def music_next(self, lang: str) -> ToolResult:
-        """"Zagraj inny" — play ANOTHER track. Replays the last request so a bare
-        artist pool ("coś Kazika") yields a fresh random track of the same artist;
-        with no prior request it just plays a random track."""
+        """"Następny" / "zagraj inny" — step FORWARD in history if we'd gone back,
+        otherwise play a fresh track from the last request (bare artist pool → a new
+        random track of that artist)."""
+        if self._cursor < len(self._history) - 1:
+            self._cursor += 1
+            return self._play_from_history(lang)
         return self.music_play(self._last_query, lang)
+
+    def music_prev(self, lang: str) -> ToolResult:
+        """"Poprzedni" — step BACK to the previously played track."""
+        if self._cursor > 0:
+            self._cursor -= 1
+            return self._play_from_history(lang)
+        return ToolResult(True, _t(lang, "To już pierwszy utwór.", "This is the first track."), "music_offer")
 
     # -- audiobooks (offline, from catalog.json) ---------------------------
     def audiobook_play(self, query: str, lang: str) -> ToolResult:

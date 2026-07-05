@@ -525,7 +525,7 @@ class Orchestrator:
                 "url": str(result.data["url"]),
                 "name": str(result.data.get("name", "")),
             }
-        elif tool in ("music.play", "music.next", "audiobook.play") and result.data.get("path"):
+        elif tool in ("music.play", "music.next", "music.prev", "audiobook.play") and result.data.get("path"):
             if not self._music_enabled:
                 # Local music/audiobook playback is temporarily disabled (its
                 # in-play controls — stop / next / volume — are being fixed). Speak

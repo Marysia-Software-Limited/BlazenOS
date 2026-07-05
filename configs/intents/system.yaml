@@ -678,6 +678,18 @@ intents:
   # something plays. Listed BEFORE music_play so these route to ANOTHER track
   # (music.next replays the last request → a fresh random track of the same pool)
   # instead of being read as a title search for the word "inny".
+  # PREVIOUS TRACK — "poprzedni", "wstecz", "cofnij". Steps back through the play
+  # history. Listed before music_next/music_play. ("następny" is a music_next
+  # trigger already.)
+  - name: music_prev
+    triggers:
+      pl:
+        - "\\b(poprzedni\\w*|wstecz|cofnij)\\b.*"
+      en:
+        - "\\b(previous|prev|go\\s+back)\\b.*"
+    action: tool_call
+    tool: music.prev
+
   - name: music_next
     triggers:
       pl:
