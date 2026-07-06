@@ -10,7 +10,11 @@
 mod dynamics;
 mod engine;
 mod sink;
+#[cfg(feature = "cpal-sink")]
+mod sink_cpal;
 
 pub use dynamics::{db_to_lin, Dynamics, DynamicsCfg, DynamicsConfig};
 pub use engine::{play_file, write_position, FileConfig};
 pub use sink::{AudioSink, CountingSink, SinkFactory};
+#[cfg(feature = "cpal-sink")]
+pub use sink_cpal::{CpalSink, CpalSinkFactory};

@@ -7,11 +7,17 @@ license.workspace = true
 repository.workspace = true
 description = "Portable audiobook playback engine (decode + seek + dynamics + position) behind an AudioSink trait. Shared by the Pi appliance (ALSA sink) and the rachel macOS agent (cpal sink)."
 
+[features]
+# The cpal output sink (macOS/desktop). The Pi links its own ALSA sink and does
+# not enable this, so the appliance build stays cpal-free.
+cpal-sink = ["dep:cpal"]
+
 [dependencies]
 anyhow            = { workspace = true }
 tracing           = { workspace = true }
 crossbeam-channel = { workspace = true }
 symphonia         = { workspace = true }
+cpal              = { workspace = true, optional = true }
 
 [dev-dependencies]
 hound    = { workspace = true }

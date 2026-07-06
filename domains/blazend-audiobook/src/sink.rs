@@ -7,7 +7,10 @@ use anyhow::Result;
 
 /// A place to write interleaved `i16` audio frames. `write` should block/pace so
 /// the engine's decode stays ahead of real-time without unbounded buffering.
-pub trait AudioSink: Send {
+///
+/// Used single-threaded by the engine (created and driven on `play_file`'s
+/// thread), so no `Send` bound — a cpal sink may hold a `!Send` stream.
+pub trait AudioSink {
     fn write(&mut self, interleaved: &[i16]) -> Result<()>;
     /// Block until buffered audio has finished playing (called at end of file).
     fn drain(&mut self) {}
