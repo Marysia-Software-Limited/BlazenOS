@@ -100,3 +100,4 @@ vm-runs/
 wheelhouse/
 _unbaked-llm-stash/
 claude_resume.txt
+.venv-rachel/
