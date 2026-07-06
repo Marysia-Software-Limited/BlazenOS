@@ -131,6 +131,7 @@ implementation is its first adapter set. (Android/iOS adapter columns fill in at
 | **context** | memory model + `MemoryStore` port; `blazend-fabric` sync | `memory.py`, `embeddings.py` | `embeddings.yaml`, `fabric.yaml` |
 | **voice-input** | `Capture`/`Wake`/`Vad`/`Asr` ports | `blazend-audio-in`, `blazend-wake`, `wakeword/`, `asr/`, `blazend-audioring` | `audio.yaml`, `asr.yaml`, `wake-word.yaml` |
 | **voice-output** | `Tts`/`Playback` ports | `blazend-tts`, `blazend-audio-out`, `blazend-player`, `radio_control.py` | `tts.yaml`, `radio.yaml` |
+| **audiobook** | `audiobook-catalog` (Python: catalog/resolver/progress — **first Python domain lib**), `blazend-audiobook` (Rust: decode+seek+dynamics+position behind `AudioSink`) | Pi: `audiobooks.py`/`audiobook_progress.py` shims + `blazend-player` (ALSA sink, Phase C); macOS: `macos/agent` (Calibre+Apple-TTS ingest) + `macos/player` (cpal sink) | `catalog.json` |
 | **systems** | lifecycle/health contract | `stage-blazen/`, systemd units, `blazend-health`, `bootstrap/`, `recovery.py` | `system.yaml` |
 | **contract** (shared) | `blazend-ipc`, `configs/_schema/events/` | Python `ipc/`+`events/` | — |
 

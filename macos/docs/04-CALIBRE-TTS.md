@@ -44,12 +44,26 @@ gets chapters, resume, recommendations, and the attention-check for free.**
    Lektury audiobook → play; a Calibre ebook not yet rendered → kick off the render
    and start ch 1 as it lands.
 
-## Where the code goes
-- rachel's tools: `macos/tools/calibre-ingest.py` + `macos/tools/render-tts.py`
-  (Python; `ebooklib`, Azure Speech SDK are **rachel/paul dev deps**, never shipped
-  to the Pi). They WRITE to the shared `catalog.json` + `/var/lib/blazen/audiobooks/`
-  on `jessica` — coordinate the schema with the Pi session.
-- No change to the Pi's playback engine — it already plays anything in the catalog.
+## Where the code goes (as built, 2026-07-06)
+- rachel's agent: `macos/agent/src/rachel/` (Python) — `calibre.py` (read
+  `~/calibre/metadata.db`, filter `pol`, extract chapters), `tts.py`
+  (`AppleTTS` default via `say`→ffmpeg; `AzureTTS` opt-in), `ingest.py`
+  (progressive render + `catalog.json` upsert), `player.py` + `cli.py`
+  (`rachel-audiobook list|render|play|resume`). Deps `ebooklib`/`bs4` and the
+  optional Azure SDK are **rachel dev deps**, never shipped to the Pi.
+- Shared libs under `domains/` (domains for common code): `audiobook-catalog`
+  (Python catalog/resolver/progress, imported by both rachel and the Pi) and
+  `blazend-audiobook` (Rust playback engine behind `AudioSink`; rachel's
+  `macos/player/rachel-player` links a cpal sink).
+- **TTS decision:** Apple on-device is the **default** renderer (Zosia, Apple
+  Silicon); Azure Neural (`pl-PL-MarekNeural`) is the **`--premium` opt-in** for a
+  hand-picked shelf, key in the gitignored `macos/.secrets.env`. (This supersedes
+  the "Azure now" framing above — Apple acceleration is the default per the user's
+  2026-07-06 direction.)
+- Mac-local first: rendered books land in
+  `~/Library/Application Support/blazen/audiobooks/<slug>/` in the shared schema;
+  rsync/chown to the Pi's `/var/lib/blazen/audiobooks/` is a later phase.
+- No change to the Pi's playback contract — it already plays anything in the catalog.
 
 ## On-device invariant
 Cloud TTS (Azure/ElevenLabs) is a deliberate **opt-in exception** for the reading

@@ -80,9 +80,19 @@ add a Swift menu-bar shell for UX. Revisit B only if a native app is a goal.
   it's currently minimal, so expect to grow it.
 - **Privacy:** context stays on the LAN between the user's own nodes; no cloud.
 
+## Audiobooks (built — Phases A + B)
+rachel **owns** the Calibre → audiobook ingest (decided 2026-07-06, superseding
+the earlier "paul renders" note): it extracts a Polish ebook from `~/calibre`,
+renders chapters with **Apple on-device TTS** (Zosia by default; Azure Neural as
+an opt-in `--premium` path), writes the shared `catalog.json`, and plays it on
+the Mac with resume + auto-advance. The device-independent parts are two
+`domains/` common libs — `audiobook-catalog` (Python: catalog/resolver/progress,
+also imported by the Pi) and `blazend-audiobook` (Rust: decode + seek + dynamics
++ position behind an `AudioSink` trait; rachel links a cpal sink, the Pi an ALSA
+sink). See [`04-CALIBRE-TTS.md`](04-CALIBRE-TTS.md) and the design/plan under
+`../../docs/superpowers/`.
+
 ## What rachel deliberately does NOT do
 - No wake-word / always-listening (that's the Pi appliance's job); rachel is
   hotkey-driven.
-- No book *rendering* (Azure/ElevenLabs) — that's paul's offline pipeline; rachel
-  only *plays/reads* via Apple TTS or shares the rendered audiobooks.
 - No hard coupling: if rachel is asleep/closed, jessica + paul are unaffected.
