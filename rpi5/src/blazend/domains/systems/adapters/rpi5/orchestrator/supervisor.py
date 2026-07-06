@@ -92,6 +92,10 @@ class Orchestrator:
         # music/radio). The player writes its live position to `_position_file`; the
         # orchestrator reads it to remember/resume and to auto-advance chapters.
         self._book: dict[str, Any] | None = None
+        # Last book that was playing, kept across a stop so "kontynuj"/"czytaj dalej"
+        # can resume it at the saved chapter+offset. Reset to None whenever a
+        # non-book source (radio/music) plays, so resume tracks the most-recent kind.
+        self._last_book: dict[str, Any] | None = None
         self._position_file = self._runtime_dir / "player-position"
         self._book_stopping = False  # user stop (vs natural EOF) — suppresses auto-advance
         self._book_progress = AudiobookProgress()  # sole writer of progress.json
@@ -505,6 +509,7 @@ class Orchestrator:
                     "index": int(payload.get("chapter", 0)),
                     "name": self._last_source_name,
                 }
+                self._last_book = self._book  # remember for "kontynuj" after a stop
                 self._book_stopping = False
                 self._book_paused_for_attention = False
                 self._book_activity_at = asyncio.get_running_loop().time()  # attention clock
@@ -513,6 +518,7 @@ class Orchestrator:
                 self._position_file.unlink(missing_ok=True)  # stale-guard
             else:
                 self._book = None  # music/radio → not a book
+                self._last_book = None  # resume should target this radio/music, not a stale book
             self._cancel_duck_restore()  # a real play command supersedes a duck
             # Free the Jabra output for playback; the reconciler keeps audio-out
             # down while it plays.
@@ -571,6 +577,7 @@ class Orchestrator:
         """Play chapter ``index`` of ``book`` (auto-advance / chapter nav / resume)."""
         book["index"] = index
         self._book = book
+        self._last_book = book  # keep resumable across a later stop
         self._book_stopping = False
         self._book_paused_for_attention = False
         self._book_activity_at = asyncio.get_running_loop().time()
@@ -636,6 +643,7 @@ class Orchestrator:
             else:
                 if done:  # ran off the end of the last chapter → finished
                     self._book_progress.clear(str(book.get("slug", "")))
+                    self._last_book = None  # finished → nothing to resume
                     await self._speak("Skończyłam książkę.")
                 self._book = None
 
@@ -670,6 +678,23 @@ class Orchestrator:
         # the one place that knows both; the player has no seek, so it restarts
         # from the top). media_pause/"wstrzymaj" stops the current playback.
         if intent_name == "media_resume":
+            # A book resumes at its saved chapter + offset (re-arms auto-advance /
+            # attention via _act_on_reply); radio/music restarts from the top (the
+            # player has no seek for a live stream).
+            book = self._last_book
+            if book:
+                prog = self._book_progress.get(str(book.get("slug", ""))) or {}
+                idx = int(prog.get("chapter", book.get("index", 0)))
+                chapters = list(book.get("chapters", []))
+                if 0 <= idx < len(chapters):
+                    return Envelope(
+                        topic="brain.reply", source="blazend-orchestrator",
+                        data={"action": "music_play", "payload": {
+                            "path": chapters[idx], "name": str(book.get("name", "")),
+                            "is_audiobook": True, "slug": str(book.get("slug", "")),
+                            "chapters": chapters, "chapter": idx,
+                            "start_seconds": float(prog.get("offset_s", 0.0))}},
+                    )
             if self._last_source:
                 return Envelope(
                     topic="brain.reply", source="blazend-orchestrator",

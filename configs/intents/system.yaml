@@ -379,12 +379,15 @@ intents:
   # Handled by the orchestrator (it owns the exclusive player + last source);
   # media_transport is a noop in the dispatcher, so the orchestrator intercepts
   # this intent by name. Broadened to catch "kontynuj"/"kontynuuj"/"wznów".
+  # For a book, the orchestrator resumes at the saved chapter+offset, so
+  # "czytaj/czytaj dalej" (the phrase the attention check tells you to say) lands
+  # here too.
   - name: media_resume
     triggers:
       en:
-        - "\\b(resume|continue|keep\\s+playing)\\b"
+        - "\\b(resume|continue|keep\\s+playing|read\\s+on)\\b"
       pl:
-        - "\\b(kontynu\\w+|wzn(ó|o)w\\w*|graj\\s+dalej|graj\\s+znowu)\\b"
+        - "\\b(kontynu\\w+|wzn(ó|o)w\\w*|(graj|czytaj)\\s+dalej|graj\\s+znowu)\\b"
     action: media_transport
     transport: resume
 
