@@ -1,0 +1,24 @@
+# Pinned deps for the XTTS-v2 GPU TTS server (scripts/xtts_server.py) on paul.
+# The coqui-tts 0.27.x + transformers combo is fiddly: coqui-tts imports symbols
+# that only coexist in transformers 4.55–4.57 (5.x drops `isin_mps_friendly`;
+# <4.48 lacks `is_torch_greater_or_equal`; 4.57 also needs `torchcodec`). These
+# are the versions verified working on paul (RTX 3090, CUDA 13, Python 3.12).
+#
+# Setup (on the GPU host):
+#   cd ~/dev/blazen_os
+#   uv venv --python 3.12 .venv-xtts
+#   uv pip install --python .venv-xtts/bin/python -r scripts/xtts-requirements.txt
+#   COQUI_TOS_AGREED=1 .venv-xtts/bin/python scripts/xtts_server.py   # :8091
+#
+# torch/torchaudio/torchcodec are the Linux CUDA wheels (cu130 on paul). On a
+# different CUDA/host, let uv resolve those three instead of hard-pinning.
+
+coqui-tts==0.27.5
+transformers==4.57.6
+tokenizers==0.22.2
+torch==2.12.1
+torchaudio==2.11.0
+torchcodec==0.14.0
+starlette==1.3.1
+uvicorn==0.50.2
+numpy==2.4.6
