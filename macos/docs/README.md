@@ -11,6 +11,9 @@ Read in order:
    jessica · rachel · paul (the headline feature).
 4. [`02-BUILD-INSTRUCTIONS.md`](02-BUILD-INSTRUCTIONS.md) — phased, testable build
    steps for the macOS Claude session.
+5. [`04-CALIBRE-TTS.md`](04-CALIBRE-TTS.md) — **rachel owns this**: turn the user's
+   Calibre ebooks into Polish audiobooks (Azure now, ElevenLabs later) for the
+   shared library. Moved here from the Pi's audiobook plan.
 
 Surface rules: [`../AGENTS.md`](../AGENTS.md), [`../CLAUDE.md`](../CLAUDE.md).
 Shared core + contract: [`../../docs/17-MOBILE-MONOREPO.md`](../../docs/17-MOBILE-MONOREPO.md).

@@ -58,10 +58,11 @@ Decoded into requirements:
 5. **Shared resources + context** — memory/conversation state synced so any node
    answers with the same context.
 
-Also decided this session: **TTS for reading ebooks** starts on **Azure Neural
-(pl-PL)**, with **ElevenLabs later for selected books** (premium). That's a
-rendering pipeline on `paul`, not a rachel concern — but rachel may later host its
-own Apple `AVSpeechSynthesizer` Polish TTS.
+Also decided: **reading the user's Calibre ebooks aloud** — extract text + render
+to Polish audio (**Azure Neural now, ElevenLabs later for selected books**) and
+feed the shared audiobook library. **This is now a rachel responsibility** — see
+[`04-CALIBRE-TTS.md`](04-CALIBRE-TTS.md). (rachel may also host its own Apple
+`AVSpeechSynthesizer` pl-PL TTS for conversational replies.)
 
 ## 4. What already exists that rachel REUSES (don't rebuild)
 
