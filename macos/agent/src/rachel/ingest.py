@@ -9,8 +9,8 @@ any existing entry with the same slug (atomic write).
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from rachel.calibre import CalibreBook
 from rachel.extract import Chapter
