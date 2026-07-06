@@ -79,6 +79,7 @@ $(VENV)/bin/python:
 .PHONY: venv python
 venv python: $(VENV)/bin/python ## Create the Python virtualenv and install the rpi5 appliance package
 	$(PIP) install -e domains/audiobook-catalog
+	$(PIP) install -e domains/mesh-registry
 	cd rpi5 && $(PIP) install -e ".[dev]"
 
 # -------- build --------
@@ -204,6 +205,7 @@ test: test-fast test-vm ## Full pyramid (Tier 0..3)
 .PHONY: test-fast
 test-fast: venv lint ## Tier 0 (unit) + Tier 1 (component, mocked) — Python AND Rust (core + appliance)
 	cd rpi5 && $(PY) -m pytest tests/unit tests/component -x --tb=short
+	$(PY) -m pytest domains/audiobook-catalog/tests domains/mesh-registry/tests -q
 	cd domains && $(CARGO) test --workspace --quiet
 	cd rpi5/crates && $(CARGO) test --workspace --quiet
 
