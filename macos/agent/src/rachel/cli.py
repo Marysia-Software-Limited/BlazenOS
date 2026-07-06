@@ -5,8 +5,10 @@ Subcommands:
 - ``render`` — extract a book, render chapters with Apple TTS (or Azure ``--premium``),
                write the shared catalog entry. Starts `afplay` on chapter 1 as a
                smoke unless ``--no-play`` (the real player lands in Phase B).
-- ``play`` / ``resume`` — land in Phase B (the rachel-player over the shared
-               ``domains/blazend-audiobook`` engine).
+- ``play``   — resolve a rendered book in the Mac catalog and play it via
+               ``rachel-player`` (the shared ``domains/blazend-audiobook`` engine),
+               resuming from saved progress and auto-advancing chapters.
+- ``resume`` — continue the most-recently-played book.
 """
 from __future__ import annotations
 
@@ -14,15 +16,23 @@ import argparse
 import os
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
-from rachel import paths, secrets
+from audiobook_catalog.directory import AudiobookDirectory
+from audiobook_catalog.progress import AudiobookProgress
+
+from rachel import paths, player, secrets
 from rachel.calibre import CalibreLibrary
 from rachel.extract import epub_to_chapters, text_to_chapters
 from rachel.ingest import render_book, upsert_catalog_entry
 from rachel.tts import AppleTTS, AzureTTS, installed_polish_voice_is_compact
 
 _CALIBRE = os.environ.get("CALIBRE_LIBRARY", str(Path.home() / "calibre"))
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def _library() -> CalibreLibrary:
@@ -104,9 +114,29 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if a.cmd in ("play", "resume"):
-        print("play/resume land in Phase B (rachel-player over domains/blazend-audiobook).",
+        directory = AudiobookDirectory(catalog_path=str(paths.catalog_path()))
+        progress = AudiobookProgress(path=str(paths.progress_path()))
+        if a.cmd == "play":
+            book = directory.resolve(" ".join(a.query))
+            if not book:
+                print("book not found in the rendered catalog — render it first",
+                      file=sys.stderr)
+                return 1
+            slug = book.slug
+        else:  # resume
+            slug = player.latest_slug(str(paths.progress_path()))
+            book = directory.by_slug(slug) if slug else None
+            if not book:
+                print("nothing to resume", file=sys.stderr)
+                return 1
+        saved = progress.get(slug) or {}
+        print(f"playing {slug} ({book.title}) from chapter {int(saved.get('chapter', 0))}",
               file=sys.stderr)
-        return 2
+        player.play_book(list(book.chapters), slug, book.title,
+                        progress=progress, now=_now(),
+                        start_chapter=int(saved.get("chapter", 0)),
+                        start_seconds=float(saved.get("offset_s", 0.0)))
+        return 0
     return 2
 
 
