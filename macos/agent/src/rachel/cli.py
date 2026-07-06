@@ -21,6 +21,7 @@ from pathlib import Path
 
 from audiobook_catalog.directory import AudiobookDirectory
 from audiobook_catalog.progress import AudiobookProgress
+from mesh_registry import Mesh
 
 from rachel import paths, player, secrets
 from rachel.calibre import CalibreLibrary
@@ -96,9 +97,16 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             tts = AzureTTS(key=key, region=s.get("AZURE_REGION", "westeurope"))
         elif engine == "xtts":
-            speaker = None if a.voice == "Zosia" else a.voice  # apple default → server default
-            tts = XttsTTS(a.xtts_url, speaker=speaker)
-            print(f"rendering via XTTS on {a.xtts_url}", file=sys.stderr)
+            # Resolve paul's XTTS endpoint from the shared mesh registry; fall
+            # back to --xtts-url only if the resource isn't in the mesh.
+            res = Mesh.load().resource("tts", "xtts")
+            url = res.url if (res and res.url) else a.xtts_url
+            speaker = res.attrs.get("speaker") if res else None
+            if a.voice != "Zosia":  # an explicit --voice overrides the mesh speaker
+                speaker = a.voice
+            node = res.node if res else "default"
+            tts = XttsTTS(url, speaker=speaker)
+            print(f"rendering via XTTS at {url} (node={node}, speaker={speaker})", file=sys.stderr)
         else:
             if installed_polish_voice_is_compact(a.voice):
                 print(f"note: only the compact '{a.voice}' voice is installed — for "

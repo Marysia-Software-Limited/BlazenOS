@@ -1,0 +1,48 @@
+# configs/mesh.yaml — the Jessica constellation registry.
+#
+# The "where" layer of the mesh: every node and the resources it advertises to
+# the others (LLM / ASR / TTS endpoints). This generalizes the previously
+# hard-coded peer URLs (Ollama :11434, whisper :8090, XTTS :8091) into one
+# discoverable place so "share resources across nodes" is data, not scattered
+# constants. Loaded via the shared domains/mesh-registry lib.
+#
+# Scope boundary: this is DISCOVERY (addresses + endpoints + capabilities).
+# LLM routing *policy* (task -> backend order) stays in llm.yaml; that decides
+# WHICH resource, this says WHERE it is. A node overrides `self` with $BLAZEN_NODE.
+#
+# See macos/docs/03-LLM-MESH.md and docs/19-DOMAIN-ARCHITECTURE.md.
+version: 1
+
+self: jessica            # who am I in the mesh (per-node override: $BLAZEN_NODE)
+
+nodes:
+  jessica:               # always-on Raspberry Pi 5 voice appliance
+    role: appliance
+    host: 192.168.50.24
+    resources:
+      llm:
+        bielik-1.5b: { kind: llama-cpp, local: true, model: bielik-1.5b-v3-instruct-q4_k_m }
+        bielik-4.5b: { kind: llama-cpp, local: true, model: bielik-4.5b-v3-instruct-q6_k }
+      asr:
+        whisper-local: { kind: faster-whisper, local: true, model: small }
+      tts:
+        piper-pl: { kind: piper, local: true }
+
+  paul:                  # Linux + RTX 3090 GPU / build rig
+    role: gpu
+    host: 192.168.50.102
+    resources:
+      llm:
+        ollama-11b: { kind: openai, url: "http://192.168.50.102:11434", model: bielik-11b }
+      asr:
+        whisper-remote: { kind: faster-whisper, url: "http://192.168.50.102:8090/transcribe", model: large-v3 }
+      tts:
+        xtts: { kind: xtts, url: "http://192.168.50.102:8091/synthesize", language: pl, speaker: "Ana Florence" }
+
+  rachel:                # macOS Apple-Silicon desktop node
+    role: desktop
+    host: 192.168.50.186
+    resources:
+      tts:
+        apple-zosia-enhanced: { kind: apple, local: true, voice: "Zosia (Enhanced)" }
+      # llm: MLX endpoint — future (docs/03-LLM-MESH.md Phase 1)
