@@ -1,0 +1,16 @@
+# /etc/blazen/audiobooks.yaml — audiobook playback engine tuning.
+#
+# The engine (chapter auto-advance, remember/restore position, resume, chapter
+# navigation) lives in the orchestrator + blazend-player. Progress is stored per
+# book slug in /var/lib/blazen/audiobooks/progress.json.
+
+version: 1
+
+# Attention check: during long book playback the orchestrator periodically PAUSES
+# the book (position saved), asks "Czy słuchasz?", and listens. On a reply it
+# resumes; on silence it stays stopped — so a listener who falls asleep doesn't
+# lose their place (resume with "czytaj dalej <książka>" / "kontynuj").
+attention:
+  enabled: true
+  interval_min: 20        # ask after this many minutes of continuous listening
+  window_s: 20            # how long to wait for a reply before deciding "asleep"

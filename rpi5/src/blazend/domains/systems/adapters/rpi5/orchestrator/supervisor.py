@@ -95,6 +95,14 @@ class Orchestrator:
         self._position_file = self._runtime_dir / "player-position"
         self._book_stopping = False  # user stop (vs natural EOF) — suppresses auto-advance
         self._book_progress = AudiobookProgress()  # sole writer of progress.json
+        # Attention check: pause + "Czy słuchasz?" after a spell of listening; resume
+        # on any reply, stay stopped on silence (so a sleeping listener keeps place).
+        att = self._load_attention()
+        self._attention_enabled, self._attention_interval_s, self._attention_window_s = att
+        self._book_activity_at = 0.0     # loop time the attention interval counts from
+        self._awaiting_attention = False
+        self._attention_deadline = 0.0
+        self._book_paused_for_attention = False
         self._stop = asyncio.Event()
         self._subscribers: list[tuple[str, Subscriber]] = []
         # Half-duplex speaker: the Jabra is a speakerphone whose echo-cancellation
@@ -115,6 +123,17 @@ class Orchestrator:
         self._volume_pct = _DEFAULT_VOLUME_PCT
         self._ducked = False
         self._duck_task: asyncio.Task[None] | None = None
+
+    @staticmethod
+    def _load_attention() -> tuple[bool, float, float]:
+        """Audiobook attention-check settings (enabled, interval_s, window_s)."""
+        try:
+            a = load_config("audiobooks").data.get("attention", {}) or {}
+            return (bool(a.get("enabled", True)),
+                    float(a.get("interval_min", 20)) * 60.0,
+                    float(a.get("window_s", 20)))
+        except Exception:  # noqa: BLE001
+            return True, 1200.0, 20.0
 
     @staticmethod
     def _load_wake_gating() -> tuple[bool, float]:
@@ -314,6 +333,12 @@ class Orchestrator:
         patch: dict[str, Any] = {
             "units": {peer: {"last_topic": env.topic, "last_ts_ms": env.ts_ms}},
         }
+        # Audiobook attention: a wake or command means the listener is present —
+        # reset the attention interval, and if we're mid-check, resume the book.
+        if env.topic in ("wake.detected", "nlu.intent") and self._book is not None:
+            self._book_activity_at = asyncio.get_running_loop().time()
+            if self._awaiting_attention:
+                await self._attention_present()
         if env.topic == "system.event" and env.data.get("kind") == "heartbeat":
             patch["ready"] = True
             patch["units"][peer]["status"] = "running"
@@ -481,6 +506,8 @@ class Orchestrator:
                     "name": self._last_source_name,
                 }
                 self._book_stopping = False
+                self._book_paused_for_attention = False
+                self._book_activity_at = asyncio.get_running_loop().time()  # attention clock
                 start_seconds = float(payload.get("start_seconds", 0.0))
                 position_file = str(self._position_file)
                 self._position_file.unlink(missing_ok=True)  # stale-guard
@@ -539,30 +566,69 @@ class Orchestrator:
             data={"language": lang, "text": text, "chunk": text, "final_": True,
                   "action": "system.notice"}))
 
-    async def _play_book_chapter(self, book: dict[str, Any], index: int) -> None:
-        """Play chapter ``index`` of ``book`` from the top (auto-advance / nav)."""
+    async def _play_book_chapter(self, book: dict[str, Any], index: int,
+                                 start_seconds: float = 0.0) -> None:
+        """Play chapter ``index`` of ``book`` (auto-advance / chapter nav / resume)."""
         book["index"] = index
         self._book = book
         self._book_stopping = False
+        self._book_paused_for_attention = False
+        self._book_activity_at = asyncio.get_running_loop().time()
         self._position_file.unlink(missing_ok=True)
         self._last_source = str(book["chapters"][index])
         self._last_source_name = str(book.get("name", ""))
         await self._apply_audio_out(False)
         await asyncio.sleep(0.3)
         await asyncio.to_thread(self._radio.play, self._last_source, self._last_source_name,
-                                position_file=str(self._position_file), start_seconds=0.0)
+                                position_file=str(self._position_file), start_seconds=start_seconds)
         self._speaker_busy.touch()
         log.info("audiobook chapter %d/%d — %s", index + 1, len(book["chapters"]), self._last_source_name)
 
+    async def _attention_present(self) -> None:
+        """The listener replied to 'Czy słuchasz?' → resume the paused book."""
+        self._awaiting_attention = False
+        self._book_activity_at = asyncio.get_running_loop().time()
+        if self._book_paused_for_attention and self._book is not None:
+            self._book_paused_for_attention = False
+            prog = self._book_progress.get(str(self._book.get("slug", ""))) or {}
+            await self._play_book_chapter(self._book, int(self._book["index"]),
+                                          start_seconds=float(prog.get("offset_s", 0.0)))
+
     async def _book_watcher(self) -> None:
-        """Auto-advance chapters: when an audiobook's player exits on its OWN (a
-        chapter reached EOF, not a user stop), start the next chapter; at the last
-        chapter, announce the end and clear progress."""
+        """Drive a playing audiobook: auto-advance chapters on natural EOF, and run
+        the attention check (pause + ask; resume on reply, stay stopped on silence)."""
         while not self._stop.is_set():
             await asyncio.sleep(1.0)
             book = self._book
-            if book is None or self._book_stopping or self._radio.playing:
+            if book is None:
                 continue
+            now = asyncio.get_running_loop().time()
+            if self._awaiting_attention:
+                if now >= self._attention_deadline:  # no reply → asleep → stay stopped
+                    self._awaiting_attention = False
+                    self._book_paused_for_attention = False
+                    self._book = None  # position already saved at the pause
+                    await self._speak("Zatrzymuję książkę. Powiedz „czytaj dalej”, gdy wrócisz.")
+                continue
+            if self._book_paused_for_attention:
+                continue
+            if self._radio.playing:
+                if (self._attention_enabled and self._book_activity_at
+                        and now - self._book_activity_at >= self._attention_interval_s):
+                    self._save_book_progress()          # remember before pausing
+                    self._book_paused_for_attention = True
+                    self._awaiting_attention = True
+                    self._attention_deadline = now + self._attention_window_s
+                    self._book_stopping = True           # suppress auto-advance while paused
+                    await asyncio.to_thread(self._radio.stop)
+                    self._speaker_busy.unlink(missing_ok=True)  # mic un-gated for the reply
+                    await self._speak("Czy jeszcze słuchasz?")
+                    (self._runtime_dir / "activate").touch()  # open a listen window
+                    self._awake_until = now + self._attention_window_s  # accept the reply
+                continue
+            if self._book_stopping:
+                continue
+            # player exited on its OWN (chapter EOF) → auto-advance / finish
             _offset, done = self._read_position()
             nxt = int(book["index"]) + 1
             if done and nxt < len(book["chapters"]):
@@ -571,7 +637,27 @@ class Orchestrator:
                 if done:  # ran off the end of the last chapter → finished
                     self._book_progress.clear(str(book.get("slug", "")))
                     await self._speak("Skończyłam książkę.")
-                self._book = None  # not playing anymore
+                self._book = None
+
+    def _chapter_nav(self, delta: int) -> Envelope:
+        """Jump ±1 chapter in the now-playing book (or say why we can't)."""
+        def spoken(msg: str) -> Envelope:
+            return Envelope(topic="brain.reply", source="blazend-orchestrator",
+                            data={"language": "pl", "text": msg, "chunk": msg,
+                                  "final_": True, "action": "command.chapter"})
+        if self._book is None:
+            return spoken("Nie czytam teraz książki.")
+        chapters = list(self._book["chapters"])
+        idx = int(self._book["index"]) + delta
+        if idx < 0:
+            return spoken("To pierwszy rozdział.")
+        if idx >= len(chapters):
+            return spoken("To ostatni rozdział.")
+        return Envelope(topic="brain.reply", source="blazend-orchestrator",
+                        data={"action": "music_play", "payload": {
+                            "path": chapters[idx], "name": str(self._book["name"]),
+                            "is_audiobook": True, "slug": str(self._book["slug"]),
+                            "chapters": chapters, "chapter": idx, "start_seconds": 0.0}})
 
     def _dispatch_intent(self, env: Envelope) -> Envelope | None:
         """Act on a fast-path `nlu.intent`; return the spoken reply (if any)."""
@@ -600,6 +686,10 @@ class Orchestrator:
                 topic="brain.reply", source="blazend-orchestrator",
                 data={"action": "music_stop"},
             )
+        # Chapter navigation ("następny/poprzedni rozdział") acts on the
+        # now-playing book (the orchestrator owns that state).
+        if intent_name in ("chapter_next", "chapter_prev"):
+            return self._chapter_nav(1 if intent_name == "chapter_next" else -1)
         result = self._dispatcher.dispatch(
             intent_name,
             env.data.get("params", {}),
