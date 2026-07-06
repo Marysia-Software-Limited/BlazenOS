@@ -57,12 +57,20 @@ class AudiobookDirectory:
     def available(self) -> bool:
         return bool(self.books)
 
+    # Stemmed volume markers → order, so a bare "Ziemia obiecana" starts at tom
+    # pierwszy rather than a later volume. "i"/roman-I is omitted (it collides with
+    # the "i" conjunction); Polish word forms cover the common case.
+    _VOL = {"pierwsz": 1, "drug": 2, "trzec": 3, "czwart": 4, "ii": 2, "iii": 3, "iv": 4}
+
     def resolve(self, query: str) -> Book | None:
-        """Best book match for ``query`` across title + author (longest overlap)."""
+        """Best book match for ``query`` across title + author (longest overlap).
+        On an otherwise-equal match, prefer the earliest volume so a bare
+        "Ziemia obiecana" resolves to tom pierwszy, not a later volume. When the
+        query itself names a volume, that scores higher and wins outright."""
         q = _tokens(query)
         if not q:
             return None
-        best_score = 0
+        best_key = (0, 1)                            # (score, -volrank); score 0 = no match
         best: Book | None = None
         for b in self.books:
             if q <= b._title and b._title:
@@ -71,9 +79,11 @@ class AudiobookDirectory:
                 score = 60
             else:
                 score = len(q & (b._title | b._author))
-            if score > best_score:
-                best_score, best = score, b
-        return best if best_score > 0 else None
+            vol = next((self._VOL[t] for t in b._title if t in self._VOL), 0)
+            key = (score, -vol)                      # tie → smaller volume (0 = none) wins
+            if key > best_key:
+                best_key, best = key, b
+        return best if best_key[0] > 0 else None
 
     def offer(self, limit: int = 6) -> list[Book]:
         """The books to read back for the spoken menu."""

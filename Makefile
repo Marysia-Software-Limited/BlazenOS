@@ -78,6 +78,7 @@ $(VENV)/bin/python:
 
 .PHONY: venv python
 venv python: $(VENV)/bin/python ## Create the Python virtualenv and install the rpi5 appliance package
+	$(PIP) install -e domains/audiobook-catalog
 	cd rpi5 && $(PIP) install -e ".[dev]"
 
 # -------- build --------
