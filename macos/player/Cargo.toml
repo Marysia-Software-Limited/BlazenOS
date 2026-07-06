@@ -1,0 +1,28 @@
+# rachel-player — the macOS audiobook player binary. Its own workspace (macOS-
+# specific, cpal), depending one-directionally on the shared domains engine —
+# the same relationship rpi5/crates has with domains/. Not part of the domains
+# cross-platform workspace (which the Pi cross-builds).
+[package]
+name = "rachel-player"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.78"
+license = "Apache-2.0"
+description = "macOS (rachel) audiobook player over the shared blazend-audiobook engine + a cpal sink."
+
+[workspace]
+
+[lib]
+name = "rachel_player"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rachel-player"
+path = "src/main.rs"
+
+[dependencies]
+anyhow             = "1.0"
+clap               = { version = "4.5", features = ["derive"] }
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+blazend-audiobook  = { path = "../../domains/blazend-audiobook", features = ["cpal-sink"] }
