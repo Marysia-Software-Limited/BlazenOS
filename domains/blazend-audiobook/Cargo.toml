@@ -1,0 +1,18 @@
+[package]
+name = "blazend-audiobook"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Portable audiobook playback engine (decode + seek + dynamics + position) behind an AudioSink trait. Shared by the Pi appliance (ALSA sink) and the rachel macOS agent (cpal sink)."
+
+[dependencies]
+anyhow            = { workspace = true }
+tracing           = { workspace = true }
+crossbeam-channel = { workspace = true }
+symphonia         = { workspace = true }
+
+[dev-dependencies]
+hound    = { workspace = true }
+tempfile = "3.10"
