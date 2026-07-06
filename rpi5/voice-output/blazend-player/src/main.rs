@@ -68,6 +68,33 @@ struct Args {
     /// orchestrator can remember where an audiobook was stopped.
     #[arg(long)]
     position_file: Option<String>,
+    /// Disable the always-on loudness leveler (AGC). By default the player measures
+    /// its own output level and auto-holds a constant loudness for every source, so
+    /// a quiet audiobook comes up to the same level as radio.
+    #[arg(long = "no-level", default_value_t = false)]
+    no_level: bool,
+    /// Leveler target loudness (dBFS RMS) — quiet content is boosted toward this.
+    #[arg(long, default_value_t = -16.0)]
+    target_db: f32,
+    /// Max boost the leveler may apply to very quiet content (dB).
+    #[arg(long, default_value_t = 20.0)]
+    max_boost_db: f32,
+    /// Brick-wall limiter ceiling (dBFS) — leveling/compression never clip past this.
+    #[arg(long, default_value_t = -1.0)]
+    limit_db: f32,
+    /// Enable the speech compressor (books/podcasts) for intelligibility. OFF for
+    /// music/radio, which keep their dynamics.
+    #[arg(long, default_value_t = false)]
+    compress: bool,
+    /// Speech compressor threshold (dBFS).
+    #[arg(long, default_value_t = -24.0)]
+    comp_threshold_db: f32,
+    /// Speech compressor ratio (N:1).
+    #[arg(long, default_value_t = 3.0)]
+    comp_ratio: f32,
+    /// Speech compressor makeup gain (dB).
+    #[arg(long, default_value_t = 3.0)]
+    comp_makeup_db: f32,
 }
 
 /// `http(s)` source → live stream; anything else → local file.
@@ -101,6 +128,158 @@ fn apply_gain(samples: &mut [i16], gain: f32) {
     }
     for s in samples.iter_mut() {
         *s = (*s as f32 * gain).clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+    }
+}
+
+/// Decibels (full-scale) → linear amplitude ratio.
+fn db_to_lin(db: f32) -> f32 {
+    10f32.powf(db / 20.0)
+}
+
+const I16_SCALE: f32 = 32768.0;
+
+/// Static config for the output dynamics chain, resolved from CLI flags once.
+#[derive(Clone, Copy, Debug)]
+struct DynamicsCfg {
+    pre_gain: f32,   // manual --gain, applied first
+    level: bool,     // always-on loudness leveler (AGC)
+    target_rms: f32, // linear target (from --target-db)
+    max_boost: f32,  // linear ceiling on AGC gain (from --max-boost-db)
+    max_cut: f32,    // linear floor on AGC gain (leveler may also tame hot sources)
+    compress: bool,  // speech compressor (books/podcasts)
+    comp_threshold: f32,
+    comp_ratio: f32,
+    comp_makeup: f32,
+    limit_ceil: f32, // linear brick-wall ceiling (from --limit-db)
+}
+
+impl DynamicsCfg {
+    fn from_args(a: &Args) -> Self {
+        DynamicsCfg {
+            pre_gain: a.gain,
+            level: !a.no_level,
+            target_rms: db_to_lin(a.target_db),
+            max_boost: db_to_lin(a.max_boost_db),
+            max_cut: db_to_lin(-12.0), // never attenuate a hot source by more than 12 dB
+            compress: a.compress,
+            comp_threshold: db_to_lin(a.comp_threshold_db),
+            comp_ratio: a.comp_ratio.max(1.0),
+            comp_makeup: db_to_lin(a.comp_makeup_db),
+            limit_ceil: db_to_lin(a.limit_db),
+        }
+    }
+
+    /// Nothing to do but the manual gain → fall back to the plain `apply_gain`.
+    fn is_noop(&self) -> bool {
+        !self.level && !self.compress
+    }
+}
+
+/// Output-side dynamics: an always-on loudness **leveler** (measures the player's
+/// own output and slews a gain toward a target RMS, so a quiet audiobook rises to
+/// the same loudness as radio), an optional speech **compressor** (intelligibility
+/// for books/podcasts — never music), and a brick-wall **limiter**. Operates in
+/// place on interleaved `i16` chunks, holding envelope + gain state across chunks.
+struct Dynamics {
+    cfg: DynamicsCfg,
+    a_rms: f32,      // loudness-estimate EMA coefficient (~400 ms)
+    a_up: f32,       // leveler gain rise — slow (boosting quiet, avoids pumping)
+    a_down: f32,     // leveler gain fall — fast (taming loud)
+    a_att: f32,      // compressor attack (~5 ms)
+    a_rel: f32,      // compressor release (~120 ms)
+    gate: f32,       // below this RMS = silence → hold the leveler gain
+    rms_sq: f32,     // smoothed mean-square of the pre-level signal
+    level_gain: f32, // current smoothed leveler gain (linear)
+    desired_gain: f32,
+    refresh: u32,    // samples until the desired gain is recomputed
+    comp_env: f32,   // compressor envelope follower
+    meter_peak: f32, // output peak since the last drain (for logging)
+}
+
+impl Dynamics {
+    fn new(cfg: DynamicsCfg, rate: u32, channels: usize) -> Self {
+        let fs = (rate.max(1) as f32) * (channels.max(1) as f32);
+        let coef = |tau: f32| 1.0 - (-1.0 / (tau * fs)).exp();
+        Dynamics {
+            cfg,
+            a_rms: coef(0.4),
+            a_up: coef(1.0),
+            a_down: coef(0.15),
+            a_att: coef(0.005),
+            a_rel: coef(0.120),
+            gate: db_to_lin(-50.0),
+            rms_sq: cfg.target_rms * cfg.target_rms, // start at target → no startup pump
+            level_gain: 1.0,
+            desired_gain: 1.0,
+            refresh: 0,
+            comp_env: 0.0,
+            meter_peak: 0.0,
+        }
+    }
+
+    /// Process one interleaved chunk in place: pre-gain → leveler → compressor →
+    /// limiter. State carries across calls so the loudness stays constant.
+    fn process(&mut self, samples: &mut [i16]) {
+        if self.cfg.is_noop() {
+            apply_gain(samples, self.cfg.pre_gain);
+            for s in samples.iter() {
+                let a = (*s as f32 / I16_SCALE).abs();
+                self.meter_peak = self.meter_peak.max(a);
+            }
+            return;
+        }
+        for s in samples.iter_mut() {
+            let mut x = (*s as f32 / I16_SCALE) * self.cfg.pre_gain;
+            if self.cfg.level {
+                self.rms_sq += self.a_rms * (x * x - self.rms_sq);
+                if self.refresh == 0 {
+                    let rms = self.rms_sq.sqrt();
+                    self.desired_gain = if rms > self.gate {
+                        (self.cfg.target_rms / rms).clamp(self.cfg.max_cut, self.cfg.max_boost)
+                    } else {
+                        self.level_gain // silence: hold, don't pump up the noise floor
+                    };
+                    self.refresh = 64;
+                }
+                self.refresh -= 1;
+                let a = if self.desired_gain < self.level_gain {
+                    self.a_down
+                } else {
+                    self.a_up
+                };
+                self.level_gain += a * (self.desired_gain - self.level_gain);
+                x *= self.level_gain;
+            }
+            if self.cfg.compress {
+                let mag = x.abs();
+                let a = if mag > self.comp_env {
+                    self.a_att
+                } else {
+                    self.a_rel
+                };
+                self.comp_env += a * (mag - self.comp_env);
+                if self.comp_env > self.cfg.comp_threshold {
+                    let over = self.comp_env / self.cfg.comp_threshold;
+                    x *= over.powf(1.0 / self.cfg.comp_ratio - 1.0); // downward gain
+                }
+                x *= self.cfg.comp_makeup;
+            }
+            x = x.clamp(-self.cfg.limit_ceil, self.cfg.limit_ceil);
+            self.meter_peak = self.meter_peak.max(x.abs());
+            *s = (x * I16_SCALE).clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+        }
+    }
+
+    /// Output peak since the last call, in dBFS (drains the meter).
+    fn meter_dbfs(&mut self) -> f32 {
+        let p = self.meter_peak.max(1e-6);
+        self.meter_peak = 0.0;
+        20.0 * p.log10()
+    }
+
+    /// Current leveler gain in dB (0 dB = unity).
+    fn gain_db(&self) -> f32 {
+        20.0 * self.level_gain.max(1e-6).log10()
     }
 }
 
@@ -503,13 +682,17 @@ fn run_output(
     channels: usize,
     prebuffer_frames: usize,
     alsa_buffer_ms: u32,
-    gain: f32,
+    cfg: DynamicsCfg,
     start_seconds: f64,
     position_file: Option<&str>,
     rx: Receiver<Vec<i16>>,
 ) -> Result<()> {
     use alsa::pcm::{Access, Format, HwParams, PCM};
     use alsa::{Direction, ValueOr};
+
+    // Output dynamics: leveler (+ optional speech compressor) + limiter, measuring
+    // the player's own output so every source holds a constant loudness.
+    let mut dsp = Dynamics::new(cfg, rate, channels.max(1));
 
     let pcm = PCM::new(device, Direction::Playback, false)
         .with_context(|| format!("open ALSA device {device}"))?;
@@ -536,7 +719,7 @@ fn run_output(
     while buf.len() < prebuffer_frames * frame {
         match rx.recv() {
             Ok(mut c) => {
-                apply_gain(&mut c, gain);
+                dsp.process(&mut c);
                 buf.extend(c);
             }
             Err(_) => {
@@ -555,6 +738,7 @@ fn run_output(
     let mut underruns = 0u64;
     let mut frames_played = 0u64;
     let mut next_report_frames = 0u64; // report position now, then every ~2 s
+    let mut next_meter_frames = 5 * u64::from(rate.max(1)); // log the real level every ~5 s
     loop {
         if let Some(pf) = position_file {
             if frames_played >= next_report_frames {
@@ -563,11 +747,20 @@ fn run_output(
                 next_report_frames = frames_played + 2 * u64::from(rate.max(1));
             }
         }
+        if frames_played >= next_meter_frames {
+            // "The real current sound volume" — output peak + the auto-leveler gain.
+            tracing::info!(
+                out_dbfs = dsp.meter_dbfs(),
+                level_gain_db = dsp.gain_db(),
+                "level"
+            );
+            next_meter_frames = frames_played + 5 * u64::from(rate.max(1));
+        }
         if !eof {
             loop {
                 match rx.try_recv() {
                     Ok(mut c) => {
-                        apply_gain(&mut c, gain);
+                        dsp.process(&mut c);
                         buf.extend(c);
                         if buf.len() >= hi_watermark {
                             break;
@@ -587,7 +780,7 @@ fn run_output(
             }
             match rx.recv() {
                 Ok(mut c) => {
-                    apply_gain(&mut c, gain);
+                    dsp.process(&mut c);
                     buf.extend(c);
                 }
                 Err(_) => eof = true,
@@ -683,7 +876,7 @@ fn play_once(args: &Args) -> Result<()> {
         channels.max(1),
         prebuffer_frames,
         args.alsa_buffer_ms,
-        args.gain,
+        DynamicsCfg::from_args(args),
         args.start_seconds,
         args.position_file.as_deref(),
         rx,
@@ -746,5 +939,110 @@ mod tests {
         let mut t = [1234i16, -4321];
         apply_gain(&mut t, 1.0);
         assert_eq!(t, [1234, -4321]);
+    }
+
+    // --- output dynamics (leveler / compressor / limiter) ---
+
+    fn test_cfg(level: bool, compress: bool) -> DynamicsCfg {
+        DynamicsCfg {
+            pre_gain: 1.0,
+            level,
+            target_rms: db_to_lin(-16.0),
+            max_boost: db_to_lin(20.0),
+            max_cut: db_to_lin(-12.0),
+            compress,
+            comp_threshold: db_to_lin(-24.0),
+            comp_ratio: 3.0,
+            comp_makeup: 1.0,
+            limit_ceil: db_to_lin(-1.0),
+        }
+    }
+
+    /// Full-scale-alternating square at `dbfs` → an i16 chunk with RMS = that level.
+    fn square(dbfs: f32, n: usize) -> Vec<i16> {
+        let amp = (db_to_lin(dbfs) * I16_SCALE) as i16;
+        (0..n)
+            .map(|i| if i % 2 == 0 { amp } else { -amp })
+            .collect()
+    }
+
+    fn rms_dbfs(s: &[i16]) -> f32 {
+        let ms = s
+            .iter()
+            .map(|&v| (v as f32 / I16_SCALE).powi(2))
+            .sum::<f32>()
+            / s.len() as f32;
+        20.0 * ms.sqrt().max(1e-9).log10()
+    }
+
+    #[test]
+    fn leveler_boosts_quiet_toward_target() {
+        let mut d = Dynamics::new(test_cfg(true, false), 48_000, 1);
+        let mut last = Vec::new();
+        for _ in 0..40 {
+            let mut c = square(-30.0, 4_800); // ~4 s of quiet content
+            d.process(&mut c);
+            last = c;
+        }
+        let out = rms_dbfs(&last);
+        assert!(
+            out > -20.0 && out < -12.0,
+            "quiet -30 dBFS leveled to {out} dBFS (target -16)"
+        );
+        assert!(
+            d.gain_db() > 8.0,
+            "expected a real boost, got {} dB",
+            d.gain_db()
+        );
+    }
+
+    #[test]
+    fn limiter_never_clips_past_ceiling() {
+        // Force a large boost so the leveler drives the signal well past the ceiling.
+        let mut cfg = test_cfg(true, false);
+        cfg.target_rms = 2.0; // absurd target → maximal boost
+        cfg.max_boost = db_to_lin(40.0);
+        let mut d = Dynamics::new(cfg, 48_000, 1);
+        let ceil = (db_to_lin(-1.0) * I16_SCALE) as i16;
+        let mut maxabs = 0i16;
+        for _ in 0..50 {
+            let mut c = square(-10.0, 4_800);
+            d.process(&mut c);
+            for &s in &c {
+                maxabs = maxabs.max(s.saturating_abs());
+            }
+        }
+        assert!(
+            maxabs <= ceil + 2,
+            "peak {maxabs} exceeded limiter ceiling {ceil}"
+        );
+    }
+
+    #[test]
+    fn compressor_reduces_level_above_threshold() {
+        let mut d = Dynamics::new(test_cfg(false, true), 48_000, 1);
+        let mut last = Vec::new();
+        for _ in 0..30 {
+            let mut c = square(-6.0, 4_800); // loud, well above the -24 dBFS threshold
+            d.process(&mut c);
+            last = c;
+        }
+        let out = rms_dbfs(&last);
+        assert!(
+            out < -12.0,
+            "compressor should pull -6 dBFS down, got {out} dBFS"
+        );
+    }
+
+    #[test]
+    fn noop_config_matches_apply_gain() {
+        let mut cfg = test_cfg(false, false);
+        cfg.pre_gain = 2.0;
+        let mut d = Dynamics::new(cfg, 48_000, 1);
+        let mut a = [1000i16, -1000, 30000, -30000];
+        let mut b = a;
+        d.process(&mut a);
+        apply_gain(&mut b, 2.0);
+        assert_eq!(a, b);
     }
 }

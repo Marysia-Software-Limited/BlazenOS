@@ -58,6 +58,30 @@ hint; `BLAZEN_ASR_MODEL` overrides `asr.yaml active` (8 GB Pi → `small`);
 `BLAZEN_VAD_OPEN`/`BLAZEN_VAD_CLOSE` override the VAD energy floors for a
 low-sensitivity mic (see `vad` keys above).
 
+## Output loudness leveling + speech compression (`audio.yaml`)
+
+`blazend-player` (radio / music / audiobooks) runs an output-side dynamics chain
+so every source plays at the **same real level** — a quiet Wolne Lektury
+audiobook (~-20 LUFS) no longer disappears under radio. The player measures its
+**own output** and slews a gain toward the target; `RadioControl` passes the
+config as CLI flags (`voice_output/adapters/rpi5/radio_control.py`).
+
+- `leveling:` — **always on, every source.** `target_dbfs` is the output RMS the
+  leveler holds; quiet content is lifted up to `max_boost_db`; `limit_dbfs` is a
+  brick-wall ceiling so leveling/compression never clip. The gain moves slowly
+  when boosting (no pumping) and fast when taming a loud passage. Set
+  `enabled: false` (or run the player with `--no-level`) to disable.
+- `compression:` — **spoken-word only** (books/podcasts; `speech=True`), **never
+  music/radio** (their dynamics are preserved). A downward compressor above
+  `threshold_dbfs` at `ratio`, plus `makeup_db`, evens out quiet/loud speech for
+  maximum intelligibility.
+
+The player logs the live level every ~5 s (`out_dbfs`, `level_gain_db`) so you can
+watch the real output volume it's holding. Manual volume (`głośniej`/`ciszej`,
+`audio.volume`) still rides on top via the Jabra ALSA mixer. Not covered here:
+Jessica's TTS voice + voice memos play through the separate `blazend-audio-out`
+(Piper) service — same compressor is a planned follow-up there.
+
 ## Hands-free voice runner (`wake-word.yaml`)
 
 The single-process hands-free loop (`blazend.domains.voice_input.adapters.rpi5.voice.runner`, started by

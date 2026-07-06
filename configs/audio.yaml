@@ -60,3 +60,19 @@ earcons:
   error_tone: true
   shutdown_tone: true
   custom_voice_marker: false
+
+# Output dynamics in blazend-player (radio / music / audiobooks). The player
+# measures its OWN output level and auto-holds a constant loudness, so a quiet
+# Wolne Lektury audiobook (~-20 LUFS) comes up to the same real level as radio.
+# See docs/07-CONFIGURATION.md.
+leveling:                 # always-on loudness normalisation (ALL sources)
+  enabled: true
+  target_dbfs: -16        # boost/cut every source toward this output RMS
+  max_boost_db: 20        # cap on how much a very quiet source is lifted
+  limit_dbfs: -1          # brick-wall ceiling so leveling never clips
+
+compression:              # speech intelligibility — books/podcasts ONLY, never music/radio
+  enabled: true
+  threshold_dbfs: -24     # above this, quiet/loud speech is evened out
+  ratio: 3.0
+  makeup_db: 3

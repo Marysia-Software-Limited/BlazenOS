@@ -394,17 +394,24 @@ class Orchestrator:
                 self._awake_until = asyncio.get_running_loop().time() + self._wake_window_s
                 if reply is not None:
                     action = str(reply.data.get("action", ""))
-                    # Playback actions ARE the feedback (the stream/track starting
-                    # or stopping), so don't also speak the confirmation over the
-                    # Jabra it needs — a spoken reply brings audio-out UP and grabs
-                    # the single output PCM out from under the player (silent death).
-                    # Non-playback replies (volume, time, …) are spoken via TTS.
-                    if action not in ("radio_play", "radio_stop", "music_play", "music_stop"):
-                        await self._publisher.publish(reply)
-                    # Execute the reply's action INLINE — a fast-path reply is never
-                    # received back as an incoming brain.reply, so play/stop the
-                    # stream (or raise audio-out for a spoken reply) here.
-                    await self._act_on_reply(reply.data)
+                    # A volume command already hit the mixer; while the player holds
+                    # the Jabra PCM, DON'T speak the confirmation — bringing audio-out
+                    # up would seize the device and kill the stream. The loudness
+                    # change is its own feedback. (Fixes "głośniej silences the book".)
+                    if reply.data.get("volume_only") and self._radio.playing:
+                        pass
+                    else:
+                        # Playback actions ARE the feedback (the stream/track starting
+                        # or stopping), so don't also speak the confirmation over the
+                        # Jabra it needs — a spoken reply brings audio-out UP and grabs
+                        # the single output PCM out from under the player (silent death).
+                        # Non-playback replies (volume, time, …) are spoken via TTS.
+                        if action not in ("radio_play", "radio_stop", "music_play", "music_stop"):
+                            await self._publisher.publish(reply)
+                        # Execute the reply's action INLINE — a fast-path reply is never
+                        # received back as an incoming brain.reply, so play/stop the
+                        # stream (or raise audio-out for a spoken reply) here.
+                        await self._act_on_reply(reply.data)
                     patch["last_command"] = {
                         "intent": env.data.get("intent"),
                         "result": reply.data.get("action"),
@@ -526,7 +533,8 @@ class Orchestrator:
             await self._apply_audio_out(False)
             await asyncio.sleep(0.3)  # let the device release
             await asyncio.to_thread(self._radio.play, source, self._last_source_name,
-                                    position_file=position_file, start_seconds=start_seconds)
+                                    position_file=position_file, start_seconds=start_seconds,
+                                    speech=bool(payload.get("is_audiobook")))
             await self._duck_off()  # play at the user's volume
             # Suppress the VAD while it plays so the Jabra hearing its own output
             # can't trigger a barge-in ("dżesika" still interrupts via wake).
@@ -587,7 +595,8 @@ class Orchestrator:
         await self._apply_audio_out(False)
         await asyncio.sleep(0.3)
         await asyncio.to_thread(self._radio.play, self._last_source, self._last_source_name,
-                                position_file=str(self._position_file), start_seconds=start_seconds)
+                                position_file=str(self._position_file), start_seconds=start_seconds,
+                                speech=True)  # a book chapter is always spoken-word
         self._speaker_busy.touch()
         log.info("audiobook chapter %d/%d — %s", index + 1, len(book["chapters"]), self._last_source_name)
 
@@ -757,6 +766,11 @@ class Orchestrator:
             "final_": True,
             "action": f"command.{result.action}",
         }
+        # A volume change already took effect on the Jabra mixer above; flag it so
+        # the caller can skip the spoken confirmation while the player holds the PCM
+        # (speaking would seize audio-out and kill the stream — see _on_envelope).
+        if result.data.get("key") == "audio.volume":
+            data["volume_only"] = True
         # Radio tools carry the resolved stream in result.data ({tool,url,name}).
         # Surface them as the radio_play/radio_stop actions (+payload) the radio
         # reconciler acts on — otherwise a fast-path "włącz trójkę" match only
