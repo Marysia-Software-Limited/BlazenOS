@@ -672,12 +672,19 @@ intents:
 
   # AUDIOBOOKS (offline) — listed first; keyed on książka/audiobook/lektura so it
   # wins over music/radio. "włącz/przeczytaj/znajdź/puść książkę <tytuł/autor>".
+  # The bare "przeczytaj/poczytaj/czytaj <tytuł>" form (no "książkę" keyword) is
+  # the natural way to ask, so it's a fallback trigger. It's safe because the
+  # reserved reads — "przeczytaj (mi) tę stronę / maile / facebooka" (web_read_page,
+  # email_list_unread, facebook_*) and "czytaj dalej" (media_resume) — are all
+  # matched by earlier intents and never reach here. The resolver decides the book.
   - name: audiobook_play
     triggers:
       pl:
         - "\\b(w(ł|l)(ą|a)cz|przeczytaj|czytaj|pu(ś|s)(ć|c)|znajd(ź|z)|szukaj|otw(ó|o)rz)\\b.*\\b(ksi(ą|a)(ż|z)k\\w*|audiobook\\w*|lektur\\w*|powie(ś|s)(ć|c)\\w*|s(ł|l)uchowisk\\w*)\\b\\s*(?P<query>.*)"
+        - "\\b(przeczytaj|poczytaj|czytaj)\\s+(?P<query>.+)"
       en:
         - "\\b(play|read|open|find|search)\\b.*\\b(audiobook|book)\\b\\s*(?P<query>.*)"
+        - "\\bread\\s+(?P<query>.+)"
     action: tool_call
     tool: audiobook.play
 
