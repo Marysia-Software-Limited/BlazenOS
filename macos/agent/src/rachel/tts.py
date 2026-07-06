@@ -62,6 +62,42 @@ class AppleTTS:
             aiff.unlink(missing_ok=True)
 
 
+class XttsTTS:
+    """High-quality Polish via a remote GPU XTTS-v2 server (paul's RTX 3090).
+
+    POSTs chapter text to ``scripts/xtts_server.py`` (default
+    ``http://192.168.50.102:8091/synthesize``) and converts the returned WAV to
+    MP3. Free (your GPU), far more natural than Apple's on-device voices, and
+    stays in-constellation. ``speaker`` picks a built-in XTTS speaker; voice
+    cloning is configured server-side via ``BLAZEN_XTTS_SPEAKER_WAV``.
+    """
+
+    def __init__(self, url: str, *, language: str = "pl", speaker: str | None = None,
+                 timeout: int = 600) -> None:
+        self.url, self.language, self.speaker, self.timeout = url, language, speaker, timeout
+
+    def render_chapter(self, text: str, out_mp3: Path) -> None:
+        import json  # noqa: PLC0415
+        import urllib.request  # noqa: PLC0415
+
+        out_mp3.parent.mkdir(parents=True, exist_ok=True)
+        payload: dict[str, str] = {"text": text, "language": self.language}
+        if self.speaker:
+            payload["speaker"] = self.speaker
+        req = urllib.request.Request(  # noqa: S310 (fixed LAN host, our own service)
+            self.url, data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=self.timeout) as r:  # noqa: S310
+            wav = r.read()
+        wav_path = out_mp3.with_suffix(".wav")
+        wav_path.write_bytes(wav)
+        try:
+            subprocess.run(["ffmpeg", "-y", "-i", str(wav_path), "-codec:a", "libmp3lame",
+                            "-qscale:a", "4", str(out_mp3)], check=True, capture_output=True)
+        finally:
+            wav_path.unlink(missing_ok=True)
+
+
 class AzureTTS:
     """Azure Neural pl-PL rendering — a premium, opt-in cloud renderer."""
 
@@ -81,5 +117,5 @@ class AzureTTS:
         sdk.SpeechSynthesizer(speech_config=cfg, audio_config=out).speak_text_async(text).get()
 
 
-__all__ = ["AppleTTS", "AzureTTS", "TtsBackend", "apple_commands",
+__all__ = ["AppleTTS", "AzureTTS", "TtsBackend", "XttsTTS", "apple_commands",
            "installed_polish_voice_is_compact"]

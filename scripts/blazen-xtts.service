@@ -1,0 +1,26 @@
+# Remote GPU XTTS-v2 server for high-quality Polish audiobook rendering (dev host,
+# e.g. paul with an RTX 3090). Sibling of blazen-whisper.service.
+# Install:  sudo cp scripts/blazen-xtts.service /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now blazen-xtts
+# The rachel (macOS) ingest reaches it via XTTS_URL=http://<host>:8091/synthesize.
+[Unit]
+Description=Blazen remote GPU XTTS-v2 (Coqui) for Polish audiobook rendering
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=beret
+WorkingDirectory=/home/beret/dev/blazen_os
+# Point the CUDA runtime at the pip-installed nvidia libs (torch bundles its own;
+# adjust the python3.x path if the venv uses a different interpreter).
+Environment=BLAZEN_XTTS_PORT=8091
+Environment=BLAZEN_XTTS_SPEAKER=Ana Florence
+# Coqui XTTS needs this to accept the model license non-interactively.
+Environment=COQUI_TOS_AGREED=1
+ExecStart=/home/beret/dev/blazen_os/.venv-xtts/bin/python /home/beret/dev/blazen_os/scripts/xtts_server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -26,7 +26,7 @@ from rachel import paths, player, secrets
 from rachel.calibre import CalibreLibrary
 from rachel.extract import epub_to_chapters, text_to_chapters
 from rachel.ingest import render_book, upsert_catalog_entry
-from rachel.tts import AppleTTS, AzureTTS, installed_polish_voice_is_compact
+from rachel.tts import AppleTTS, AzureTTS, XttsTTS, installed_polish_voice_is_compact
 
 _CALIBRE = os.environ.get("CALIBRE_LIBRARY", str(Path.home() / "calibre"))
 
@@ -63,8 +63,12 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("render")
     r.add_argument("query", nargs="*")
     r.add_argument("--id", type=int)
-    r.add_argument("--premium", action="store_true")
-    r.add_argument("--voice", default="Zosia")
+    r.add_argument("--engine", choices=("apple", "xtts", "azure"), default="apple",
+                   help="TTS engine: apple (on-device), xtts (GPU on paul), azure (cloud)")
+    r.add_argument("--premium", action="store_true", help="alias for --engine azure")
+    r.add_argument("--voice", default="Zosia", help="apple: system voice; xtts: built-in speaker")
+    r.add_argument("--xtts-url", default=os.environ.get("XTTS_URL",
+                   "http://192.168.50.102:8091/synthesize"))
     r.add_argument("--no-play", action="store_true")
     p = sub.add_parser("play")
     p.add_argument("query", nargs="+")
@@ -83,13 +87,18 @@ def main(argv: list[str] | None = None) -> int:
         if not book:
             print("book not found", file=sys.stderr)
             return 1
-        if a.premium:
+        engine = "azure" if a.premium else a.engine
+        if engine == "azure":
             s = secrets.load()
             key = s.get("AZURE_SPEECH_KEY")
             if not key:
-                print("--premium needs AZURE_SPEECH_KEY in macos/.secrets.env", file=sys.stderr)
+                print("azure engine needs AZURE_SPEECH_KEY in macos/.secrets.env", file=sys.stderr)
                 return 1
             tts = AzureTTS(key=key, region=s.get("AZURE_REGION", "westeurope"))
+        elif engine == "xtts":
+            speaker = None if a.voice == "Zosia" else a.voice  # apple default → server default
+            tts = XttsTTS(a.xtts_url, speaker=speaker)
+            print(f"rendering via XTTS on {a.xtts_url}", file=sys.stderr)
         else:
             if installed_polish_voice_is_compact(a.voice):
                 print(f"note: only the compact '{a.voice}' voice is installed — for "
