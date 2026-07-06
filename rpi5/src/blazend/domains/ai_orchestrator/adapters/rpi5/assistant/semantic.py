@@ -20,8 +20,9 @@ _DEFAULT = "/var/lib/blazen/semantic-index"
 class SemanticLibrary:
     def __init__(self, *, index_path: str | None = None, embedder: Any | None = None) -> None:
         base = index_path or os.environ.get("BLAZEN_SEMANTIC_INDEX", _DEFAULT)
-        self._items: list[dict] = []
-        self._mat = None
+        self._items: list[dict[str, Any]] = []
+        self._mat: Any = None
+        self._np: Any = None
         self._embedder = embedder
         self._loaded_embedder = embedder is not None
         try:
@@ -43,7 +44,7 @@ class SemanticLibrary:
             return len(self._items)
         return sum(1 for it in self._items if it.get("type") == kind)
 
-    def _embed_query(self, query: str):
+    def _embed_query(self, query: str) -> Any:
         if not self._loaded_embedder:
             try:
                 from blazend.domains.context.adapters.rpi5.embeddings import (
@@ -59,7 +60,7 @@ class SemanticLibrary:
         vecs = self._embedder.embed([query], kind="query")
         return self._np.asarray(vecs[0], dtype=self._np.float32) if vecs else None
 
-    def search(self, query: str, *, k: int = 3, kinds: tuple[str, ...] | None = None) -> list[dict]:
+    def search(self, query: str, *, k: int = 3, kinds: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
         """Top-k items most similar to ``query`` (each with a 'score'). Optionally
         restrict to item kinds ('music' / 'book')."""
         if not self.available or not query.strip():
@@ -69,7 +70,7 @@ class SemanticLibrary:
             return []
         sims = self._mat @ q  # cosine — both are L2-normalised
         order = self._np.argsort(-sims)
-        out: list[dict] = []
+        out: list[dict[str, Any]] = []
         for i in order:
             item = self._items[int(i)]
             if kinds and item.get("type") not in kinds:
