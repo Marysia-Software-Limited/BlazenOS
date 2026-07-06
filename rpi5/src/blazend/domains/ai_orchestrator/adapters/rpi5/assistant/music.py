@@ -14,7 +14,10 @@ import random
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.radio import _fold, _stem_phrase
+# Shared PL-fold/stem helpers now live in the audiobook-catalog domain lib
+# (radio.py re-imports them privately; import from the source so mypy sees the
+# explicit export).
+from audiobook_catalog.text_norm import _fold, _stem_phrase
 
 _DEFAULT_INDEX = "/var/lib/blazen/music-index.json"
 _RANDOM_WORDS = frozenset({"cos", "cokolwiek", "losowo", "random", "muzyk", "muzyke", "muzyka"})

@@ -2,8 +2,20 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
+
+import pytest
 
 from blazend.domains.ai_orchestrator.core.model_router import ModelRouter, Task
+
+REPO = Path(__file__).resolve().parents[3]
+
+
+@pytest.fixture(autouse=True)
+def _config_root(monkeypatch):
+    # Load the repo's real llm.yaml so routing tasks AND backend model names
+    # (asserted by the eviction test) resolve — hermetic, not host /etc/blazen.
+    monkeypatch.setenv("BLAZEN_CONFIG_ROOT", str(REPO / "configs"))
 
 
 class _Fake:
