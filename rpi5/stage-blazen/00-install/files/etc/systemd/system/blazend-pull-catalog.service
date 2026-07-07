@@ -1,0 +1,16 @@
+# Merge peers' shared audiobook catalogs (mesh `media` resources) into this node's,
+# so books rendered on paul (XTTS) appear here automatically. Oneshot; driven by
+# blazend-pull-catalog.timer. Strict-improvement: a media node being off is a no-op.
+[Unit]
+Description=Pull shared audiobook catalogs from mesh media peers
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=blazen
+Environment=BLAZEN_NODE=jessica
+Environment=BLAZEN_MESH=/etc/blazen/mesh.yaml
+Environment=BLAZEN_AUDIOBOOKS_CATALOG=/var/lib/blazen/audiobooks/catalog.json
+Environment=PYTHONPATH=/usr/lib/blazen
+ExecStart=/usr/lib/blazen/.venv/bin/jessica --pull-catalog

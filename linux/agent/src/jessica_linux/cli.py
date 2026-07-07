@@ -16,8 +16,12 @@ from pathlib import Path
 from audiobook_catalog.progress import AudiobookProgress
 
 from jessica_linux.fabric import pull_and_merge, serve
-from jessica_linux.node import build_assistant
 from jessica_linux.voice import Voice
+
+# NOTE: `node.build_assistant` (the chat agent) imports the heavy `blazend` engine
+# from the rpi5 package, which isn't present on every node (e.g. macOS/rachel).
+# It's imported lazily in the agent branch so the mesh/media/audiobook subcommands
+# (--pull-catalog, --serve-media, --read, --ingest, --fleet, --speak) run anywhere.
 
 
 def _node() -> str:
@@ -135,6 +139,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"synced: pulled {s['pulled'] or 'nobody'} — "
               f"{s['notes']} notes, {s['reminders']} reminders, {s['books']} books")
         return 0
+
+    from jessica_linux.node import build_assistant  # lazy: needs the blazend engine
 
     agent = build_assistant(data=Path(args.data) if args.data else None)
     voice = Voice() if args.voice else None

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Periodically merge peers' shared audiobook catalogs (mesh `media`) into
+     rachel's, so books rendered on paul (XTTS) appear here automatically — the
+     macOS equivalent of the Pi's blazend-pull-catalog.timer.
+
+     Install (adjust the paths to your checkout + user):
+       cp macos/launchd/org.blazen.pull-catalog.plist ~/Library/LaunchAgents/
+       launchctl load  ~/Library/LaunchAgents/org.blazen.pull-catalog.plist
+       launchctl start org.blazen.pull-catalog          # run once now
+       launchctl unload ~/Library/LaunchAgents/org.blazen.pull-catalog.plist   # stop -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>org.blazen.pull-catalog</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/beret/dev/blazen_os/.venv/bin/jessica</string>
+    <string>--pull-catalog</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>BLAZEN_NODE</key><string>rachel</string>
+    <key>BLAZEN_MESH</key><string>/Users/beret/dev/blazen_os/configs/mesh.yaml</string>
+    <key>BLAZEN_AUDIOBOOKS_CATALOG</key><string>/Users/beret/audiobooks/catalog.json</string>
+  </dict>
+  <key>StartInterval</key><integer>900</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/tmp/blazen-pull-catalog.out</string>
+  <key>StandardErrorPath</key><string>/tmp/blazen-pull-catalog.err</string>
+</dict>
+</plist>

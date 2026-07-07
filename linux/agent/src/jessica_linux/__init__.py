@@ -7,6 +7,16 @@ node is a server, so the interface is a CLI/REPL — no wake word.
 """
 from __future__ import annotations
 
-from jessica_linux.node import build_assistant, build_router
+from typing import Any
 
 __all__ = ["build_assistant", "build_router"]
+
+
+def __getattr__(name: str) -> Any:
+    # Lazy: `node` imports the heavy `blazend` engine (rpi5), absent on some nodes
+    # (macOS/rachel). Keep `import jessica_linux` cheap so the mesh/media/audiobook
+    # tooling runs everywhere; only touching build_assistant/build_router pays for it.
+    if name in __all__:
+        from jessica_linux import node
+        return getattr(node, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

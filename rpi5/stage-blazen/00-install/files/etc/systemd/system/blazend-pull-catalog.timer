@@ -1,0 +1,12 @@
+# Periodically merge peers' shared audiobook catalogs so newly-rendered books
+# (paul's XTTS batch) appear on this node without a manual pull.
+[Unit]
+Description=Periodically pull shared audiobook catalogs from the mesh
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
