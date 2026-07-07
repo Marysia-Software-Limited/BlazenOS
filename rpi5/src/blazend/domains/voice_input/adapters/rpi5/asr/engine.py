@@ -28,6 +28,22 @@ from blazend.config import load
 SUPPORTED_LANGUAGES = ("pl", "en")
 
 
+def _whisper_url_from_mesh() -> str:
+    """paul's remote GPU whisper endpoint from the mesh registry (the "where"), or
+    "" so the caller falls back to env/config. Uses only a DEPLOYED registry
+    ($BLAZEN_MESH or /etc/blazen/mesh.yaml), never the dev repo copy — keeps tests
+    hermetic. Never a hard dependency — local faster-whisper always covers."""
+    if not (os.environ.get("BLAZEN_MESH") or os.path.exists("/etc/blazen/mesh.yaml")):
+        return ""
+    try:
+        from mesh_registry import Mesh  # noqa: PLC0415
+
+        res = Mesh.load().resource("asr", "whisper-remote")
+        return (res.url or "") if res else ""
+    except Exception:  # noqa: BLE001 — no mesh → env/config fallback
+        return ""
+
+
 @dataclass(frozen=True)
 class Transcript:
     """One utterance result, shaped for the `asr.final` event."""
@@ -161,10 +177,15 @@ class Transcriber:
         self.compute_type: str = str(cfg.get("compute_type", "int8"))
         self.beam_size: int = int(cfg.get("beam_size", 1))
         self.initial_prompt: str = str(cfg.get("initial_prompt", ""))
-        # Optional remote GPU whisper (scripts/whisper_server.py on the dev host).
-        # When set, transcription is offloaded there — accurate + fast for the
-        # far-field path — with a local fallback if it's unreachable.
-        self.remote_url: str = os.environ.get("BLAZEN_ASR_REMOTE_URL") or str(cfg.get("remote_url", ""))
+        # Optional remote GPU whisper (paul's blazen-whisper.service). When set,
+        # transcription is offloaded there — accurate + fast for the far-field path
+        # — with a local fallback if it's unreachable. The endpoint comes from the
+        # mesh registry (the "where"); env/config are fallbacks.
+        self.remote_url: str = (
+            _whisper_url_from_mesh()
+            or os.environ.get("BLAZEN_ASR_REMOTE_URL")
+            or str(cfg.get("remote_url", ""))
+        )
         self.remote_timeout: float = float(cfg.get("remote_timeout_s", 20))
         self._backend: WhisperBackend | None = backend
 

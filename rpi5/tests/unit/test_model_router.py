@@ -106,3 +106,38 @@ def test_probe_cache_avoids_repeat_network_calls():
     r.first(Task.COMMAND)
     r.first(Task.COMMAND)
     assert calls["n"] == 1  # second call within TTL used the cache
+
+
+# -- P3: the mesh supplies the ollama-11b endpoint (the "where") ----------
+
+def _mesh_with_ollama(url: str):
+    from mesh_registry import Mesh
+    return Mesh(
+        {"nodes": {"paul": {"host": "192.168.50.102",
+                            "resources": {"llm": {"ollama-11b": {"kind": "openai", "url": url}}}}}},
+        self_node="paul",
+    )
+
+
+def test_ollama_url_resolved_from_the_mesh():
+    r = ModelRouter(mesh=_mesh_with_ollama("http://192.168.50.102:11434"))  # no injected ollama
+    backend = r._build("ollama-11b")
+    assert backend is not None and backend.url == "http://192.168.50.102:11434"
+
+
+def test_ollama_falls_back_to_env_when_absent_from_mesh(monkeypatch):
+    from mesh_registry import Mesh
+    monkeypatch.setenv("BLAZEN_LLM_OLLAMA_URL", "http://10.0.0.9:11434")
+    r = ModelRouter(mesh=Mesh({"nodes": {"paul": {"host": "h", "resources": {}}}}, self_node="paul"))
+    assert r._build("ollama-11b").url == "http://10.0.0.9:11434"  # env fallback, no hardcoded IP
+
+
+def test_paul_off_still_answers_locally():
+    # DoD: paul's Ollama unreachable → command falls to the on-device Bielik.
+    r = ModelRouter(
+        ollama=_Fake("ollama", available=False),
+        openai=_Fake("gpt", available=False),
+        local_factory=lambda m: _Fake(m),
+    )
+    assert r.first(Task.COMMAND)[0] == "bielik-1.5b"
+    assert r.first(Task.RECOMMEND)[0] == "bielik-4.5b"

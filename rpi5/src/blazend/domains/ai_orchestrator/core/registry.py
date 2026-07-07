@@ -21,6 +21,22 @@ from blazend.domains.local_ai.core.ports import LlmPort
 log = logging.getLogger("blazend.domains.ai_orchestrator.registry")
 
 
+def _ollama_url_from_mesh() -> str:
+    """paul's Ollama endpoint from the mesh registry (the "where"), or "" so the
+    caller falls back to the env-configured URL. Uses only a DEPLOYED registry
+    ($BLAZEN_MESH or /etc/blazen/mesh.yaml), never the dev repo copy — keeps tests
+    hermetic."""
+    if not (os.environ.get("BLAZEN_MESH") or os.path.exists("/etc/blazen/mesh.yaml")):
+        return ""
+    try:
+        from mesh_registry import Mesh  # noqa: PLC0415
+
+        res = Mesh.load().resource("llm", "ollama-11b")
+        return (res.url or "") if res else ""
+    except Exception:  # noqa: BLE001 — no mesh → env fallback
+        return ""
+
+
 def build_model_router() -> ModelRouter | None:
     """Build the brain's task-based :class:`ModelRouter` (COMMAND→1.5B,
     RECOMMEND→4.5B, OPEN_QA→gpt-5.5, all→11B-Ollama when reachable). Backends are
@@ -41,7 +57,7 @@ def select_chat_llm() -> LlmPort | None:
     engine's cloud fallback can take over.
     """
     try:
-        ollama_url = os.environ.get("BLAZEN_LLM_OLLAMA_URL", "").strip()
+        ollama_url = (_ollama_url_from_mesh() or os.environ.get("BLAZEN_LLM_OLLAMA_URL", "")).strip()
         remote = OllamaLlm(ollama_url) if ollama_url else None
         if remote is not None and remote.available:
             log.info("brain LLM: remote Ollama %s (model=%s)", remote.url, remote.model)

@@ -16,10 +16,12 @@ Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 # "set GEMINI_API_KEY / a local model" reply. Points at the real bake location
 # (same tree the embeddings + memory vector store use).
 Environment=BLAZEN_MODELS_DIR=/var/lib/blazen/models
-# Dev-rig GPU acceleration: prefer the remote Ollama Bielik 11B on paul (RTX 3090)
-# when reachable; the registry falls back to the baked local Bielik (4.5B/1.5B
-# GGUF) if the URL is unreachable (e.g. off the dev LAN), so this is safe to ship.
-Environment=BLAZEN_LLM_OLLAMA_URL=http://192.168.50.102:11434
+# GPU acceleration: the remote Ollama Bielik 11B endpoint (paul, RTX 3090) is now
+# resolved from the mesh registry (paul.llm.ollama-11b in mesh.yaml) — no hardcoded
+# peer IP here. Point the loader at the deployed registry; the registry falls back
+# to the baked local Bielik (4.5B/1.5B GGUF) when paul is unreachable, so it's safe
+# to ship. To override the endpoint manually, set BLAZEN_LLM_OLLAMA_URL.
+Environment=BLAZEN_MESH=/usr/share/blazen/defaults/mesh.yaml
 Environment=BLAZEN_LLM_OLLAMA_MODEL=SpeakLeash/bielik-11b-v2.3-instruct:Q8_0
 # Cloud DOUBT fallback: when a key is present the engine PREFERS OpenAI (gpt-5.5)
 # for unclear/freeform requests, degrading to the local Bielik on any failure.

@@ -21,10 +21,12 @@ Environment=BLAZEN_MODELS_DIR=/var/lib/blazen/models
 # (~/.cache/huggingface is unreadable here). OMP cap leaves headroom for Bielik.
 Environment=HF_HUB_OFFLINE=1
 Environment=OMP_NUM_THREADS=2
-# Dev-rig GPU acceleration: prefer the remote faster-whisper large-v3 on paul
-# (blazen-whisper.service, :8090) when reachable; engine.py falls back to the
-# baked local CT2 model if the POST fails/times out, so this is safe to ship.
-Environment=BLAZEN_ASR_REMOTE_URL=http://192.168.50.102:8090/transcribe
+# GPU acceleration: the remote faster-whisper large-v3 endpoint (paul,
+# blazen-whisper.service) is resolved from the mesh registry (paul.asr.whisper-remote
+# in mesh.yaml) — no hardcoded peer IP here. engine.py falls back to the baked local
+# CT2 model if the POST fails/times out, so it's safe to ship. Override manually
+# with BLAZEN_ASR_REMOTE_URL.
+Environment=BLAZEN_MESH=/usr/share/blazen/defaults/mesh.yaml
 ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.domains.voice_input.adapters.rpi5.asr
 Restart=on-failure
 RestartSec=3

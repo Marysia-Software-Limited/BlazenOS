@@ -49,16 +49,14 @@ def build_router(
     openai: OpenAiClient | None = None,
     ollama: OllamaLlm | None = None,
 ) -> ModelRouter:
-    """A `ModelRouter` whose `ollama-11b` backend is resolved from the mesh (this
-    node's advertised endpoint). Task→backend *policy* still comes from
-    `llm.yaml`; the mesh only supplies the *where*."""
-    if ollama is None:
-        res = mesh.resource("llm", "ollama-11b")
-        ollama = OllamaLlm(url=res.url) if res and res.url else None
+    """A `ModelRouter` that resolves its `ollama-11b` backend URL from the mesh
+    (task→backend *policy* stays in `llm.yaml`; the mesh supplies the *where*).
+    Tests may inject `ollama` to bypass resolution + the network."""
     return ModelRouter(
-        ollama=ollama,
+        ollama=ollama,  # None → the router resolves the URL from `mesh`
         openai=openai or OpenAiClient(),
         local_factory=lambda model: _NoLocalModel(model),
+        mesh=mesh,
     )
 
 

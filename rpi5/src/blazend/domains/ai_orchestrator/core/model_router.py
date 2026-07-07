@@ -25,6 +25,7 @@ TTL so routing costs nothing per turn when the box is up.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import Callable, Iterator
 from enum import StrEnum
@@ -90,6 +91,7 @@ class ModelRouter:
         openai: Llm | None = None,
         local_factory: Callable[[str], Llm] | None = None,
         clock: Callable[[], float] = time.monotonic,
+        mesh: Any = None,
     ) -> None:
         conf = cfg if cfg is not None else load("llm")
         routing = (conf.get("routing", {}) or {}) if hasattr(conf, "get") else {}
@@ -98,6 +100,10 @@ class ModelRouter:
         self._single_local = bool(routing.get("single_local_model", True))
         self._probe_ttl = float(routing.get("ollama_probe_ttl_s", 30))
         self._clock = clock
+        # The mesh registry supplies the *where* (a network backend's URL); llm.yaml
+        # keeps the *policy* (task→backend order). Lazily loaded so tests/offline
+        # construction don't require it. Injected backends (below) bypass resolution.
+        self._mesh = mesh
         # Injected backends win (tests); otherwise build real ones lazily.
         self._built: dict[str, Llm | None] = {}
         if ollama is not None:
@@ -115,6 +121,28 @@ class ModelRouter:
         entry = self._backend_cfg.get(name, {}) if isinstance(self._backend_cfg, dict) else {}
         return str(entry.get("model", "")) if isinstance(entry, dict) else ""
 
+    def _mesh_url(self, category: str, name: str) -> str | None:
+        """A network backend's endpoint from the mesh registry (lazy-loaded), or
+        None to fall back to the env-configured default. Only the URL is taken —
+        the served model tag stays the backend's own (OllamaLlm default). Auto-load
+        uses only a DEPLOYED registry ($BLAZEN_MESH or /etc/blazen/mesh.yaml), never
+        the dev repo copy — so unit tests stay hermetic. An injected mesh always
+        wins (tests / the linux surface pass one explicitly)."""
+        if self._mesh is None:
+            if not (os.environ.get("BLAZEN_MESH") or os.path.exists("/etc/blazen/mesh.yaml")):
+                return None
+            try:
+                from mesh_registry import Mesh  # noqa: PLC0415
+
+                self._mesh = Mesh.load()
+            except Exception:  # noqa: BLE001 — no mesh → env fallback
+                return None
+        try:
+            res = self._mesh.resource(category, name)
+        except Exception:  # noqa: BLE001
+            return None
+        return res.url if (res and res.url) else None
+
     def _build(self, name: str) -> Llm | None:
         if name in self._built:
             return self._built[name]
@@ -126,7 +154,9 @@ class ModelRouter:
                     OllamaLlm,
                 )
 
-                inst: Llm = OllamaLlm()
+                # URL from the mesh registry (the "where"); env is the fallback.
+                url = self._mesh_url("llm", name)
+                inst: Llm = OllamaLlm(url=url) if url else OllamaLlm()
             elif name == "gpt-5.5":
                 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.openai import (  # noqa: PLC0415
                     OpenAiClient,
