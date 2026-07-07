@@ -103,6 +103,8 @@ class Orchestrator:
         # on any reply, stay stopped on silence (so a sleeping listener keeps place).
         att = self._load_attention()
         self._attention_enabled, self._attention_interval_s, self._attention_window_s = att
+        # Audible state cues for the blind-first UX (audio.yaml earcons + phrases.yaml).
+        self._earcons, self._cues = self._load_earcons()
         self._book_activity_at = 0.0     # loop time the attention interval counts from
         self._awaiting_attention = False
         self._attention_deadline = 0.0
@@ -138,6 +140,27 @@ class Orchestrator:
                     float(a.get("window_s", 20)))
         except Exception:  # noqa: BLE001
             return True, 1200.0, 20.0
+
+    def _load_earcons(self) -> tuple[dict[str, bool], dict[str, str]]:
+        """Audible state cues: which are on (audio.yaml `earcons`) + the spoken
+        cue text for this node's language (phrases.yaml `cues`)."""
+        try:
+            audio = load_config("audio")
+            earcons = {
+                "wake_chime": bool(audio.get("earcons.wake_chime", True)),
+                "error_tone": bool(audio.get("earcons.error_tone", True)),
+            }
+        except Exception:  # noqa: BLE001
+            earcons = {"wake_chime": True, "error_tone": True}
+        lang = self._default_lang or "pl"
+        fallback = {"not_understood": "Nie zrozumiałam.", "listening": "Słucham?",
+                    "working": "Chwileczkę."}
+        try:
+            phrases = load_config("phrases")
+            cues = {k: str(phrases.get(f"cues.{k}.{lang}", v)) for k, v in fallback.items()}
+        except Exception:  # noqa: BLE001
+            cues = fallback
+        return earcons, cues
 
     @staticmethod
     def _load_wake_gating() -> tuple[bool, float]:
@@ -423,6 +446,14 @@ class Orchestrator:
         # published to TTS but never loops back here as an incoming brain.reply.
         if env.topic == "brain.reply":
             await self._act_on_reply(env.data)
+        # State cue: heard a sound after "dżesika" but no intelligible words. Tell
+        # the (blind) user rather than going silent — but only when we were awake
+        # (a wake fired, a command was expected) and nothing is playing over the
+        # Jabra. Gated by audio.yaml earcons.error_tone.
+        if (env.topic == "error" and env.data.get("code") == "asr.no_text"
+                and self._earcons.get("error_tone") and self._awake()
+                and not self._radio.playing):
+            await self._speak(self._cues["not_understood"])
         if env.topic == "health.status":
             # Mirror the level into state on every verdict (the orchestrator is
             # the dominant state writer); recovery details only on a fault.

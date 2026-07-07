@@ -1,0 +1,23 @@
+# /etc/blazen/phrases.yaml — Jessica's fixed spoken phrases (state cues +
+# confirmations). These are the strings pre-rendered to the XTTS voice cache
+# (Phase 2, so they play in her one voice offline) and spoken by the runtime TTS.
+# Polish-first, English co-equal (PL + EN parity — see docs/13-LANGUAGES.md).
+#
+# State cues answer the blind-user question "what is Jessica doing?": a beep on
+# wake (generated, not here), and these spoken cues for the rest.
+
+version: 1
+
+cues:
+  # Heard a sound after "dżesika" but no intelligible words (ASR no-speech).
+  not_understood:
+    pl: "Nie zrozumiałam."
+    en: "I didn't catch that."
+  # Optional: capture window opened but closed empty.
+  listening:
+    pl: "Słucham?"
+    en: "Yes?"
+  # Optional: a long-running action is in progress.
+  working:
+    pl: "Chwileczkę."
+    en: "One moment."
