@@ -244,6 +244,21 @@ lint: venv ## Static hygiene: ruff + mypy (Python), fmt --check + clippy (Rust, 
 	cd domains && $(CARGO) clippy --workspace --all-targets -- -D warnings
 	cd rpi5/crates && $(CARGO) clippy --workspace --all-targets -- -D warnings
 
+# -------- paul GPU service fleet (P4) --------
+# Manage the shared GPU services this node advertises in mesh.yaml (paul:
+# ollama / blazen-whisper / blazen-xtts). BLAZEN_NODE selects the node (default paul).
+.PHONY: fleet-status fleet-verify fleet-start fleet-stop fleet-restart
+fleet-status: venv ## GPU fleet: health (systemctl + reachability + VRAM)
+	BLAZEN_NODE=$${BLAZEN_NODE:-paul} $(VENV)/bin/jessica --fleet status
+fleet-verify: venv ## GPU fleet: verify (nonzero exit if any service is down)
+	BLAZEN_NODE=$${BLAZEN_NODE:-paul} $(VENV)/bin/jessica --fleet verify
+fleet-start: venv ## GPU fleet: start all services (sudo systemctl)
+	BLAZEN_NODE=$${BLAZEN_NODE:-paul} $(VENV)/bin/jessica --fleet start
+fleet-stop: venv ## GPU fleet: stop all services (sudo systemctl)
+	BLAZEN_NODE=$${BLAZEN_NODE:-paul} $(VENV)/bin/jessica --fleet stop
+fleet-restart: venv ## GPU fleet: restart all services (sudo systemctl)
+	BLAZEN_NODE=$${BLAZEN_NODE:-paul} $(VENV)/bin/jessica --fleet restart
+
 .PHONY: audit
 audit: venv ## Lint configs, scan deps, dry-run firewall rules
 	$(PY) scripts/audit.py

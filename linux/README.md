@@ -53,6 +53,18 @@ BLAZEN_NODE=paul jessica --sync           # pull peers + merge into local memory
 A note saved on the Pi is then recalled on paul (and vice-versa). Live Pi↔paul
 sync needs the Pi redeployed onto the merged tree (its fabric endpoint running).
 
+**GPU fleet** (`fleet.py`): paul owns the lifecycle of the shared GPU services it
+advertises in `mesh.yaml` (each carries a `unit:` — `ollama` / `blazen-whisper` /
+`blazen-xtts`). `status` probes each (`systemctl is-active` + reachability +
+`nvidia-smi` VRAM); `start`/`stop`/`restart` drive systemctl; `serve` exposes
+`GET :7476/fleet/health` (a `health` mesh resource) so peers see one liveness view
+and route around a down service (the router already skips unreachable backends —
+see P3).
+```sh
+BLAZEN_NODE=paul jessica --fleet status    # health + VRAM (also: verify | start | stop | restart | serve)
+make fleet-status                          # same, from the repo root
+```
+
 ## Rules
 Root [`../AGENTS.md`](../AGENTS.md) + [`../CLAUDE.md`](../CLAUDE.md) are the
 baseline (Polish-first, on-device by default, mesh is strict-improvement — never

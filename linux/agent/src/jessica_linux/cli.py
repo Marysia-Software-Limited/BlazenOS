@@ -42,7 +42,14 @@ def main(argv: list[str] | None = None) -> int:
                     help="pull peers' Jessica context from the mesh and merge it locally")
     ap.add_argument("--serve-fabric", action="store_true",
                     help="serve this node's context snapshot (:7475) so peers can pull it")
+    ap.add_argument("--fleet", metavar="ACTION",
+                    choices=["status", "start", "stop", "restart", "verify", "serve"],
+                    help="manage this node's GPU service fleet (paul)")
     args = ap.parse_args(argv)
+
+    if args.fleet:
+        from jessica_linux import fleet
+        return fleet.cli(args.fleet, node=_node())
 
     # --speak is pure TTS: no LLM/agent needed.
     if args.speak is not None:

@@ -34,14 +34,17 @@ nodes:
     role: gpu
     host: 192.168.50.102
     resources:
+      # `unit:` = the systemd unit paul manages this service with (P4 fleet).
       llm:
-        ollama-11b: { kind: openai, url: "http://192.168.50.102:11434", model: bielik-11b }
+        ollama-11b: { kind: openai, url: "http://192.168.50.102:11434", model: bielik-11b, unit: ollama.service }
       asr:
-        whisper-remote: { kind: faster-whisper, url: "http://192.168.50.102:8090/transcribe", model: large-v3 }
+        whisper-remote: { kind: faster-whisper, url: "http://192.168.50.102:8090/transcribe", model: large-v3, unit: blazen-whisper.service }
       tts:
-        xtts: { kind: xtts, url: "http://192.168.50.102:8091/synthesize", language: pl, speaker: "Ana Florence" }
+        xtts: { kind: xtts, url: "http://192.168.50.102:8091/synthesize", language: pl, speaker: "Ana Florence", unit: blazen-xtts.service }
       fabric:
         snapshot: { kind: fabric, url: "http://192.168.50.102:7475/fabric/snapshot" }
+      health:            # aggregated fleet liveness so peers route around a down service
+        fleet: { kind: fleet, url: "http://192.168.50.102:7476/fleet/health" }
 
   rachel:                # macOS Apple-Silicon desktop node
     role: desktop
