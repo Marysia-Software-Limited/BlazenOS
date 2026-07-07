@@ -28,9 +28,18 @@ migrates to `domains/` (Phase 4), the import path moves; the surface does not.
 ```sh
 make python                              # installs the agent + shared libs
 BLAZEN_NODE=paul jessica "co potrafisz?" # one-shot, answers in Polish via Ollama-11b
+BLAZEN_NODE=paul jessica --voice "…"     # …and speaks the reply via the mesh XTTS
+BLAZEN_NODE=paul jessica --speak "cześć" # pure TTS: render+play text via XTTS (no LLM)
 BLAZEN_NODE=paul jessica                 # interactive REPL
 BLAZEN_NODE=paul scripts/mesh-check.py   # (repo root) verify mesh membership + reachability
 ```
+
+**Voice** (`voice.py`): the TTS endpoint is resolved from the mesh (paul's XTTS-v2
+on the GPU); playback reuses `blazend-player` with the speech compressor + leveler
+(build it once: `cd rpi5/crates && cargo build --release -p blazend-player`).
+Override the ALSA output with `$BLAZEN_AUDIO_DEVICE` and the player with
+`$BLAZEN_PLAYER_BIN`. Reading a whole Calibre/Wolne-Lektury book aloud is the
+ingest pipeline layered on this render+play primitive.
 
 ## Rules
 Root [`../AGENTS.md`](../AGENTS.md) + [`../CLAUDE.md`](../CLAUDE.md) are the
