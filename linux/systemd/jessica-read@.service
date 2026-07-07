@@ -1,0 +1,19 @@
+# Read a Calibre ebook aloud via the mesh XTTS, on a Linux node's audio.
+# A systemd USER service (runs in your session, which owns PipeWire), so playback
+# survives + isn't tied to a shell. Install + start:
+#   cp linux/systemd/jessica-read@.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user start "jessica-read@$(systemd-escape 'Metro 2033')"
+#   systemctl --user stop  "jessica-read@$(systemd-escape 'Metro 2033')"   # stop
+# Resume from a chunk: add `--from-chunk N` to ExecStart (or a drop-in).
+[Unit]
+Description=Jessica reads "%I" aloud via the mesh XTTS
+
+[Service]
+Type=simple
+Environment=BLAZEN_NODE=paul
+Environment=BLAZEN_AUDIO_DEVICE=pulse
+Environment=PYTHONUNBUFFERED=1
+# Adjust the venv path to your checkout.
+ExecStart=%h/dev/blazen_os/.venv/bin/jessica --read "%I"
+Restart=no

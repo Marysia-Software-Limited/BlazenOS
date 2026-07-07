@@ -45,11 +45,29 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--fleet", metavar="ACTION",
                     choices=["status", "start", "stop", "restart", "verify", "serve"],
                     help="manage this node's GPU service fleet (paul)")
+    ap.add_argument("--read", metavar="QUERY",
+                    help="read a Calibre ebook aloud via the mesh XTTS (match by title)")
+    ap.add_argument("--from-chunk", type=int, default=0,
+                    help="resume --read from this chunk index")
     args = ap.parse_args(argv)
 
     if args.fleet:
         from jessica_linux import fleet
         return fleet.cli(args.fleet, node=_node())
+
+    if args.read:
+        from jessica_linux import books
+        book = books.resolve(args.read)
+        if book is None:
+            print(f"nie znalazłam książki: {args.read!r}")
+            return 1
+        tts = Voice()
+        if not tts.available:
+            print("brak TTS w mesh — nie mogę czytać")
+            return 1
+        print(f"Czytam „{book.title}” ({book.author})…")
+        books.read(book, voice=tts, start=args.from_chunk)
+        return 0
 
     # --speak is pure TTS: no LLM/agent needed.
     if args.speak is not None:

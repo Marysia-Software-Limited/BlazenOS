@@ -74,22 +74,20 @@ class Voice:
         with self._opener(req, timeout=600) as resp:
             return bytes(resp.read())
 
-    def speak(self, text: str, *, device: str | None = None) -> None:
-        """Render `text`, then play it via blazend-player (speech compressor on)."""
-        wav = self.render(text)
+    def play_wav(self, wav: bytes, *, device: str | None = None) -> None:
+        """Play already-rendered WAV bytes via blazend-player (speech compressor on;
+        leveling/AGC is on by default). Blocks until playback finishes."""
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             f.write(wav)
             path = f.name
         try:
-            # Leveling (AGC) is on by default; --compress adds the speech compressor.
             self._runner(
-                [
-                    _player_bin(),
-                    "--source", path,
-                    "--device", device or _device(),
-                    "--compress",
-                ],
+                [_player_bin(), "--source", path, "--device", device or _device(), "--compress"],
                 check=False,
             )
         finally:
             Path(path).unlink(missing_ok=True)
+
+    def speak(self, text: str, *, device: str | None = None) -> None:
+        """Render `text` and play it (render + play_wav)."""
+        self.play_wav(self.render(text), device=device)

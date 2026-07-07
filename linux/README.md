@@ -37,9 +37,21 @@ BLAZEN_NODE=paul scripts/mesh-check.py   # (repo root) verify mesh membership + 
 **Voice** (`voice.py`): the TTS endpoint is resolved from the mesh (paul's XTTS-v2
 on the GPU); playback reuses `blazend-player` with the speech compressor + leveler
 (build it once: `cd rpi5/crates && cargo build --release -p blazend-player`).
-Override the ALSA output with `$BLAZEN_AUDIO_DEVICE` and the player with
-`$BLAZEN_PLAYER_BIN`. Reading a whole Calibre/Wolne-Lektury book aloud is the
-ingest pipeline layered on this render+play primitive.
+Override the ALSA output with `$BLAZEN_AUDIO_DEVICE` (on a PipeWire desktop use
+`pulse`) and the player with `$BLAZEN_PLAYER_BIN`.
+
+**Read a book** (`books.py`, `pip install -e linux/agent[calibre]`): resolve a
+Calibre ebook by title, extract its EPUB chapters, chunk them, and render+play each
+via XTTS — prefetching the next chunk while the current plays, so it's continuous.
+```sh
+BLAZEN_NODE=paul BLAZEN_AUDIO_DEVICE=pulse jessica --read "Metro 2033"
+```
+Long reads should run as a systemd **user** service (owns the PipeWire audio,
+survives shells) — see `linux/systemd/jessica-read@.service`:
+```sh
+systemctl --user start "jessica-read@$(systemd-escape 'Metro 2033')"   # start
+systemctl --user stop  "jessica-read@$(systemd-escape 'Metro 2033')"   # stop
+```
 
 **Shared context** (`fabric.py` + the `context-sync` domain): one Jessica across
 nodes. Each node serves its context snapshot (memory notes/reminders/profile +
