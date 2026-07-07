@@ -1,0 +1,28 @@
+# Blazen fabric snapshot server (P2 — shared context / "one Jessica").
+#
+# Serves this node's Jessica context (memory notes/reminders/profile + audiobook
+# progress) as a context_sync Snapshot at GET :7475/fabric/snapshot, so peers
+# (paul, rachel) can pull + merge it over the mesh. Read-mostly; strict-improvement
+# — the appliance never depends on a peer being up. The endpoint is advertised in
+# mesh.yaml (jessica.fabric.snapshot). See linux/agent/src/jessica_linux/fabric.py
+# and domains/context-sync.
+[Unit]
+Description=Blazen fabric — serve this node's Jessica context snapshot (context_sync)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=blazen
+Environment=BLAZEN_NODE=jessica
+Environment=BLAZEN_MESH=/etc/blazen/mesh.yaml
+Environment=PYTHONPATH=/usr/lib/blazen
+# Serves the same memory.json the brain writes (blazen user's data dir).
+ExecStart=/usr/lib/blazen/.venv/bin/jessica --serve-fabric
+Restart=on-failure
+RestartSec=5
+# Read-only except its own runtime; a peer being down is never fatal.
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

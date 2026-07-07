@@ -50,8 +50,15 @@ strict-improvement (an offline peer is skipped).
 BLAZEN_NODE=paul jessica --serve-fabric   # serve this node's snapshot on :7475
 BLAZEN_NODE=paul jessica --sync           # pull peers + merge into local memory
 ```
-A note saved on the Pi is then recalled on paul (and vice-versa). Live Pi↔paul
-sync needs the Pi redeployed onto the merged tree (its fabric endpoint running).
+A note saved on the Pi is then recalled on paul (and vice-versa). **Live across
+machines:** the Pi runs `blazend-fabric-snapshot.service` (enabled) serving its
+context on `192.168.50.24:7475`; `BLAZEN_NODE=paul jessica --sync` on paul pulls
+and recalls the Pi's notes — verified end-to-end. A fresh Pi image must bake the
+same wiring: install the `audiobook-catalog` / `mesh-registry` / `context-sync`
+domain packages + `linux/agent` into the appliance venv, deploy `mesh.yaml` to
+`/etc/blazen/`, and ship `blazend-fabric-snapshot.service` (see
+`rpi5/stage-blazen/`). Live install today is additive (it did not touch the
+running voice services).
 
 **GPU fleet** (`fleet.py`): paul owns the lifecycle of the shared GPU services it
 advertises in `mesh.yaml` (each carries a `unit:` — `ollama` / `blazen-whisper` /
