@@ -41,6 +41,18 @@ Override the ALSA output with `$BLAZEN_AUDIO_DEVICE` and the player with
 `$BLAZEN_PLAYER_BIN`. Reading a whole Calibre/Wolne-Lektury book aloud is the
 ingest pipeline layered on this render+play primitive.
 
+**Shared context** (`fabric.py` + the `context-sync` domain): one Jessica across
+nodes. Each node serves its context snapshot (memory notes/reminders/profile +
+audiobook progress) and pulls peers' snapshots from the mesh's `fabric` resources,
+merging deterministically (union-by-id, last-writer-wins). Read-mostly v1;
+strict-improvement (an offline peer is skipped).
+```sh
+BLAZEN_NODE=paul jessica --serve-fabric   # serve this node's snapshot on :7475
+BLAZEN_NODE=paul jessica --sync           # pull peers + merge into local memory
+```
+A note saved on the Pi is then recalled on paul (and vice-versa). Live Pi↔paul
+sync needs the Pi redeployed onto the merged tree (its fabric endpoint running).
+
 ## Rules
 Root [`../AGENTS.md`](../AGENTS.md) + [`../CLAUDE.md`](../CLAUDE.md) are the
 baseline (Polish-first, on-device by default, mesh is strict-improvement — never

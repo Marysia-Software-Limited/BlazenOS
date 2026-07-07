@@ -27,6 +27,8 @@ nodes:
         whisper-local: { kind: faster-whisper, local: true, model: small }
       tts:
         piper-pl: { kind: piper, local: true }
+      fabric:            # shared-context snapshot endpoint (context_sync)
+        snapshot: { kind: fabric, url: "http://192.168.50.24:7475/fabric/snapshot" }
 
   paul:                  # Linux + RTX 3090 GPU / build rig
     role: gpu
@@ -38,6 +40,8 @@ nodes:
         whisper-remote: { kind: faster-whisper, url: "http://192.168.50.102:8090/transcribe", model: large-v3 }
       tts:
         xtts: { kind: xtts, url: "http://192.168.50.102:8091/synthesize", language: pl, speaker: "Ana Florence" }
+      fabric:
+        snapshot: { kind: fabric, url: "http://192.168.50.102:7475/fabric/snapshot" }
 
   rachel:                # macOS Apple-Silicon desktop node
     role: desktop
@@ -45,4 +49,6 @@ nodes:
     resources:
       tts:
         apple-zosia-enhanced: { kind: apple, local: true, voice: "Zosia (Enhanced)" }
+      fabric:
+        snapshot: { kind: fabric, url: "http://192.168.50.186:7475/fabric/snapshot" }
       # llm: MLX endpoint — future (docs/03-LLM-MESH.md Phase 1)

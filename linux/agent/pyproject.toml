@@ -13,6 +13,7 @@ requires-python = ">=3.11"
 dependencies = [
   "mesh-registry",
   "audiobook-catalog",
+  "context-sync",
 ]
 
 [project.optional-dependencies]
