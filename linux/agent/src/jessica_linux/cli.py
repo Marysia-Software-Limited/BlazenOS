@@ -59,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="render a Calibre ebook to kept MP3 chapters + the shared catalog (no playback)")
     ap.add_argument("--serve-media", action="store_true",
                     help="serve the audiobook library (:7477) so other nodes stream it")
+    ap.add_argument("--pull-catalog", action="store_true",
+                    help="merge peers' shared audiobook catalogs (mesh media) into this node's")
     ap.add_argument("--from-chunk", type=int, default=None,
                     help="resume --read/--ingest from this chapter/chunk (default: from saved progress)")
     args = ap.parse_args(argv)
@@ -71,6 +73,13 @@ def main(argv: list[str] | None = None) -> int:
         from jessica_linux import books
         print("serving audiobook library on :7477 (Ctrl-C stops)")
         books.serve_media()
+        return 0
+
+    if args.pull_catalog:
+        from jessica_linux import books
+        cat = os.environ.get("BLAZEN_AUDIOBOOKS_CATALOG") or str(books._LIBRARY / "catalog.json")
+        s = books.pull_catalog(node=_node(), local_catalog=cat)
+        print(f"katalog: {s['books']} książek ({s['merged']} z sieci) → {cat}")
         return 0
 
     if args.ingest:

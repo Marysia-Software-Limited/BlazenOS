@@ -1,0 +1,15 @@
+# Serve this node's Jessica context snapshot (:7475) so peers pull + merge it (P2).
+# The paul `fabric` mesh resource. Enable so paul participates in "one Jessica".
+[Unit]
+Description=Jessica fabric snapshot server
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+Environment=BLAZEN_NODE=paul
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/dev/blazen_os/.venv/bin/jessica --serve-fabric
+Restart=on-failure
+RestartSec=3
+[Install]
+WantedBy=default.target

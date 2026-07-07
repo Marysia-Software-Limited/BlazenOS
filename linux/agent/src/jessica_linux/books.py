@@ -251,14 +251,99 @@ def play_files(chapters: list[str], *, voice: Any, device: str | None = None,
     return max(0, total - start)
 
 
+def published_catalog(library: Path, base_url: str) -> dict[str, Any]:
+    """The catalog as other nodes should see it: chapters rewritten to absolute
+    URLs under ``base_url``, and ONLY books whose chapter files actually exist here
+    (so metadata-only / not-rendered entries aren't advertised)."""
+    try:
+        cat = json.loads((library / "catalog.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"version": 1, "books": []}
+    base = base_url.rstrip("/")
+    out: list[dict[str, Any]] = []
+    for b in cat.get("books", []):
+        chapters = list(b.get("chapters", []))
+        if not chapters:
+            continue
+        if str(chapters[0]).startswith("http"):
+            resolved = chapters  # already absolute
+        else:
+            if not (library / chapters[0]).exists():
+                continue  # this node doesn't actually hold the audio → don't publish
+            resolved = [f"{base}/{c}" for c in chapters]
+        out.append({**b, "chapters": resolved})
+    return {"version": 1, "books": out}
+
+
 def serve_media(*, library: Path | None = None, host: str = "0.0.0.0", port: int = 7477) -> None:
-    """Serve the audiobook library over HTTP so other nodes stream chapters + the
-    catalog (``GET /<slug>/NNN.mp3``, ``/catalog.json``). Advertised as the paul
-    ``media`` mesh resource. Blocks (Ctrl-C stops)."""
-    import functools  # noqa: PLC0415
+    """Serve the audiobook library over HTTP so other nodes stream chapters and pull
+    the catalog. ``GET /<slug>/NNN.mp3`` serves files; ``GET /catalog.json`` serves
+    the URL-rewritten :func:`published_catalog` (built per request from the Host
+    header, so it's correct regardless of IP). Advertised as the paul ``media`` mesh
+    resource. Blocks (Ctrl-C stops)."""
     from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer  # noqa: PLC0415
 
     lib = library or _LIBRARY
     lib.mkdir(parents=True, exist_ok=True)
-    handler = functools.partial(SimpleHTTPRequestHandler, directory=str(lib))
-    ThreadingHTTPServer((host, port), handler).serve_forever()
+
+    class _Handler(SimpleHTTPRequestHandler):
+        def __init__(self, *a: Any, **k: Any) -> None:
+            super().__init__(*a, directory=str(lib), **k)
+
+        def do_GET(self) -> None:  # noqa: N802
+            if self.path.rstrip("/") in ("/catalog.json", "/catalog"):
+                base = f"http://{self.headers.get('Host', f'{host}:{port}')}"
+                body = json.dumps(published_catalog(lib, base), ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            super().do_GET()
+
+        def log_message(self, *a: Any) -> None:
+            pass
+
+    ThreadingHTTPServer((host, port), _Handler).serve_forever()
+
+
+def pull_catalog(*, node: str, local_catalog: str, mesh: Any = None,
+                 opener: Any = None, log: Callable[[str], None] = print) -> dict[str, int]:
+    """Pull every peer's published audiobook catalog from the mesh ``media``
+    resources and merge the entries (upsert by slug) into this node's catalog, so
+    books rendered elsewhere (paul) become resolvable + streamable here. Local-only
+    books (different slugs) are untouched. Returns a small summary."""
+    import urllib.request  # noqa: PLC0415
+
+    from mesh_registry import Mesh  # noqa: PLC0415
+    mesh = mesh or Mesh.load()
+    opener = opener or urllib.request.urlopen
+    cat_path = Path(local_catalog)
+    try:
+        local = json.loads(cat_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        local = {"version": 1, "books": []}
+    by_slug: dict[str, dict[str, Any]] = {b.get("slug", ""): b for b in local.get("books", [])}
+    merged = 0
+    for res in mesh.resources("media"):
+        if res.node == node or not res.url:
+            continue
+        url = res.url.rstrip("/") + "/catalog.json"
+        try:
+            with opener(url, timeout=8) as r:  # noqa: S310 — our own LAN media node
+                remote = json.loads(r.read())
+        except Exception:  # noqa: BLE001 — media node offline → skip
+            continue
+        for b in remote.get("books", []):
+            slug = b.get("slug")
+            if slug:
+                by_slug[slug] = b
+                merged += 1
+        log(f"  pulled {res.node}: {len(remote.get('books', []))} books")
+    local["books"] = list(by_slug.values())
+    cat_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = cat_path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(local, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(cat_path)
+    return {"books": len(by_slug), "merged": merged}

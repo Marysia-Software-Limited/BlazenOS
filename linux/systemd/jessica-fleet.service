@@ -1,0 +1,15 @@
+# Serve this node's GPU fleet health (:7476) so peers see liveness (P4).
+# The paul `health` mesh resource.
+[Unit]
+Description=Jessica GPU fleet health endpoint
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+Environment=BLAZEN_NODE=paul
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/dev/blazen_os/.venv/bin/jessica --fleet serve
+Restart=on-failure
+RestartSec=3
+[Install]
+WantedBy=default.target

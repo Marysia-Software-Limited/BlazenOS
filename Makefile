@@ -207,7 +207,7 @@ test: test-fast test-vm ## Full pyramid (Tier 0..3)
 .PHONY: test-fast
 test-fast: venv lint ## Tier 0 (unit) + Tier 1 (component, mocked) — Python AND Rust (core + appliance)
 	cd rpi5 && $(PY) -m pytest tests/unit tests/component -x --tb=short
-	$(PY) -m pytest domains/audiobook-catalog/tests domains/mesh-registry/tests domains/context-sync/tests linux/agent/tests -q
+	$(PY) -m pytest domains/audiobook-catalog/tests domains/mesh-registry/tests domains/context-sync/tests linux/agent/tests -q --ignore=linux/agent/tests/integration
 	cd domains && $(CARGO) test --workspace --quiet
 	cd rpi5/crates && $(CARGO) test --workspace --quiet
 
@@ -258,6 +258,10 @@ fleet-stop: venv ## GPU fleet: stop all services (sudo systemctl)
 	BLAZEN_NODE=$${BLAZEN_NODE:-paul} $(VENV)/bin/jessica --fleet stop
 fleet-restart: venv ## GPU fleet: restart all services (sudo systemctl)
 	BLAZEN_NODE=$${BLAZEN_NODE:-paul} $(VENV)/bin/jessica --fleet restart
+
+.PHONY: test-integration
+test-integration: venv ## Live-mesh checks: this node's access to every shared resource (needs the constellation up)
+	BLAZEN_INTEGRATION=1 $(PY) -m pytest linux/agent/tests/integration -v
 
 .PHONY: audit
 audit: venv ## Lint configs, scan deps, dry-run firewall rules
