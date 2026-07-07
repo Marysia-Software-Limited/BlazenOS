@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jessica-linux"
+version = "0.0.1"
+description = "Jessica agent for Linux nodes (paul now, the Pi later) — the portable engine wired to a node's mesh resources."
+requires-python = ">=3.11"
+# NOTE: the conversational engine still lives in the Pi package `blazen_os`
+# (rpi5/src/blazend) until the mind migrates to domains/ (Phase 4). It is installed
+# editable by `make python`; we import it rather than fork it.
+dependencies = [
+  "mesh-registry",
+  "audiobook-catalog",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.10"]
+
+[project.scripts]
+jessica = "jessica_linux.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+extend-select = ["I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+# The portable engine lives in the `blazen_os` package (rpi5/src/blazend); it has
+# no py.typed and is type-checked in its OWN gate (cd rpi5 && mypy), not here. We
+# consume it as an untyped boundary rather than re-checking its internals.
+[[tool.mypy.overrides]]
+module = "blazend.*"
+ignore_missing_imports = true
