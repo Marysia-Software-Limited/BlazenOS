@@ -1,0 +1,10 @@
+# Render one Calibre ebook to a kept, shared XTTS audiobook (no playback).
+#   systemctl --user start "jessica-ingest@$(systemd-escape 'Metro 2033')"
+[Unit]
+Description=Jessica renders "%I" to a shared audiobook via XTTS
+[Service]
+Type=simple
+Environment=BLAZEN_NODE=paul
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/dev/blazen_os/.venv/bin/jessica --ingest "%I"
+Restart=no

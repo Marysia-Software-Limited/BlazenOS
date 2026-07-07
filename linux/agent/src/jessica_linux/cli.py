@@ -13,6 +13,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from audiobook_catalog.progress import AudiobookProgress
+
 from jessica_linux.fabric import pull_and_merge, serve
 from jessica_linux.node import build_assistant
 from jessica_linux.voice import Voice
@@ -20,6 +22,12 @@ from jessica_linux.voice import Voice
 
 def _node() -> str:
     return os.environ.get("BLAZEN_NODE") or "linux"
+
+
+def _progress() -> AudiobookProgress:
+    """Audiobook progress store in the shared library (syncs via the fabric)."""
+    from jessica_linux.books import _LIBRARY
+    return AudiobookProgress(path=str(_LIBRARY / "progress.json"))
 
 
 def _context_paths(data: str | None) -> tuple[Path, Path]:
@@ -46,14 +54,37 @@ def main(argv: list[str] | None = None) -> int:
                     choices=["status", "start", "stop", "restart", "verify", "serve"],
                     help="manage this node's GPU service fleet (paul)")
     ap.add_argument("--read", metavar="QUERY",
-                    help="read a Calibre ebook aloud via the mesh XTTS (match by title)")
-    ap.add_argument("--from-chunk", type=int, default=0,
-                    help="resume --read from this chunk index")
+                    help="read a Calibre ebook aloud via XTTS (rendered files if present, else live)")
+    ap.add_argument("--ingest", metavar="QUERY",
+                    help="render a Calibre ebook to kept MP3 chapters + the shared catalog (no playback)")
+    ap.add_argument("--serve-media", action="store_true",
+                    help="serve the audiobook library (:7477) so other nodes stream it")
+    ap.add_argument("--from-chunk", type=int, default=None,
+                    help="resume --read/--ingest from this chapter/chunk (default: from saved progress)")
     args = ap.parse_args(argv)
 
     if args.fleet:
         from jessica_linux import fleet
         return fleet.cli(args.fleet, node=_node())
+
+    if args.serve_media:
+        from jessica_linux import books
+        print("serving audiobook library on :7477 (Ctrl-C stops)")
+        books.serve_media()
+        return 0
+
+    if args.ingest:
+        from jessica_linux import books
+        book = books.resolve(args.ingest)
+        if book is None:
+            print(f"nie znalazłam książki: {args.ingest!r}")
+            return 1
+        tts = Voice()
+        if not tts.available:
+            print("brak TTS w mesh — nie mogę renderować")
+            return 1
+        books.render_to_files(book, voice=tts, progress=_progress())
+        return 0
 
     if args.read:
         from jessica_linux import books
@@ -65,8 +96,17 @@ def main(argv: list[str] | None = None) -> int:
         if not tts.available:
             print("brak TTS w mesh — nie mogę czytać")
             return 1
-        print(f"Czytam „{book.title}” ({book.author})…")
-        books.read(book, voice=tts, start=args.from_chunk)
+        bookprog = _progress()
+        saved = bookprog.get(book.slug)
+        start = args.from_chunk if args.from_chunk is not None else ((saved["chapter"] + 1) if saved else 0)
+        pre = books.rendered_chapters(book)
+        print(f"Czytam „{book.title}” ({book.author}) od {start}"
+              f"{' (z gotowych plików)' if pre else ''}…")
+        if pre:  # prefer kept audio (chapter files) — resumable by chapter
+            books.play_files([str(p) for p in pre], voice=tts, progress=bookprog,
+                             slug=book.slug, title=book.title, start=start)
+        else:  # render live, saving progress by chunk
+            books.read(book, voice=tts, progress=bookprog, start=start)
         return 0
 
     # --speak is pure TTS: no LLM/agent needed.

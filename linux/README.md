@@ -40,18 +40,26 @@ on the GPU); playback reuses `blazend-player` with the speech compressor + level
 Override the ALSA output with `$BLAZEN_AUDIO_DEVICE` (on a PipeWire desktop use
 `pulse`) and the player with `$BLAZEN_PLAYER_BIN`.
 
-**Read a book** (`books.py`, `pip install -e linux/agent[calibre]`): resolve a
-Calibre ebook by title, extract its EPUB chapters, chunk them, and render+play each
-via XTTS — prefetching the next chunk while the current plays, so it's continuous.
-```sh
-BLAZEN_NODE=paul BLAZEN_AUDIO_DEVICE=pulse jessica --read "Metro 2033"
-```
-Long reads should run as a systemd **user** service (owns the PipeWire audio,
-survives shells) — see `linux/systemd/jessica-read@.service`:
-```sh
-systemctl --user start "jessica-read@$(systemd-escape 'Metro 2033')"   # start
-systemctl --user stop  "jessica-read@$(systemd-escape 'Metro 2033')"   # stop
-```
+**Books / audiobooks** (`books.py`, `pip install -e linux/agent[calibre]`): resolve
+a Calibre ebook by title, extract its EPUB chapters, **clean the text** for TTS
+(`clean_text` — strips soft hyphens, folds the HTML extractor's mid-paragraph line
+breaks, drops `(...)` marks + page numbers), chunk it, and render via the mesh XTTS.
+- `jessica --read "<title>"` — play aloud (prefers already-rendered files, else
+  renders live; **auto-resumes** from saved progress). Long reads → the
+  `jessica-read@.service` user unit (owns PipeWire, survives shells).
+- `jessica --ingest "<title>"` — render to **kept** per-chapter MP3s under
+  `$BLAZEN_AUDIOBOOKS_DIR` (`~/audiobooks/<slug>/NNN.mp3`) + `catalog.json`.
+  Resumable (skips rendered chapters).
+- `jessica --serve-media` — serve the library on `:7477` so **other nodes stream**
+  it (the paul `media` mesh resource). e.g. the Pi's catalog points a book's
+  chapters at `http://192.168.50.102:7477/<slug>/NNN.mp3` and its `blazend-player`
+  streams them.
+- **Batch** (`scripts/render-literatura.py` + `render-literatura.service`): render
+  every Calibre `literatura` book without audio — resumable per-book (manifest) and
+  per-chapter, one at a time, for the long haul.
+
+Progress is an `AudiobookProgress` in the library and rides the fabric, so a book's
+position syncs across nodes. Systemd unit templates live in `linux/systemd/`.
 
 **Shared context** (`fabric.py` + the `context-sync` domain): one Jessica across
 nodes. Each node serves its context snapshot (memory notes/reminders/profile +

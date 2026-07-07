@@ -1,0 +1,17 @@
+# Long-term batch: render every Calibre `literatura` book without audio to a shared
+# XTTS audiobook. Resumable (per-book manifest + per-chapter skip). Runs as a
+# systemd USER service so it survives shells; pair with jessica-media.service to
+# share the results. Install + run:
+#   cp linux/systemd/render-literatura.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user start render-literatura
+[Unit]
+Description=Batch-render Calibre "literatura" to shared XTTS audiobooks
+
+[Service]
+Type=simple
+Environment=BLAZEN_NODE=paul
+Environment=PYTHONUNBUFFERED=1
+# Adjust to your checkout.
+ExecStart=%h/dev/blazen_os/.venv/bin/python %h/dev/blazen_os/scripts/render-literatura.py
+Restart=on-failure
+RestartSec=10

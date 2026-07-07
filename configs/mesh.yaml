@@ -45,6 +45,8 @@ nodes:
         snapshot: { kind: fabric, url: "http://192.168.50.102:7475/fabric/snapshot" }
       health:            # aggregated fleet liveness so peers route around a down service
         fleet: { kind: fleet, url: "http://192.168.50.102:7476/fleet/health" }
+      media:             # shared audiobook library (XTTS renders) — nodes stream chapters + catalog.json
+        audiobooks: { kind: http, url: "http://192.168.50.102:7477/" }
 
   rachel:                # macOS Apple-Silicon desktop node
     role: desktop

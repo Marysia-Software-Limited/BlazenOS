@@ -1,0 +1,15 @@
+# Serve the audiobook library (:7477) so other nodes stream chapters + catalog.json
+# (the paul `media` mesh resource). Enable so it's always up.
+[Unit]
+Description=Jessica audiobook media server (shares the library to the mesh)
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+Environment=BLAZEN_NODE=paul
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/dev/blazen_os/.venv/bin/jessica --serve-media
+Restart=on-failure
+RestartSec=3
+[Install]
+WantedBy=default.target

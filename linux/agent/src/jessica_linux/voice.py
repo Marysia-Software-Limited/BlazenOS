@@ -88,6 +88,14 @@ class Voice:
         finally:
             Path(path).unlink(missing_ok=True)
 
+    def play_file(self, source: str, *, device: str | None = None) -> None:
+        """Play an existing audio file or URL via blazend-player (compressor on).
+        Blocks until it finishes. Used for pre-rendered audiobook chapters."""
+        self._runner(
+            [_player_bin(), "--source", source, "--device", device or _device(), "--compress"],
+            check=False,
+        )
+
     def speak(self, text: str, *, device: str | None = None) -> None:
         """Render `text` and play it (render + play_wav)."""
         self.play_wav(self.render(text), device=device)

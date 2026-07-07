@@ -1,7 +1,22 @@
-"""Unit tests for the book reader's chunking (no ebooklib / TTS / audio)."""
+"""Unit tests for the book reader's text cleaning + chunking (no ebooklib / TTS)."""
 from __future__ import annotations
 
-from jessica_linux.books import chunks
+from jessica_linux.books import chunks, clean_text
+
+
+def test_clean_text_strips_artifacts():
+    # soft hyphen inside a word, mid-paragraph line breaks, (...) marks, page number
+    dirty = "Ciem­ny tunel\nmetra\n„(...)” cisza.\n\n42\n\nDrugi akapit."
+    out = clean_text(dirty)
+    assert "Ciemny tunel metra" in out          # soft hyphen removed, line breaks joined
+    assert "(...)" not in out and "…" not in out  # editorial marks gone
+    assert "\n42\n" not in out and "\n\n42" not in out  # standalone page number dropped
+    assert "\n\nDrugi akapit." in out           # paragraph break preserved
+
+
+def test_clean_text_keeps_numbers_in_titles_and_inline():
+    assert clean_text("Metro\n2033 Gluchovsky") == "Metro 2033 Gluchovsky"  # joined, not dropped
+    assert "rok 1984" in clean_text("Był\nrok 1984 wtedy.")
 
 
 def test_chunks_respect_max_and_split_paragraphs():
