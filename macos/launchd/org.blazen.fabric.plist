@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Serve rachel's shared-context (fabric) snapshot so peers (the Pi, paul) can
+     pull the notes / reminders / audiobook progress saved on this Mac — the macOS
+     equivalent of paul's jessica-fabric.service. A KeepAlive daemon (not a timer):
+     it holds :7475/fabric/snapshot open for the whole login session.
+
+     Install (adjust the paths to your checkout + user):
+       cp macos/launchd/org.blazen.fabric.plist ~/Library/LaunchAgents/
+       launchctl load  ~/Library/LaunchAgents/org.blazen.fabric.plist
+       launchctl unload ~/Library/LaunchAgents/org.blazen.fabric.plist   # stop -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>org.blazen.fabric</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/beret/dev/blazen_os/macos/agent/.venv/bin/jessica</string>
+    <string>--serve-fabric</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>BLAZEN_NODE</key><string>rachel</string>
+    <key>BLAZEN_MESH</key><string>/Users/beret/dev/blazen_os/configs/mesh.yaml</string>
+    <key>BLAZEN_DATA_DIR</key><string>/Users/beret/audiobooks</string>
+  </dict>
+  <key>KeepAlive</key><true/>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/tmp/blazen-fabric.out</string>
+  <key>StandardErrorPath</key><string>/tmp/blazen-fabric.err</string>
+</dict>
+</plist>

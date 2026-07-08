@@ -35,11 +35,15 @@ def _progress() -> AudiobookProgress:
 
 
 def _context_paths(data: str | None) -> tuple[Path, Path]:
-    """This node's memory.json + a sibling progress.json (shared-context stores)."""
-    from blazend.domains.context.adapters.rpi5.memory import MemoryStore
+    """This node's memory.json + a sibling progress.json (shared-context stores).
 
-    mem = MemoryStore(Path(data) if data else None).path
-    return mem, mem.parent / "progress.json"
+    Blazend-free (shared ``context_sync`` resolver) so ``--serve-fabric`` / ``--sync``
+    run on nodes without the Pi appliance package (rachel). Resolves the same path
+    the appliance's ``MemoryStore`` always did, so paul / the Pi are unchanged.
+    """
+    from context_sync import context_paths
+
+    return context_paths(data)
 
 
 def main(argv: list[str] | None = None) -> int:

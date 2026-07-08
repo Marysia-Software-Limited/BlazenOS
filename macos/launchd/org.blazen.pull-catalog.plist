@@ -14,7 +14,7 @@
   <key>Label</key><string>org.blazen.pull-catalog</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/beret/dev/blazen_os/.venv/bin/jessica</string>
+    <string>/Users/beret/dev/blazen_os/macos/agent/.venv/bin/jessica</string>
     <string>--pull-catalog</string>
   </array>
   <key>EnvironmentVariables</key>
