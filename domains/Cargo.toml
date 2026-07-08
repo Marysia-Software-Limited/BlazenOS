@@ -41,6 +41,7 @@ cpal         = "0.15"
 rodio        = "0.19"
 symphonia    = { version = "0.5", default-features = false, features = ["mp3", "aac", "isomp4", "ogg", "vorbis", "flac", "wav", "pcm"] }
 hound        = "3.5"
+ureq         = "2.10"   # blocking HTTP for streaming shared-library chapters off a mesh media peer
 
 # ML / ONNX (wake + VAD). Added in M2 once the loader stabilises; current
 # `ort 2.0-rc.4` has upstream build issues on some host SDKs. Mock wake

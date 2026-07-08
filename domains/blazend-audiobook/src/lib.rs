@@ -9,6 +9,7 @@
 
 mod dynamics;
 mod engine;
+mod http_source;
 mod sink;
 #[cfg(feature = "cpal-sink")]
 mod sink_cpal;

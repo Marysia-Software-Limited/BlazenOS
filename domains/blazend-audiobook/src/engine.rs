@@ -17,12 +17,13 @@ use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{Decoder, DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error as SymError;
 use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo};
-use symphonia::core::io::MediaSourceStream;
+use symphonia::core::io::{MediaSource, MediaSourceStream};
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::core::units::Time;
 
 use crate::dynamics::{Dynamics, DynamicsConfig};
+use crate::http_source::HttpMediaSource;
 use crate::sink::SinkFactory;
 
 const CHANNEL_CHUNKS: usize = 32;
@@ -49,13 +50,35 @@ impl FileConfig {
 }
 
 fn open_media(source: &Path) -> Result<(MediaSourceStream, Hint)> {
-    let file = File::open(source).with_context(|| format!("open {}", source.display()))?;
-    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let raw = source.to_string_lossy();
+    let (media, ext): (Box<dyn MediaSource>, Option<String>) =
+        if raw.starts_with("http://") || raw.starts_with("https://") {
+            // Stream a chapter straight off a mesh media peer (no local re-render).
+            let http = HttpMediaSource::open(&raw).with_context(|| format!("open {raw}"))?;
+            (Box::new(http), url_extension(&raw))
+        } else {
+            let file = File::open(source).with_context(|| format!("open {}", source.display()))?;
+            (
+                Box::new(file),
+                source
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(String::from),
+            )
+        };
+    let mss = MediaSourceStream::new(media, Default::default());
     let mut hint = Hint::new();
-    if let Some(ext) = source.extension().and_then(|e| e.to_str()) {
-        hint.with_extension(ext);
+    if let Some(ext) = ext {
+        hint.with_extension(&ext);
     }
     Ok((mss, hint))
+}
+
+/// The file extension of a URL path (`…/001.mp3?x=1` → `mp3`), for the probe hint.
+fn url_extension(url: &str) -> Option<String> {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    let name = path.rsplit('/').next().unwrap_or(path);
+    name.rsplit_once('.').map(|(_, ext)| ext.to_string())
 }
 
 type DecoderBundle = (
