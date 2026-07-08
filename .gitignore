@@ -34,6 +34,9 @@ htmlcov/
 # Rust
 target/
 **/*.rs.bk
+# Lockfiles are not tracked — Cargo regenerates them deterministically from the
+# committed Cargo.toml manifests; keeping them out of git avoids cross-node churn.
+*.lock
 Cargo.lock.bak
 .cargo/.package-cache
 
