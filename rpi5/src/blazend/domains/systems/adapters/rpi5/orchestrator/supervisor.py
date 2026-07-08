@@ -10,10 +10,14 @@ M1 scope:
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
+import math
 import os
+import struct
 import subprocess
+import wave
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -56,6 +60,36 @@ DEFAULT_PEERS: tuple[str, ...] = (
     "audio-out",
     "health",
 )
+
+# Wake earcon: the instant "dżesika → beep → speak" cue for the blind-first UX.
+# A short two-note rising chime played straight to ALSA (not via blazend-audio-out,
+# which is slow to start and down while idle) so it's pre-verbal and adds no latency.
+_BEEP_RATE_HZ = 22050          # Jabra playback rate (matches audio.yaml output)
+_BEEP_DEVICE = "plughw:CARD=USB,DEV=0"  # concrete Jabra ALSA device (aplay -D)
+
+
+def _make_wake_beep_wav(rate: int = _BEEP_RATE_HZ) -> bytes:
+    """A short, gentle rising two-note chime as WAV bytes (mono i16).
+
+    ~150 ms total (660 Hz → 990 Hz), each note faded in/out ~8 ms to avoid clicks,
+    at low amplitude so it's a soft acknowledgement, not a startle. Pure/deterministic
+    so it's unit-testable and identical every boot; fed to ``aplay`` on stdin."""
+    notes = (660.0, 990.0)
+    note_s = 0.075
+    fade = max(1, int(0.008 * rate))
+    frames = bytearray()
+    for freq in notes:
+        n = int(rate * note_s)
+        for i in range(n):
+            env = min(1.0, i / fade, (n - i) / fade)
+            frames += struct.pack("<h", int(0.35 * env * 32767 * math.sin(2 * math.pi * freq * i / rate)))
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(bytes(frames))
+    return buf.getvalue()
 
 
 class Orchestrator:
@@ -105,6 +139,9 @@ class Orchestrator:
         self._attention_enabled, self._attention_interval_s, self._attention_window_s = att
         # Audible state cues for the blind-first UX (audio.yaml earcons + phrases.yaml).
         self._earcons, self._cues = self._load_earcons()
+        # Wake chime: pre-rendered once, played straight to the Jabra on wake.detected.
+        self._beep_wav = _make_wake_beep_wav()
+        self._beep_device = self._load_beep_device()
         self._book_activity_at = 0.0     # loop time the attention interval counts from
         self._awaiting_attention = False
         self._attention_deadline = 0.0
@@ -161,6 +198,39 @@ class Orchestrator:
         except Exception:  # noqa: BLE001
             cues = fallback
         return earcons, cues
+
+    @staticmethod
+    def _load_beep_device() -> str:
+        """Concrete ALSA device for the wake chime (aplay -D). The Jabra is one
+        physical device for mic + speaker, so reuse audio.yaml's ``input.device``
+        (a real ``plughw:CARD=...`` string); fall back to the Jabra default."""
+        try:
+            dev = str(load_config("audio").get("input.device", "") or "")
+            return dev if dev.startswith("plughw:") else _BEEP_DEVICE
+        except Exception:  # noqa: BLE001
+            return _BEEP_DEVICE
+
+    def _wake_chime_armed(self) -> bool:
+        """Whether to sound the wake chime: enabled in audio.yaml AND the Jabra is
+        free (no radio/music stream holding the output device)."""
+        return bool(self._earcons.get("wake_chime")) and not self._radio.playing
+
+    async def _play_wake_beep(self) -> None:
+        """Play the wake chime straight to the Jabra via ``aplay`` (fire-and-forget).
+
+        Bypasses blazend-audio-out (down while idle, ~1-2 s to start) so the cue is
+        instant and pre-verbal. Runs only when the device is free (no radio holds
+        it); a failure is swallowed — a missing chime must never break wake."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "aplay", "-q", "-D", self._beep_device, "-t", "wav", "-",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.communicate(self._beep_wav)
+        except (OSError, asyncio.CancelledError) as exc:
+            log.debug("wake beep skipped: %s", exc)
 
     @staticmethod
     def _load_wake_gating() -> tuple[bool, float]:
@@ -370,6 +440,11 @@ class Orchestrator:
             patch["ready"] = True
             patch["units"][peer]["status"] = "running"
         if env.topic == "wake.detected":
+            # Instant audible ack: "dżesika" → beep → speak. Fire first (pre-verbal)
+            # and only when the Jabra is free — a playing stream holds the device and
+            # its duck is the feedback there. Gated by audio.yaml earcons.wake_chime.
+            if self._wake_chime_armed():
+                asyncio.create_task(self._play_wake_beep())
             self._awake_until = asyncio.get_running_loop().time() + self._wake_window_s
             patch["wake_word"] = {
                 "last_fired": env.data.get("model"),
