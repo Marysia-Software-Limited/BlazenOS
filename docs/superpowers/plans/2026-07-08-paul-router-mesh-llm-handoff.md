@@ -1,5 +1,15 @@
 # Handoff — let the Pi/paul router route TO rachel's MLX LLM
 
+> **✅ DONE (paul session, 2026-07-08).** The router now builds a generic
+> `MeshOpenAiLlm` for any `llm` resource with `kind: openai` in `mesh.yaml`
+> (`_build` → `_mesh_resource`), TTL-caches every networked probe per-name, and
+> `llm.yaml` routes `mlx-qwen72b` / `mlx-bielik-11b` locality-aware ahead of the
+> local Bielik floor. Verified: `make test-fast` green (13 router tests incl. new
+> mesh-peer build + strict-improvement fallback); live-checked rachel's real MLX
+> `/v1/models` (both ports) + a Polish `/v1/chat/completions` on Bielik-11B.
+> Deploy to the Pi (rebuild venv there — pure-Python change, no Rust) is the only
+> remaining step to see it end-to-end on the appliance.
+>
 > **FOR THE `paul` / `jessica` (Pi) CLAUDE SESSION.** Written by the `rachel`
 > (macOS, M3 Max) session, which stood up rachel as a full mesh member (shared
 > audiobooks, fabric context, and now an MLX LLM). Everything below is on `main`.

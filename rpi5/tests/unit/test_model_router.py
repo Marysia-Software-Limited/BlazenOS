@@ -141,3 +141,56 @@ def test_paul_off_still_answers_locally():
     )
     assert r.first(Task.COMMAND)[0] == "bielik-1.5b"
     assert r.first(Task.RECOMMEND)[0] == "bielik-4.5b"
+
+
+# -- a generic OpenAI-compatible mesh peer (rachel's MLX) -----------------
+
+def _mesh_with_peer(name: str, url: str, model: str):
+    from mesh_registry import Mesh
+    return Mesh(
+        {"nodes": {"rachel": {"host": "192.168.50.186",
+                              "resources": {"llm": {name: {"kind": "openai", "url": url, "model": model}}}}}},
+        self_node="paul",
+    )
+
+
+def test_mesh_openai_peer_built_from_the_mesh():
+    # An unknown backend name that the mesh advertises as kind: openai builds a
+    # generic client from the resource's URL + model tag (no hardcoded adapter).
+    r = ModelRouter(mesh=_mesh_with_peer("mlx-qwen72b", "http://192.168.50.186:11436", "Qwen72"))
+    backend = r._build("mlx-qwen72b")
+    assert backend is not None
+    assert backend.url == "http://192.168.50.186:11436"
+    assert backend.model == "Qwen72"
+
+
+def test_unknown_backend_absent_from_mesh_is_dropped():
+    # Not a known name and not in the mesh → unbuildable → skipped, never crashes.
+    r = ModelRouter(mesh=_mesh_with_peer("mlx-qwen72b", "http://x:11436", "Q"))
+    assert r._build("some-typo-backend") is None
+
+
+def _peer_router(*, peer_up: bool):
+    """RECOMMEND routed rachel-first, with rachel's peer availability controllable
+    and everything else down — so we see rachel win, then the local fallback."""
+    cfg = {"routing": {
+        "tasks": {"recommend": ["mlx-qwen72b", "ollama-11b", "bielik-4.5b"]},
+        "backends": {"bielik-4.5b": {"model": "b45"}},
+    }}
+    return ModelRouter(
+        cfg=cfg,
+        mesh=_mesh_with_peer("mlx-qwen72b", "http://192.168.50.186:11436", "Q"),
+        backends={"mlx-qwen72b": _Fake("mlx-qwen72b", available=peer_up)},
+        ollama=_Fake("ollama", available=False),
+        openai=_Fake("gpt", available=False),
+        local_factory=lambda m: _Fake(m),
+    )
+
+
+def test_recommend_prefers_rachel_peer_when_up():
+    assert _peer_router(peer_up=True).first(Task.RECOMMEND)[0] == "mlx-qwen72b"
+
+
+def test_recommend_falls_back_to_local_when_peer_off():
+    # DoD: rachel off → strict-improvement, falls through to the on-device Bielik.
+    assert _peer_router(peer_up=False).first(Task.RECOMMEND)[0] == "bielik-4.5b"

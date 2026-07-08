@@ -5,25 +5,30 @@ Instead, every node advertises its model(s), and **DSPy programs run against the
 best backend in the whole pool**. Ollama becomes *one* backend among several
 ("instead of ollama **or with** ollama").
 
-## Where we are today (single-node)
+## Where we are today (mesh is LIVE)
 
 `ModelRouter` ([`../rpi5/…/core/model_router.py`](../rpi5/src/blazend/domains/ai_orchestrator/core/model_router.py))
-already does task→backend selection with graceful fallback, driven by
-[`../configs/llm.yaml`](../configs/llm.yaml) `routing:`:
+does task→backend selection with graceful fallback, driven by
+[`../configs/llm.yaml`](../configs/llm.yaml) `routing:`. Peer backends are now
+routed to: any `llm` resource in [`../configs/mesh.yaml`](../configs/mesh.yaml)
+with `kind: openai` (e.g. rachel's MLX) is built generically from its URL + model
+tag. Current locality-aware order:
 
 ```
-command   → [ollama-11b, bielik-1.5b]
-recommend → [ollama-11b, bielik-4.5b]
-open_qa   → [gpt-5.5, ollama-11b, bielik-4.5b]
+command   → [ollama-11b, mlx-bielik-11b, bielik-1.5b]
+recommend → [mlx-qwen72b, ollama-11b, mlx-bielik-11b, bielik-4.5b]
+open_qa   → [mlx-qwen72b, gpt-5.5, ollama-11b, bielik-4.5b]
 ```
 
-Backends satisfy one tiny protocol — `available` / `chat` / `chat_stream`. Ollama
-+ OpenAI are network clients; Bielik is local llama.cpp. The DSPy prompts are
-compiled offline on paul and shipped as static JSON
+Backends satisfy one tiny protocol — `available` / `chat` / `chat_stream`. Ollama,
+OpenAI and mesh peers (`MeshOpenAiLlm`, `POST {url}/v1/chat/completions`) are
+network clients; Bielik is local llama.cpp. Every list still ends at an on-device
+Bielik, so all peers off ⇒ the Pi still answers (strict-improvement). The DSPy
+prompts are compiled offline on paul and shipped as static JSON
 ([`../configs/prompts/`](../configs/prompts/)); the runtime just fills them.
 
-**So the mesh is a small generalisation, not a rewrite:** add per-node network
-backends + a node-aware ordering.
+**The mesh was a small generalisation, not a rewrite:** per-node network backends
+resolved from `mesh.yaml` + node-aware ordering in `llm.yaml`.
 
 ## Target: multi-node mesh
 

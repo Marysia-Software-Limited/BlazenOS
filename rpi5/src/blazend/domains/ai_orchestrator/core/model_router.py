@@ -10,6 +10,11 @@ to the cheapest capable one and fall back gracefully:
   the above whenever it is reachable (zero local RAM, GPU-fast).
 * ``gpt-5.5``   — OpenAI, only when a key is present: open questions / web
   research (deep weather, advanced science, newest news).
+* any **mesh OpenAI peer** — a backend name that isn't one of the above but is
+  advertised in ``mesh.yaml`` as an ``llm`` resource with ``kind: openai`` (e.g.
+  rachel's MLX ``mlx-bielik-11b`` / ``mlx-qwen72b``). Built generically from the
+  resource's URL + model tag; unreachable peers fail their probe and drop out, so
+  a peer is strict-improvement and never a precondition.
 
 The order per task is data-driven from ``llm.yaml`` ``routing:``. ``route(task)``
 yields the *available* backends for that task in order, so the caller keeps the
@@ -89,6 +94,7 @@ class ModelRouter:
         *,
         ollama: Llm | None = None,
         openai: Llm | None = None,
+        backends: dict[str, Llm] | None = None,
         local_factory: Callable[[str], Llm] | None = None,
         clock: Callable[[], float] = time.monotonic,
         mesh: Any = None,
@@ -110,24 +116,28 @@ class ModelRouter:
             self._built["ollama-11b"] = ollama
         if openai is not None:
             self._built["gpt-5.5"] = openai
+        if backends:  # inject arbitrary named backends (e.g. a fake mesh peer)
+            self._built.update(backends)
         self._local_factory = local_factory or (
             lambda model: LocalLlm(model_name=model)
         )
         self._active_local: str | None = None
-        self._ollama_cache: tuple[float, bool] = (-1e9, False)
+        # Per-backend TTL cache for network reachability probes (ollama-11b + any
+        # mesh OpenAI peer), keyed by name so each peer is probed independently.
+        self._probe_cache: dict[str, tuple[float, bool]] = {}
 
     # -- backend construction (lazy, cached) -------------------------------
     def _model_name(self, name: str) -> str:
         entry = self._backend_cfg.get(name, {}) if isinstance(self._backend_cfg, dict) else {}
         return str(entry.get("model", "")) if isinstance(entry, dict) else ""
 
-    def _mesh_url(self, category: str, name: str) -> str | None:
-        """A network backend's endpoint from the mesh registry (lazy-loaded), or
-        None to fall back to the env-configured default. Only the URL is taken —
-        the served model tag stays the backend's own (OllamaLlm default). Auto-load
-        uses only a DEPLOYED registry ($BLAZEN_MESH or /etc/blazen/mesh.yaml), never
-        the dev repo copy — so unit tests stay hermetic. An injected mesh always
-        wins (tests / the linux surface pass one explicitly)."""
+    def _mesh_resource(self, category: str, name: str) -> Any:
+        """A mesh registry resource (lazy-loaded) by category + name, or None.
+
+        Auto-load uses only a DEPLOYED registry ($BLAZEN_MESH or
+        /etc/blazen/mesh.yaml), never the dev repo copy — so unit tests stay
+        hermetic. An injected mesh always wins (tests / the linux surface pass one
+        explicitly)."""
         if self._mesh is None:
             if not (os.environ.get("BLAZEN_MESH") or os.path.exists("/etc/blazen/mesh.yaml")):
                 return None
@@ -138,9 +148,15 @@ class ModelRouter:
             except Exception:  # noqa: BLE001 — no mesh → env fallback
                 return None
         try:
-            res = self._mesh.resource(category, name)
+            return self._mesh.resource(category, name)
         except Exception:  # noqa: BLE001
             return None
+
+    def _mesh_url(self, category: str, name: str) -> str | None:
+        """A network backend's endpoint from the mesh, or None to fall back to the
+        env-configured default. Only the URL is taken — the served model tag stays
+        the backend's own (OllamaLlm default)."""
+        res = self._mesh_resource(category, name)
         return res.url if (res and res.url) else None
 
     def _build(self, name: str) -> Llm | None:
@@ -166,8 +182,19 @@ class ModelRouter:
             elif name in _LOCAL:
                 inst = self._local_factory(self._model_name(name))
             else:
-                log.warning("unknown backend %r in routing config", name)
-                inst = None  # type: ignore[assignment]
+                # A generic OpenAI-compatible peer advertised in the mesh (e.g.
+                # rachel's MLX Bielik-11B / Qwen-72B). The mesh supplies the URL +
+                # served model tag; an offline peer just fails its probe and drops.
+                res = self._mesh_resource("llm", name)
+                if res is not None and res.kind == "openai" and res.url:
+                    from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.mesh_openai import (  # noqa: PLC0415
+                        MeshOpenAiLlm,
+                    )
+
+                    inst = MeshOpenAiLlm(url=res.url, model=str(res.attrs.get("model", "")))
+                else:
+                    log.warning("unknown backend %r in routing config", name)
+                    inst = None  # type: ignore[assignment]
         except Exception as exc:  # noqa: BLE001 — a build failure just drops this backend
             log.warning("backend %s unavailable to build: %s", name, exc)
             inst = None  # type: ignore[assignment]
@@ -176,15 +203,18 @@ class ModelRouter:
 
     # -- availability ------------------------------------------------------
     def _available(self, name: str, inst: Llm) -> bool:
-        if name == "ollama-11b":
-            checked_at, ok = self._ollama_cache
-            now = self._clock()
-            if now - checked_at < self._probe_ttl:
-                return ok
-            ok = bool(inst.available)  # 3 s network probe
-            self._ollama_cache = (now, ok)
+        # Local models + the cloud (a cheap key check) probe directly; networked
+        # backends (paul's Ollama, any mesh OpenAI peer) do a real HTTP round-trip,
+        # so their result is TTL-cached per name to keep routing free per turn.
+        if name in _LOCAL or name == "gpt-5.5":
+            return bool(inst.available)
+        checked_at, ok = self._probe_cache.get(name, (-1e9, False))
+        now = self._clock()
+        if now - checked_at < self._probe_ttl:
             return ok
-        return bool(inst.available)
+        ok = bool(inst.available)  # 3 s network probe
+        self._probe_cache[name] = (now, ok)
+        return ok
 
     # -- single-resident local eviction ------------------------------------
     def _activate_local(self, name: str) -> None:

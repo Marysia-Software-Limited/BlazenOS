@@ -26,7 +26,9 @@ keep_last_turns: 8
 # backends to try IN ORDER; the first *available* one answers, the rest are
 # graceful fallbacks. Backend names: `ollama-11b` (remote GPU on paul, preferred
 # when reachable), `bielik-1.5b` / `bielik-4.5b` (on-device, one resident at a
-# time on the 8 GB Pi), `gpt-5.5` (OpenAI, only when a key is present).
+# time on the 8 GB Pi), `gpt-5.5` (OpenAI, only when a key is present), and any
+# mesh peer advertised as an `llm` resource with `kind: openai` — e.g. rachel's
+# MLX `mlx-bielik-11b` / `mlx-qwen72b` (resolved via mesh.yaml, off ⇒ skipped).
 #   - command : quick brain replies / simple command-like chat  → small + fast
 #   - recommend: book & music recommendations, metadata/ontology/semantic
 #                reasoning (the multi-layer RAG)                 → richer Bielik
@@ -37,15 +39,23 @@ routing:
   single_local_model: true               # 8 GB: evict one local Bielik before loading another
   ollama_probe_ttl_s: 30                 # cache the Ollama /api/version probe this long
   tasks:
-    command:   [ollama-11b, bielik-1.5b]
-    recommend: [ollama-11b, bielik-4.5b]
-    open_qa:   [gpt-5.5, ollama-11b, bielik-4.5b]
-  # Per-backend catalogue mapping + optional per-call caps.
+    # Locality-aware order. `ollama-11b` (paul's GPU) leads latency-sensitive
+    # `command`; rachel's big MLX brains (mlx-qwen72b flagship, mlx-bielik-11b)
+    # lead where quality beats a few ms. Every list ends at an on-device Bielik so
+    # the Pi answers with all peers off (strict-improvement, never a precondition).
+    command:   [ollama-11b, mlx-bielik-11b, bielik-1.5b]
+    recommend: [mlx-qwen72b, ollama-11b, mlx-bielik-11b, bielik-4.5b]
+    open_qa:   [mlx-qwen72b, gpt-5.5, ollama-11b, bielik-4.5b]
+  # Per-backend catalogue mapping + optional per-call caps. `mlx-*` are mesh peers
+  # (rachel, kind: openai) — the URL + served model come from mesh.yaml; only the
+  # cap lives here.
   backends:
-    bielik-1.5b: { model: bielik-1.5b-v3-instruct-q4_k_m, max_tokens: 192 }
-    bielik-4.5b: { model: bielik-4.5b-v3-instruct-q6_k,   max_tokens: 320 }
-    ollama-11b:  { max_tokens: 512 }
-    gpt-5.5:     { max_tokens: 512 }
+    bielik-1.5b:    { model: bielik-1.5b-v3-instruct-q4_k_m, max_tokens: 192 }
+    bielik-4.5b:    { model: bielik-4.5b-v3-instruct-q6_k,   max_tokens: 320 }
+    ollama-11b:     { max_tokens: 512 }
+    mlx-bielik-11b: { max_tokens: 512 }
+    mlx-qwen72b:    { max_tokens: 512 }
+    gpt-5.5:        { max_tokens: 512 }
 
 system_prompt: |
   You are Dżesika (the Polish spelling of "Jessica" — always write your name
