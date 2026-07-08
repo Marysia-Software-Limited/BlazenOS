@@ -52,8 +52,13 @@ nodes:
     role: desktop
     host: 192.168.50.186
     resources:
+      llm:
+        # MLX/Metal on the M3 Max (96 GB) — bigger Polish models than paul's 24 GB GPU.
+        # See macos/docs/03-LLM-MESH.md "Which models rachel serves". Served by
+        # org.blazen.mlx (mlx_lm.server, OpenAI-compatible). 11434 is the Mac's Ollama.
+        mlx-bielik-11b: { kind: openai, url: "http://192.168.50.186:11435", model: "speakleash/Bielik-11B-v3.0-Instruct-MLX-8bit" }
+        # mlx-qwen72b (deep tier, Qwen2.5-72B-4bit) — added when its weights land.
       tts:
         apple-zosia-enhanced: { kind: apple, local: true, voice: "Zosia (Enhanced)" }
       fabric:
         snapshot: { kind: fabric, url: "http://192.168.50.186:7475/fabric/snapshot" }
-      # llm: MLX endpoint — future (docs/03-LLM-MESH.md Phase 1)

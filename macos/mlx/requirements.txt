@@ -1,0 +1,7 @@
+mlx==0.32.0
+mlx-lm==0.31.3
+numpy==2.5.1
+protobuf==7.35.1
+sentencepiece==0.2.1
+tokenizers==0.22.2
+transformers==4.57.6

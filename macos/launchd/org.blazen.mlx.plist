@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- rachel's MLX/Metal LLM server (OpenAI-compatible), advertised in the mesh as
+     rachel's `llm` resource. Serves the fast tier (Bielik-11B-v3.0-8bit) on :11435
+     (11434 is the Mac's own Ollama). KeepAlive daemon — the mesh's compute
+     contribution from the M3 Max. See macos/docs/03-LLM-MESH.md.
+
+     Install (adjust the paths to your checkout + user):
+       cp macos/launchd/org.blazen.mlx.plist ~/Library/LaunchAgents/
+       launchctl load  ~/Library/LaunchAgents/org.blazen.mlx.plist
+       launchctl unload ~/Library/LaunchAgents/org.blazen.mlx.plist   # stop
+
+     Model weights live in ~/.cache/huggingface (not committed). First load
+     downloads them; thereafter it just mmaps. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>org.blazen.mlx</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/beret/dev/blazen_os/macos/mlx/.venv/bin/python</string>
+    <string>-m</string>
+    <string>mlx_lm</string>
+    <string>server</string>
+    <string>--model</string>
+    <string>speakleash/Bielik-11B-v3.0-Instruct-MLX-8bit</string>
+    <string>--host</string>
+    <string>0.0.0.0</string>
+    <string>--port</string>
+    <string>11435</string>
+  </array>
+  <key>KeepAlive</key><true/>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/tmp/blazen-mlx.out</string>
+  <key>StandardErrorPath</key><string>/tmp/blazen-mlx.err</string>
+</dict>
+</plist>
