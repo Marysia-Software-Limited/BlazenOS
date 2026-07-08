@@ -57,9 +57,13 @@ rachel-audiobook render "metro 2033"     # Apple TTS → chapter MP3s → shared
 rachel-audiobook play "metro 2033"       # play on the Mac (resume + auto-advance)
 rachel-audiobook resume                  # continue the last book
 ```
-Rendered books land in `~/Library/Application Support/blazen/audiobooks/<slug>/`
-in the shared `catalog.json` schema, so syncing them to the Pi is a copy, not a
-conversion (deferred). For best quality install the **Zosia (Premium/Enhanced)**
+Rendered books land in `~/audiobooks/<slug>/` — the **shared** library the whole
+constellation uses (same `catalog.json` schema and location as the Pi/paul via
+`BLAZEN_AUDIOBOOKS_DIR`). So `rachel-audiobook play` resolves **both** rachel's own
+renders and books rendered on paul (whose chapters stream over HTTP, not
+re-rendered); the launchd pull timer keeps the shared catalog fresh. Override the
+root with `BLAZEN_AUDIOBOOKS_ROOT`/`BLAZEN_AUDIOBOOKS_DIR`. For best quality install
+the **Zosia (Premium/Enhanced)**
 system voice (System Settings → Accessibility → Spoken Content → System Voices).
 Design + plan: [`../docs/superpowers/specs/2026-07-06-macos-audiobook-domains-design.md`](../docs/superpowers/specs/2026-07-06-macos-audiobook-domains-design.md),
 [`../docs/superpowers/plans/2026-07-06-macos-audiobook-domains.md`](../docs/superpowers/plans/2026-07-06-macos-audiobook-domains.md).

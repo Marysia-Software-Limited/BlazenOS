@@ -60,9 +60,10 @@ gets chapters, resume, recommendations, and the attention-check for free.**
   hand-picked shelf, key in the gitignored `macos/.secrets.env`. (This supersedes
   the "Azure now" framing above — Apple acceleration is the default per the user's
   2026-07-06 direction.)
-- Mac-local first: rendered books land in
-  `~/Library/Application Support/blazen/audiobooks/<slug>/` in the shared schema;
-  rsync/chown to the Pi's `/var/lib/blazen/audiobooks/` is a later phase.
+- Shared library: rendered books land in `~/audiobooks/<slug>/` (the constellation-
+  wide location, `BLAZEN_AUDIOBOOKS_DIR`), so `rachel-audiobook` resolves rachel's
+  renders and paul's streamed books from one catalog. rsync/chown to the Pi's
+  `/var/lib/blazen/audiobooks/` is a later phase.
 - No change to the Pi's playback contract — it already plays anything in the catalog.
 
 ## On-device invariant
