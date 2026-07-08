@@ -19,9 +19,11 @@ rachel:
 - **OpenAI-compatible** (`POST /v1/chat/completions`), served by `mlx_lm.server`
   under `org.blazen.mlx.plist` (KeepAlive). Verified: fluent Polish, ~19 tok/s warm.
 - Port **11435** (11434 is the Mac's own Ollama).
-- A **deep tier** (`mlx-qwen72b`, Qwen2.5-72B-4bit, ~67.92 on Open PL LLM) is being
-  added on **:11436**; same shape, just a second entry. Model rationale:
-  [`macos/docs/03-LLM-MESH.md`](../../../macos/docs/03-LLM-MESH.md) "Which models rachel serves".
+- A **deep tier** is **live** on **:11436** — `mlx-qwen72b` (Qwen2.5-72B-4bit,
+  67.92 on Open PL LLM, ~5.5 tok/s warm, submit-and-wait). Already in `mesh.yaml`
+  as a second `llm` resource; your router change handles both with one branch.
+  Model rationale: [`macos/docs/03-LLM-MESH.md`](../../../macos/docs/03-LLM-MESH.md)
+  "Which models rachel serves".
 
 ## The gap (your job)
 
