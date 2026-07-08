@@ -49,6 +49,9 @@ _DUCK_PCT = 2             # Jabra output % while listening over a playing stream
 _DUCK_WINDOW_S = 7.0      # restore volume if no command follows the wake (covers the ~5 s ASR window)
 _DUCK_MIN_VOLUME_PCT = 15  # only duck when playback is above this — quiet music doesn't gate the mic
 _DEFAULT_VOLUME_PCT = 30  # startup output volume (kept low: less speaker→mic echo)
+# Min gap between "Słucham?" prompts, so the over-firing wake model can't turn an
+# empty-capture cue into a chant on repeated false wakes.
+_LISTENING_CUE_COOLDOWN_S = 12.0
 
 DEFAULT_PEERS: tuple[str, ...] = (
     "audio-in",
@@ -142,6 +145,7 @@ class Orchestrator:
         # Wake chime: pre-rendered once, played straight to the Jabra on wake.detected.
         self._beep_wav = _make_wake_beep_wav()
         self._beep_device = self._load_beep_device()
+        self._listening_cue_at = 0.0  # loop time of the last "Słucham?" (cooldown)
         self._book_activity_at = 0.0     # loop time the attention interval counts from
         self._awaiting_attention = False
         self._attention_deadline = 0.0
@@ -529,6 +533,17 @@ class Orchestrator:
                 and self._earcons.get("error_tone") and self._awake()
                 and not self._radio.playing):
             await self._speak(self._cues["not_understood"])
+        # State cue: wake fired but the capture window came back empty — nothing was
+        # said (or too quiet/far). Prompt "Słucham?" so a blind user knows Jessica is
+        # still waiting, instead of dead air. Rate-limited (the wake model over-fires,
+        # so an empty window is common); same gating as the not-understood cue.
+        if (env.topic == "error" and env.data.get("code") == "asr.no_speech"
+                and self._earcons.get("error_tone") and self._awake()
+                and not self._radio.playing):
+            now = asyncio.get_running_loop().time()
+            if now - self._listening_cue_at >= _LISTENING_CUE_COOLDOWN_S:
+                self._listening_cue_at = now
+                await self._speak(self._cues["listening"])
         if env.topic == "health.status":
             # Mirror the level into state on every verdict (the orchestrator is
             # the dominant state writer); recovery details only on a fault.

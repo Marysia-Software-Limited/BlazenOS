@@ -149,6 +149,17 @@ async def _real_loop(pub: Publisher) -> None:
         floor = min_rms_playing if speaker_busy.exists() else min_rms
         if peak < floor:
             log.info("fixed-window peak=%.0f below floor %.0f — dropping (false wake)", peak, floor)
+            # Wake fired but the window came back empty — no command spoken (or too
+            # quiet/far to clear the floor). Signal it so the orchestrator can prompt
+            # "Słucham?" rather than leave a blind user in silence. Distinct from
+            # asr.no_text (there WAS speech-level audio, but no words were recognised).
+            await pub.publish(
+                Envelope(
+                    topic="error",
+                    source="blazend-asr",
+                    data={"code": "asr.no_speech", "message": "capture window empty"},
+                )
+            )
             continue
         result = await asyncio.to_thread(transcriber.transcribe, pcm, ring.sample_rate)
         if result.text:
