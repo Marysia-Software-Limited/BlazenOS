@@ -46,6 +46,24 @@ def test_empty_and_tiny_chapters():
     assert chunks(["krótko"], max_chars=700) == ["krótko"]
 
 
+def test_comma_runon_with_no_periods_is_split():
+    # The XTTS-500 case: an acknowledgements-style run-on with NO sentence periods.
+    # The old splitter only cut on ". " → one giant chunk → 400-token assert.
+    runon = "chciałbym podziękować " + ", ".join(f"osobie numer {i}" for i in range(80))
+    out = chunks([runon], max_chars=200)
+    assert out and all(len(c) <= 200 for c in out)
+    assert "osobie numer 79" in " ".join(out)  # nothing lost
+
+
+def test_default_budget_under_xtts_ceiling_even_for_a_blob():
+    # Default budget must stay under XTTS 'pl' ~224-char / 400-token ceiling, and a
+    # pathological blob with no spaces or punctuation must still be hard-cut to fit.
+    from jessica_linux.books import _MAX_CHARS
+    assert _MAX_CHARS <= 220
+    out = chunks(["A" * 5000])
+    assert out and all(len(c) <= _MAX_CHARS for c in out)
+
+
 # -- catalog publish / merge (no network) -------------------------------------
 
 

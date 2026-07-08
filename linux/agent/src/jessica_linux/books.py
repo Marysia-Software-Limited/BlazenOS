@@ -27,7 +27,14 @@ from typing import Any
 _CALIBRE = Path(os.environ.get("CALIBRE_LIBRARY", str(Path.home() / "calibre")))
 # Where rendered audiobooks + the shared catalog live (served to other nodes).
 _LIBRARY = Path(os.environ.get("BLAZEN_AUDIOBOOKS_DIR", str(Path.home() / "audiobooks")))
-_MAX_CHARS = 700  # per-chunk TTS budget (a few sentences → snappy render, no truncation)
+# Per-chunk TTS budget. XTTS truncates past its per-language char limit (~224 for
+# 'pl') and HARD-asserts at 400 text tokens ("XTTS can only generate 400 tokens")
+# → an over-long chunk 500s and fails the whole book. Stay comfortably under the
+# char ceiling; the splitter below then guarantees every emitted chunk fits.
+_MAX_CHARS = 200
+
+# Sentence boundary: whitespace following ., !, ?, or … (keeps the punctuation).
+_SENT_SPLIT = re.compile(r"(?<=[.!?…])\s+")
 
 
 @dataclass
@@ -101,21 +108,48 @@ def epub_chapters(epub_path: Path) -> list[str]:
     return out
 
 
+def _split_long(piece: str, max_chars: int) -> list[str]:
+    """Break a single over-long sentence (no sentence break within it) into
+    <= max_chars pieces, preferring a clause boundary (comma / semicolon / colon /
+    dash), then a word boundary, then — only as a last resort — a hard character
+    cut. Guarantees every returned piece is <= max_chars (the XTTS-500 fix: an
+    acknowledgements-style comma run-on has no '. ' to split on)."""
+    out: list[str] = []
+    while len(piece) > max_chars:
+        window = piece[:max_chars]
+        cut = max(window.rfind(", "), window.rfind("; "), window.rfind(": "),
+                  window.rfind(" — "), window.rfind(" – "))
+        if cut > max_chars // 3:
+            cut += 1  # keep the punctuation with the left piece
+        else:
+            cut = window.rfind(" ")            # fall back to a word boundary
+            if cut <= 0:
+                cut = max_chars                 # no boundary at all → hard cut
+        out.append(piece[:cut].strip())
+        piece = piece[cut:].strip()
+    if piece:
+        out.append(piece)
+    return out
+
+
 def chunks(chapters: list[str], *, max_chars: int = _MAX_CHARS) -> list[str]:
-    """Split chapters into <= max_chars pieces on paragraph then sentence boundaries."""
+    """Split chapters into <= max_chars pieces on paragraph → sentence → clause/word
+    boundaries, packing consecutive sentences up to the budget. Every emitted chunk
+    is guaranteed <= max_chars so XTTS never truncates or 500s on an over-long input."""
     out: list[str] = []
     for chapter in chapters:
-        buf = ""
+        buf = ""  # chunks never span chapter boundaries
         for para in (p.strip() for p in re.split(r"\n\s*\n", chapter) if p.strip()):
-            if buf and len(buf) + len(para) + 2 > max_chars:
-                out.append(buf)
-                buf = ""
-            buf = f"{buf}\n\n{para}" if buf else para
-            while len(buf) > max_chars:  # a single over-long paragraph → sentence-split
-                cut = buf.rfind(". ", 0, max_chars)
-                cut = cut + 1 if cut > max_chars // 2 else max_chars
-                out.append(buf[:cut].strip())
-                buf = buf[cut:].strip()
+            for sentence in _SENT_SPLIT.split(para):
+                sentence = sentence.strip()
+                if not sentence:
+                    continue
+                pieces = _split_long(sentence, max_chars) if len(sentence) > max_chars else [sentence]
+                for piece in pieces:
+                    if buf and len(buf) + len(piece) + 1 > max_chars:
+                        out.append(buf)
+                        buf = ""
+                    buf = f"{buf} {piece}" if buf else piece
         if buf:
             out.append(buf)
     return out
