@@ -13,7 +13,11 @@ Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 # bare name `piper`, which otherwise isn't found → synth fails with ENOENT).
 WorkingDirectory=/var/lib/blazen
 Environment=PATH=/usr/lib/blazen/.venv/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/usr/lib/blazen/bin/blazend-tts
+# Jessica's ONE voice: pre-rendered/self-warmed XTTS phrases in the voice cache
+# (offline, instant) → live XTTS on paul's GPU for novel text → Piper floor when
+# paul is off. URL mirrors the mesh tts.xtts resource. Empty = Piper only.
+Environment=BLAZEN_TTS_XTTS_URL=http://192.168.50.102:8091/synthesize
+ExecStart=/usr/lib/blazen/bin/blazend-tts --voice-cache /var/lib/blazen/voice-cache
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=yes

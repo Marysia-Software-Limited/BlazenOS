@@ -19,3 +19,6 @@ anyhow             = { workspace = true }
 tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
 clap               = { workspace = true }
+ureq               = { workspace = true }  # remote XTTS (native-tls, see workspace note)
+native-tls         = { workspace = true }  # TLS connector for ureq (vendored OpenSSL)
+serde_json         = { workspace = true }  # XTTS request body
