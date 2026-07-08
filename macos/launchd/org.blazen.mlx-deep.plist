@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- rachel's DEEP-tier MLX LLM: Qwen2.5-72B-Instruct-4bit on :11436 — the flagship
+     Polish brain the 24 GB GPU node can't host. ~42 GB resident, ~5.5 tok/s
+     (submit-and-wait: recommend / open_qa). Advertised in the mesh as
+     rachel's `mlx-qwen72b` llm resource. See macos/docs/03-LLM-MESH.md.
+
+     HEAVY: this holds ~42 GB of unified memory whenever loaded (the model loads
+     lazily on the first request and stays resident). On a laptop you actively
+     use, unload it to reclaim the RAM and rely on the fast tier + paul:
+       launchctl unload ~/Library/LaunchAgents/org.blazen.mlx-deep.plist
+
+     Install:
+       cp macos/launchd/org.blazen.mlx-deep.plist ~/Library/LaunchAgents/
+       launchctl load ~/Library/LaunchAgents/org.blazen.mlx-deep.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>org.blazen.mlx-deep</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/beret/dev/blazen_os/macos/mlx/.venv/bin/python</string>
+    <string>-m</string>
+    <string>mlx_lm</string>
+    <string>server</string>
+    <string>--model</string>
+    <string>mlx-community/Qwen2.5-72B-Instruct-4bit</string>
+    <string>--host</string>
+    <string>0.0.0.0</string>
+    <string>--port</string>
+    <string>11436</string>
+  </array>
+  <key>KeepAlive</key><true/>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/tmp/blazen-mlx-deep.out</string>
+  <key>StandardErrorPath</key><string>/tmp/blazen-mlx-deep.err</string>
+</dict>
+</plist>

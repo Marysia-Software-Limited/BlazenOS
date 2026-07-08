@@ -57,7 +57,9 @@ nodes:
         # See macos/docs/03-LLM-MESH.md "Which models rachel serves". Served by
         # org.blazen.mlx (mlx_lm.server, OpenAI-compatible). 11434 is the Mac's Ollama.
         mlx-bielik-11b: { kind: openai, url: "http://192.168.50.186:11435", model: "speakleash/Bielik-11B-v3.0-Instruct-MLX-8bit" }
-        # mlx-qwen72b (deep tier, Qwen2.5-72B-4bit) — added when its weights land.
+        # Deep tier: the flagship Polish brain the 24 GB GPU can't host (~5.5 tok/s,
+        # submit-and-wait — recommend / open_qa). ~42 GB resident; org.blazen.mlx-deep.
+        mlx-qwen72b: { kind: openai, url: "http://192.168.50.186:11436", model: "mlx-community/Qwen2.5-72B-Instruct-4bit" }
       tts:
         apple-zosia-enhanced: { kind: apple, local: true, voice: "Zosia (Enhanced)" }
       fabric:
