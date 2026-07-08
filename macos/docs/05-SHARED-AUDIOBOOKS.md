@@ -55,6 +55,17 @@ curl -sI http://192.168.50.102:7477/calibre-35/001.mp3 | head -1   # → 200
 rachel-player "http://192.168.50.102:7477/calibre-35/001.mp3" --compress
 ```
 
+## Status (2026-07-08)
+- **HTTP streaming is live in the shared engine.** `domains/blazend-audiobook`'s
+  `open_media()` routes `http(s)://` sources through a streaming `HttpMediaSource`
+  (paul's stdlib server has no `Range`, so seek is emulated: forward read-and-
+  discard, backward re-fetch) — single-file books stream in O(1) memory. Both
+  `rachel-player` and (after Phase C) the Pi's player get it.
+- **Automatic pull + fabric run under launchd** on rachel:
+  `macos/launchd/org.blazen.pull-catalog.plist` (15-min catalog merge) and
+  `org.blazen.fabric.plist` (KeepAlive; serves `:7475/fabric/snapshot` so progress
+  + notes sync). Both point at `macos/agent/.venv`.
+
 ## Notes
 - **Strict-improvement:** if paul is off, the stream just isn't available — nothing
   else breaks. rachel keeps any books it rendered/holds locally.

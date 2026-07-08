@@ -82,6 +82,26 @@ node answers *as the same Jessica*. That rides `blazend-fabric` (see
 profile/progress sync over the LAN. The mesh routes *compute*; the fabric syncs
 *state*. Together they make "shared resources and context with all nodes" real.
 
+## Which models rachel serves (decision 2026-07-08)
+
+rachel's 96 GB unified memory is the point: it hosts Polish-capable models that
+paul's 24 GB RTX 3090 cannot. Two tiers, both resident at once (~55 GB), served
+via `mlx_lm.server` (OpenAI-compatible):
+
+| Tier | Model (MLX repo + quant) | Open PL LLM | Mem | Speed | Mesh role |
+|------|--------------------------|:--:|--:|--:|-----------|
+| **fast** | `speakleash/Bielik-11B-v3.0-Instruct-MLX-8bit` | 65.93 | ~13 GB | ~25 tok/s | rachel's `command`/quick turns; same family as the rest of the constellation, Apache-2.0, best conversational Polish (MT-Bench-PL) |
+| **deep** | `mlx-community/Qwen2.5-72B-Instruct-4bit` | 67.92 | ~42 GB | ~9 tok/s | top of `recommend`/`open_qa` — the flagship the GPU node can't host; keeps deep QA on-device |
+
+Rationale: on the Open PL LLM Leaderboard no open ≤72B model beats Bielik-11B by
+more than ~1–2 pts, so rachel's value is **8-bit fidelity + a bigger model paul
+can't fit**, not raw Polish points. 4-bit Qwen-72B scores the same as 8-bit on
+Polish at ~2× the speed and half the memory, so it's the deep pick. Rejected:
+Mistral-Large-123B (only decisive PL win, but non-commercial license + ~4 tok/s),
+PLLuM (underperforms Bielik, no MLX), Qwen3-32B (Apache but *below* Bielik on PL).
+Gemma-3-27B-8bit (66.48, ~12 tok/s) is the alternative deep tier if a stronger
+general-reasoning middle tier is wanted over the 72B.
+
 ## Build order for the mesh (smallest → whole)
 1. **rachel serves MLX** on a port; verify with `curl` (OpenAI `/v1/chat/completions`).
 2. **Add `rachel-mlx` to jessica's router** (`configs/llm.yaml`) as a new backend
