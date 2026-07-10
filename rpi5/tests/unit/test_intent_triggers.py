@@ -43,13 +43,15 @@ def test_ambient_sentences_do_not_fire_music_next():
 
 
 # -- real commands must still work --------------------------------------------
-@pytest.mark.parametrize("cmd", ["poprzedni", "poprzedni utwór", "cofnij", "wstecz"])
+@pytest.mark.parametrize("cmd", ["poprzedni", "poprzedni utwór", "cofnij", "wstecz",
+                                 "Jessica, poprzedni", "dżesiko poprzedni utwór"])
 def test_real_prev_commands_match(cmd):
     assert _matches("music_prev", cmd)
 
 
 @pytest.mark.parametrize("cmd", ["następny", "następny utwór", "dalej", "pomiń",
-                                 "coś innego", "zagraj coś innego", "kolejny kawałek"])
+                                 "coś innego", "zagraj coś innego", "kolejny kawałek",
+                                 "Jessica, następny", "dżesika następny utwór"])
 def test_real_next_commands_match(cmd):
     assert _matches("music_next", cmd)
 

@@ -723,23 +723,26 @@ intents:
   # "poprzedni"/"następny"/"dalej" embedded in an unrelated sentence (e.g. "…z
   # poprzedniej rodziny…") must NOT fire track nav. Ambient speech captured after a
   # false wake was matching these and spontaneously starting music (2026-07-10).
+  # `^…$` anchoring + optional leading wake word (it leaks into the transcript,
+  # e.g. "Jessica, następny"), so a bare keyword buried in a sentence can't fire
+  # track nav, but a real short command still does. See test_intent_triggers.
   - name: music_prev
     triggers:
       pl:
-        - "^\\s*(poprzedni\\w*|wstecz|cofnij)(\\s+(utw(ó|o)r\\w*|piosenk\\w*|kaw(a|ą)(ł|l)\\w*|nagran\\w*|prosz(ę|e)\\w*))?\\s*$"
+        - "^\\s*(?:(?:hej\\s+|ok\\s+)?(?:d(ż|z)esi\\w*|jessi\\w*)[\\s,]+)?(poprzedni\\w*|wstecz|cofnij)(\\s+(utw(ó|o)r\\w*|piosenk\\w*|kaw(a|ą)(ł|l)\\w*|nagran\\w*|prosz(ę|e)\\w*))?\\s*$"
       en:
-        - "^\\s*(previous|prev|go\\s+back)(\\s+(track|song|one|please))?\\s*$"
+        - "^\\s*(?:(?:hey\\s+)?jessi\\w*[\\s,]+)?(previous|prev|go\\s+back)(\\s+(track|song|one|please))?\\s*$"
     action: tool_call
     tool: music.prev
 
   - name: music_next
     triggers:
       pl:
-        - "^\\s*(zagraj|pu(ś|s)(ć|c)|w(ł|l)(ą|a)cz|graj)\\s+(co(ś|s)\\s+)?(inn\\w+|nast(ę|e)pn\\w+|kolejn\\w+)\\b.*"
-        - "^\\s*(nast(ę|e)pn\\w+|kolejn\\w+|dalej|pomi(ń|n)\\w*)(\\s+(utw(ó|o)r\\w*|piosenk\\w*|kaw(a|ą)(ł|l)\\w*|nagran\\w*|prosz(ę|e)\\w*))?\\s*$"
-        - "^\\s*co(ś|s)\\s+inn\\w+(\\s+(utw(ó|o)r\\w*|piosenk\\w*|nagran\\w*|prosz(ę|e)\\w*))?\\s*$"
+        - "^\\s*(?:(?:hej\\s+|ok\\s+)?(?:d(ż|z)esi\\w*|jessi\\w*)[\\s,]+)?(zagraj|pu(ś|s)(ć|c)|w(ł|l)(ą|a)cz|graj)\\s+(co(ś|s)\\s+)?(inn\\w+|nast(ę|e)pn\\w+|kolejn\\w+)\\b.*"
+        - "^\\s*(?:(?:hej\\s+|ok\\s+)?(?:d(ż|z)esi\\w*|jessi\\w*)[\\s,]+)?(nast(ę|e)pn\\w+|kolejn\\w+|dalej|pomi(ń|n)\\w*)(\\s+(utw(ó|o)r\\w*|piosenk\\w*|kaw(a|ą)(ł|l)\\w*|nagran\\w*|prosz(ę|e)\\w*))?\\s*$"
+        - "^\\s*(?:(?:hej\\s+|ok\\s+)?(?:d(ż|z)esi\\w*|jessi\\w*)[\\s,]+)?co(ś|s)\\s+inn\\w+(\\s+(utw(ó|o)r\\w*|piosenk\\w*|nagran\\w*|prosz(ę|e)\\w*))?\\s*$"
       en:
-        - "^\\s*(play\\s+)?(another|next|different|skip)(\\s+(song|track|one))?(\\s+please)?\\s*$"
+        - "^\\s*(?:(?:hey\\s+)?jessi\\w*[\\s,]+)?(play\\s+)?(another|next|different|skip)(\\s+(song|track|one))?(\\s+please)?\\s*$"
     action: tool_call
     tool: music.next
 
