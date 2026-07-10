@@ -719,23 +719,27 @@ intents:
   # PREVIOUS TRACK — "poprzedni", "wstecz", "cofnij". Steps back through the play
   # history. Listed before music_next/music_play. ("następny" is a music_next
   # trigger already.)
+  # Anchored to the WHOLE utterance (^…$) with only a recognised tail: a bare
+  # "poprzedni"/"następny"/"dalej" embedded in an unrelated sentence (e.g. "…z
+  # poprzedniej rodziny…") must NOT fire track nav. Ambient speech captured after a
+  # false wake was matching these and spontaneously starting music (2026-07-10).
   - name: music_prev
     triggers:
       pl:
-        - "\\b(poprzedni\\w*|wstecz|cofnij)\\b.*"
+        - "^\\s*(poprzedni\\w*|wstecz|cofnij)(\\s+(utw(ó|o)r\\w*|piosenk\\w*|kaw(a|ą)(ł|l)\\w*|nagran\\w*|prosz(ę|e)\\w*))?\\s*$"
       en:
-        - "\\b(previous|prev|go\\s+back)\\b.*"
+        - "^\\s*(previous|prev|go\\s+back)(\\s+(track|song|one|please))?\\s*$"
     action: tool_call
     tool: music.prev
 
   - name: music_next
     triggers:
       pl:
-        - "\\b(zagraj|pu(ś|s)(ć|c)|w(ł|l)(ą|a)cz|graj)\\b\\s+(co(ś|s)\\s+)?(inn\\w+|nast(ę|e)pn\\w+|kolejn\\w+)\\b.*"
-        - "\\b(nast(ę|e)pn\\w+|kolejn\\w+|dalej|pomi(ń|n))\\b.*"
-        - "\\bco(ś|s)\\s+inn\\w+\\b.*"
+        - "^\\s*(zagraj|pu(ś|s)(ć|c)|w(ł|l)(ą|a)cz|graj)\\s+(co(ś|s)\\s+)?(inn\\w+|nast(ę|e)pn\\w+|kolejn\\w+)\\b.*"
+        - "^\\s*(nast(ę|e)pn\\w+|kolejn\\w+|dalej|pomi(ń|n)\\w*)(\\s+(utw(ó|o)r\\w*|piosenk\\w*|kaw(a|ą)(ł|l)\\w*|nagran\\w*|prosz(ę|e)\\w*))?\\s*$"
+        - "^\\s*co(ś|s)\\s+inn\\w+(\\s+(utw(ó|o)r\\w*|piosenk\\w*|nagran\\w*|prosz(ę|e)\\w*))?\\s*$"
       en:
-        - "\\b(play\\s+)?(another|next|different|skip)(\\s+(song|track|one))?\\b.*"
+        - "^\\s*(play\\s+)?(another|next|different|skip)(\\s+(song|track|one))?(\\s+please)?\\s*$"
     action: tool_call
     tool: music.next
 

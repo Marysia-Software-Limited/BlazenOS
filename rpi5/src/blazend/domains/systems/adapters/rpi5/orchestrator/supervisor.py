@@ -52,6 +52,11 @@ _DEFAULT_VOLUME_PCT = 30  # startup output volume (kept low: less speaker→mic 
 # Min gap between "Słucham?" prompts, so the over-firing wake model can't turn an
 # empty-capture cue into a chant on repeated false wakes.
 _LISTENING_CUE_COOLDOWN_S = 12.0
+# After handling one wake, ignore further wake.detected for this long. Breaks the
+# beep→mic→wake feedback loop and stops a false-wake burst from firing a beep +
+# opening a capture window every couple of seconds. One real "dżesika" → one beep
+# → one listen window; rapid repeats within the refractory are dropped.
+_WAKE_REFRACTORY_S = 4.0
 
 DEFAULT_PEERS: tuple[str, ...] = (
     "audio-in",
@@ -146,6 +151,7 @@ class Orchestrator:
         self._beep_wav = _make_wake_beep_wav()
         self._beep_device = self._load_beep_device()
         self._listening_cue_at = 0.0  # loop time of the last "Słucham?" (cooldown)
+        self._wake_handled_at = -1e9  # loop time of the last acted-on wake (refractory)
         self._book_activity_at = 0.0     # loop time the attention interval counts from
         self._awaiting_attention = False
         self._attention_deadline = 0.0
@@ -220,11 +226,21 @@ class Orchestrator:
         return bool(self._earcons.get("wake_chime")) and not self._radio.playing
 
     async def _play_wake_beep(self) -> None:
-        """Play the wake chime straight to the Jabra via ``aplay`` (fire-and-forget).
+        """Play the wake chime straight to the Jabra via ``aplay`` and wait for it.
 
         Bypasses blazend-audio-out (down while idle, ~1-2 s to start) so the cue is
-        instant and pre-verbal. Runs only when the device is free (no radio holds
-        it); a failure is swallowed — a missing chime must never break wake."""
+        instant. While it plays we set the ``speaking`` marker the ASR already honours
+        (+ a short tail) so the chime's echo into the Jabra mic can't be captured or
+        re-fire the wake — the beep→mic→wake feedback that storms the pipeline. The
+        marker is only ours to clear if a reply wasn't already speaking. A failure is
+        swallowed — a missing chime must never break wake."""
+        marker = self._runtime_dir / "speaking"
+        had_marker = marker.exists()
+        try:
+            if not had_marker:
+                marker.touch()
+        except OSError:
+            pass
         try:
             proc = await asyncio.create_subprocess_exec(
                 "aplay", "-q", "-D", self._beep_device, "-t", "wav", "-",
@@ -235,6 +251,13 @@ class Orchestrator:
             await proc.communicate(self._beep_wav)
         except (OSError, asyncio.CancelledError) as exc:
             log.debug("wake beep skipped: %s", exc)
+        finally:
+            if not had_marker:
+                await asyncio.sleep(0.3)  # let the chime's tail decay before listening
+                try:
+                    marker.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     @staticmethod
     def _load_wake_gating() -> tuple[bool, float]:
@@ -444,18 +467,29 @@ class Orchestrator:
             patch["ready"] = True
             patch["units"][peer]["status"] = "running"
         if env.topic == "wake.detected":
-            # Instant audible ack: "dżesika" → beep → speak. Fire first (pre-verbal)
-            # and only when the Jabra is free — a playing stream holds the device and
-            # its duck is the feedback there. Gated by audio.yaml earcons.wake_chime.
-            if self._wake_chime_armed():
-                asyncio.create_task(self._play_wake_beep())
-            self._awake_until = asyncio.get_running_loop().time() + self._wake_window_s
+            now = asyncio.get_running_loop().time()
+            # Refractory: ignore wakes that arrive too soon after the last handled
+            # one. The wake model over-fires on ambient sound and Jessica's own beep
+            # can echo back into the mic; without this, a burst fires a beep + opens
+            # a capture window every couple of seconds ("random beeps", commands
+            # drowned out). One wake is handled, then a short deaf window.
+            if now - self._wake_handled_at < _WAKE_REFRACTORY_S:
+                return
+            self._wake_handled_at = now
+            self._awake_until = now + self._wake_window_s
             patch["wake_word"] = {
                 "last_fired": env.data.get("model"),
                 "last_language": env.data.get("language"),
                 "last_score": env.data.get("score"),
             }
             patch["awake"] = True
+            # STRICT FLOW: wake → SOUND → listen. Play the chime and WAIT for it to
+            # finish (it marks self-speech so its echo can't re-fire wake), THEN open
+            # the capture window — so the beep never bleeds into the command and the
+            # mic starts listening only after the ack. Gated by earcons.wake_chime +
+            # a free Jabra (a playing stream's duck is the feedback there).
+            if self._wake_chime_armed():
+                await self._play_wake_beep()
             # Open one listen window for blazend-audio-in (mirrors the HAT
             # button's activate marker). The wake word otherwise only lights the
             # LED while the mic stays DEAF, so the command spoken after "dżesika"

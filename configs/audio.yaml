@@ -56,7 +56,12 @@ volume:
   voice_mutable: true                 # see voice-policy.yaml
 
 earcons:
-  wake_chime: true
+  # OFF until the wake model is retrained to stop over-firing on ambient sound
+  # (2026-07-10: ~3 false wakes/min → the chime would beep constantly, and its echo
+  # into the Jabra mic re-fires the wake). The strict flow (wake → beep → listen),
+  # refractory and echo-suppression are in place, so flip back to true once the wake
+  # model is strict. See docs/13… / supervisor _play_wake_beep.
+  wake_chime: false
   error_tone: true
   shutdown_tone: true
   custom_voice_marker: false

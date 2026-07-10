@@ -85,3 +85,57 @@ async def test_wake_detected_silent_when_disabled(tmp_path):
     import asyncio
     await asyncio.sleep(0)
     assert played == []
+
+
+def _wake_env():
+    return wake_detected(source="blazend-wake", model="dzesika_pl", score=0.9, language="pl")
+
+
+@pytest.mark.asyncio
+async def test_refractory_drops_rapid_repeat_wakes(tmp_path):
+    # The over-firing wake model (and beep echo) fire wake.detected in bursts; only
+    # the first within the refractory window is handled (one beep, one listen window).
+    orch = _orch(tmp_path, chime=True, radio_playing=False)
+    calls: list[int] = []
+
+    async def _fake_beep() -> None:
+        calls.append(1)
+
+    orch._play_wake_beep = _fake_beep  # type: ignore[method-assign]
+    for _ in range(4):
+        await orch._on_envelope("wake", _wake_env())  # all within a few µs → 1 handled
+    assert calls == [1]
+
+
+@pytest.mark.asyncio
+async def test_wake_fires_again_after_refractory(tmp_path):
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import _WAKE_REFRACTORY_S
+    orch = _orch(tmp_path, chime=True, radio_playing=False)
+    calls: list[int] = []
+
+    async def _fake_beep() -> None:
+        calls.append(1)
+
+    orch._play_wake_beep = _fake_beep  # type: ignore[method-assign]
+    await orch._on_envelope("wake", _wake_env())
+    orch._wake_handled_at -= _WAKE_REFRACTORY_S + 1  # simulate the window elapsing
+    await orch._on_envelope("wake", _wake_env())
+    assert calls == [1, 1]
+
+
+@pytest.mark.asyncio
+async def test_beep_awaited_before_capture_window_opens(tmp_path):
+    # STRICT FLOW wake → sound → listen: the activate marker (which opens the mic
+    # capture) must be written only AFTER the beep completes, never during it.
+    orch = _orch(tmp_path, chime=True, radio_playing=False)
+    activate = tmp_path / "activate"
+    order: list[str] = []
+
+    async def _fake_beep() -> None:
+        order.append("beep")
+        assert not activate.exists()  # capture window not open yet
+
+    orch._play_wake_beep = _fake_beep  # type: ignore[method-assign]
+    await orch._on_envelope("wake", _wake_env())
+    order.append("activate" if activate.exists() else "no-activate")
+    assert order == ["beep", "activate"]

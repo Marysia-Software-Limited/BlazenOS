@@ -9,15 +9,20 @@ version: 1
 active:                                       # voice-mutable from `allowed` only
   - jessica_pl
   - jessica_en
-threshold: 0.5                                # wake fires above this (validated)
+threshold: 0.8                                # wake fires above this (the deployed
+                                              # blazend-wake unit passes --threshold 0.8;
+                                              # close "dżesika" ~0.8-0.99, other speech ≤0.36)
 cooldown_ms: 500
 score_window_ms: 1000
 
 # Wake gating: Jessica only acts on speech heard within `conversation_window_s`
-# after a "Hej Jessico" (each acted-on utterance re-opens the window for
-# follow-ups). require_wake=false makes her always-listening (dev/testing).
-require_wake: false
-conversation_window_s: 20
+# after "dżesika" (each acted-on utterance re-opens the window for follow-ups).
+# require_wake=true is REQUIRED on a real appliance: with it false she is always
+# listening, so any ambient sentence can hit an intent (2026-07-10: a false wake +
+# room chatter spontaneously started music). The window is short so a stray wake
+# exposes little ambient time; a genuine command re-opens it for follow-ups.
+require_wake: true
+conversation_window_s: 8
 
 # Hands-free capture (S5 `blazend.voice.runner`). After a wake fires and the
 # acknowledgement plays, the runner records a FIXED window straight from the
