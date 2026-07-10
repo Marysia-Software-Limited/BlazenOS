@@ -27,7 +27,9 @@ Environment=BLAZEN_LLM_OLLAMA_MODEL=SpeakLeash/bielik-11b-v2.3-instruct:Q8_0
 # for unclear/freeform requests, degrading to the local Bielik on any failure.
 # The key is NOT in git — drop OPENAI_API_KEY=sk-… (or CHAT_GPT_KEY=…) into
 # /etc/blazen/secrets.env (0600). With no key the path stays fully on-device.
-Environment=OPENAI_MODEL=gpt-5.5
+# Model for the OPEN_QA / complex-question path (router backend `gpt-5.5`).
+# gpt-4o is a real, capable model; override here to prefer another.
+Environment=OPENAI_MODEL=gpt-4o
 EnvironmentFile=-/etc/blazen/secrets.env
 ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.domains.ai_orchestrator.adapters.rpi5.brain
 Restart=on-failure

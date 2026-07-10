@@ -308,7 +308,7 @@ class Orchestrator:
         lang = self._default_lang
         text = en if lang == "en" else pl
         log.info("speaking startup greeting (%s)", lang)
-        self._mark_speaking()  # bring audio-out up before TTS plays
+        self._mark_speaking(len(text))  # bring audio-out up before TTS plays
         await asyncio.sleep(2.5)  # let the reconciler start audio-out
         await self._publisher.publish(
             Envelope(
@@ -346,11 +346,15 @@ class Orchestrator:
             log.warning("intent dispatcher disabled (%s)", exc)
             return None
 
-    def _mark_speaking(self) -> None:
-        """Bump the speak deadline so the reconciler brings audio-out up in time
-        for a reply (covers audio-out start ~1-2s + TTS synth); `speaker-busy`
-        then holds it up for the duration of playback."""
-        self._speak_until = asyncio.get_running_loop().time() + 6.0
+    def _mark_speaking(self, text_len: int = 0) -> None:
+        """Keep audio-out up until TTS starts producing frames — after which
+        `speaker-busy` (set by audio-out while its queue is non-empty) holds it for
+        the whole playback. The window scales with reply length: synthesising a long
+        or novel reply via XTTS takes several seconds (more when paul's XTTS is busy),
+        and a fixed 6 s dropped audio-out before a long reply (book menu, news digest)
+        finished synthesising, so it played to a closed device."""
+        window = 6.0 + text_len * 0.04
+        self._speak_until = asyncio.get_running_loop().time() + min(window, 30.0)
 
     async def _apply_audio_out(self, up: bool) -> None:
         """Start/stop blazend-audio-out to match desired state (only on change)."""
@@ -705,8 +709,8 @@ class Orchestrator:
             await self._set_volume(self._volume_pct)  # ready for next stream
         elif data.get("text"):
             # A spoken reply (LLM chat, or a non-radio command confirmation) —
-            # bring audio-out up to play it.
-            self._mark_speaking()
+            # bring audio-out up long enough to synthesise + play it.
+            self._mark_speaking(len(str(data.get("text", ""))))
 
     # -- audiobook engine ----------------------------------------------
     def _read_position(self) -> tuple[float, bool]:
@@ -729,7 +733,7 @@ class Orchestrator:
 
     async def _speak(self, text: str, lang: str = "pl") -> None:
         """Say something proactively (attention prompt / 'finished the book')."""
-        self._mark_speaking()
+        self._mark_speaking(len(text))
         await self._publisher.publish(Envelope(
             topic="brain.reply", source="blazend-orchestrator",
             data={"language": lang, "text": text, "chunk": text, "final_": True,
@@ -980,7 +984,7 @@ class Orchestrator:
         lang = self._recovery_lang()
         ann = recovery_for_level(level, lang)
         if ann.speak:
-            self._mark_speaking()  # spoken cue → audio-out up
+            self._mark_speaking(len(ann.speak))  # spoken cue → audio-out up
             await self._publisher.publish(Envelope(
                 topic="brain.reply",
                 source="blazend-orchestrator",

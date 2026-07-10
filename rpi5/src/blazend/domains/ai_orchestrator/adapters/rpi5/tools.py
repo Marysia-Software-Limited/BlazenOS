@@ -509,13 +509,11 @@ class Tools:
                 "audiobook_offer",
             )
         total = len(self.audiobooks.books)
-        titles = ", ".join(b.title for b in self.audiobooks.offer(limit=6))
+        titles = ", ".join(b.title for b in self.audiobooks.offer(limit=3))
         if lang == "pl":
-            more = f" I {total - 6} więcej." if total > 6 else ""
-            out = f"Mam {total} audiobooków. Na przykład: {titles}.{more} Powiedz „przeczytaj” i tytuł."
+            out = f"Mam {total} audiobooków, na przykład: {titles}. Powiedz „przeczytaj” i tytuł."
         else:
-            more = f" And {total - 6} more." if total > 6 else ""
-            out = f"I have {total} audiobooks. For example: {titles}.{more} Say “read” and a title."
+            out = f"I have {total} audiobooks, for example: {titles}. Say “read” and a title."
         return ToolResult(True, out, "audiobook_offer", {"count": total})
 
     # -- semantic search (music + books BY MEANING) ------------------------

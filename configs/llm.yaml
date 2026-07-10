@@ -45,7 +45,10 @@ routing:
     # the Pi answers with all peers off (strict-improvement, never a precondition).
     command:   [ollama-11b, mlx-bielik-11b, bielik-1.5b]
     recommend: [mlx-qwen72b, ollama-11b, mlx-bielik-11b, bielik-4.5b]
-    open_qa:   [mlx-qwen72b, gpt-5.5, ollama-11b, bielik-4.5b]
+    # OpenAI (gpt-5.5) leads open/complex questions when a key is present (user
+    # opt-in); it drops out automatically with no key, then rachel's Qwen-72B, the
+    # LAN GPU, and the on-device Bielik answer. See docs/13… / OPENAI_MODEL env.
+    open_qa:   [gpt-5.5, mlx-qwen72b, ollama-11b, bielik-4.5b]
   # Per-backend catalogue mapping + optional per-call caps. `mlx-*` are mesh peers
   # (rachel, kind: openai) — the URL + served model come from mesh.yaml; only the
   # cap lives here.
