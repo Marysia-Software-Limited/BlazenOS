@@ -22,7 +22,11 @@ score_window_ms: 1000
 # room chatter spontaneously started music). The window is short so a stray wake
 # exposes little ambient time; a genuine command re-opens it for follow-ups.
 require_wake: true
-conversation_window_s: 8
+# Long enough that a slow transcript (remote ASR retry → local fallback can add
+# several seconds) still lands inside the window — an 8 s window dropped commands
+# as "asleep" when ASR lagged. Intent anchoring + require_wake keep ambient speech
+# from matching, so a longer window is safe.
+conversation_window_s: 15
 
 # Hands-free capture (S5 `blazend.voice.runner`). After a wake fires and the
 # acknowledgement plays, the runner records a FIXED window straight from the
