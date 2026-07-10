@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.weather import WeatherClient
 from blazend.domains.ai_orchestrator.adapters.rpi5.tool_server import ToolService
 from blazend.domains.ai_orchestrator.adapters.rpi5.tools import Tools
 from blazend.events import TOPIC_TOOL_REQUEST, TOPIC_TOOL_RESPONSE, Envelope
@@ -174,3 +175,91 @@ def test_tool_service_builds_response_envelope() -> None:
     assert resp.data["ok"] is True
     assert resp.data["action"] == "radio_play"
     assert resp.data["payload"]["name"] == "RMF"
+
+
+# -- new: weather with rain probability, OpenAI news, audiobook menu ----------
+
+def _weather(daily: dict) -> WeatherClient:
+    def transport(url: str) -> dict:
+        return {
+            "current": {"temperature_2m": 15.0, "apparent_temperature": 14.0,
+                        "weather_code": 3, "wind_speed_10m": 10.0},
+            "daily": daily,
+        }
+    return WeatherClient(transport=transport)
+
+
+def test_weather_reports_rain_probability_and_range() -> None:
+    wc = _weather({"precipitation_probability_max": [70],
+                   "temperature_2m_max": [24.0], "temperature_2m_min": [15.0]})
+    res = _tools(weather=wc).weather_now(None, "pl")
+    assert res.ok
+    assert "Szansa opadów 70%" in res.text        # rain probability, spoken first
+    assert "od 15 do 24" in res.text              # today's range
+    assert res.payload.get("rain_prob") == 70
+
+
+def test_weather_omits_rain_when_absent() -> None:
+    # No daily block (older payload) → no rain sentence, still answers.
+    res = _tools(weather=_weather({})).weather_now(None, "pl")
+    assert res.ok and "Szansa opadów" not in res.text
+
+
+class _FakeOpenAi:
+    def __init__(self, text: str = "", available: bool = True) -> None:
+        self._text, self._available, self.calls = text, available, []
+
+    @property
+    def available(self) -> bool:
+        return self._available
+
+    def chat(self, user: str, *, system: str | None = None) -> str:
+        self.calls.append((user, system))
+        return self._text
+
+
+def test_news_uses_openai_when_key_present() -> None:
+    fake = _FakeOpenAi("Wiadomość jedna. Wiadomość dwa. Wiadomość trzy.")
+    res = _tools(openai=fake).news_brief("pl")
+    assert res.ok and res.payload.get("source") == "openai"
+    assert "Wiadomość jedna" in res.text
+    assert fake.calls  # OpenAI was actually called
+
+
+def test_news_strips_urls_from_openai() -> None:
+    fake = _FakeOpenAi("Nagłówek [źródło](https://x.com/a). Drugi https://y.com koniec.")
+    res = _tools(openai=fake).news_brief("pl")
+    assert "https://" not in res.text and "źródło" in res.text
+
+
+class _FakeBook:
+    def __init__(self, title: str) -> None:
+        self.title = title
+
+
+class _FakeBooks:
+    def __init__(self, titles: list[str]) -> None:
+        self.books = [_FakeBook(t) for t in titles]
+
+    @property
+    def available(self) -> bool:
+        return bool(self.books)
+
+    def offer(self, limit: int = 6) -> list[_FakeBook]:
+        return self.books[:limit]
+
+
+def test_audiobook_list_speaks_menu() -> None:
+    t = _tools()
+    t.audiobooks = _FakeBooks(["Metro 2033", "Alicja w Krainie Czarów", "Anna Karenina"])  # type: ignore[assignment]
+    res = t.audiobook_list("pl")
+    assert res.ok and res.payload.get("count") == 3
+    assert "Metro 2033" in res.text and "Anna Karenina" in res.text
+    assert "przeczytaj" in res.text.lower()
+
+
+def test_audiobook_list_empty() -> None:
+    t = _tools()
+    t.audiobooks = _FakeBooks([])  # type: ignore[assignment]
+    res = t.audiobook_list("pl")
+    assert res.ok and "Nie mam jeszcze" in res.text

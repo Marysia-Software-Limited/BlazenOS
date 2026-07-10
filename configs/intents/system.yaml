@@ -609,10 +609,10 @@ intents:
     triggers:
       pl:
         - "pogod\\w*.*\\b(?:w|we)\\s+(?P<place>[a-ząćęłńóśźż'’\\- ]+?)\\s*$"
-        - "pogod\\w*|jaka (jest )?aura|czy (b(ę|e)dzie )?pad\\w*|temperatur\\w*"
+        - "pogod\\w*|jaka (jest )?aura|czy (b(ę|e)dzie )?pad\\w*|deszcz\\w*|opad\\w*|(ś|s)nieg\\w*|temperatur\\w*"
       en:
         - "(?:weather|forecast|temperatur\\w*).*\\bin\\s+(?P<place>[a-z'’\\- ]+?)\\s*$"
-        - "weather|forecast|temperatur\\w*|is it (going to )?(rain|snow)"
+        - "weather|forecast|temperatur\\w*|\\brain\\b|\\bsnow\\b|is it (going to )?(rain|snow)"
     action: tool_call
     tool: weather.query
 
@@ -677,6 +677,21 @@ intents:
   # reserved reads — "przeczytaj (mi) tę stronę / maile / facebooka" (web_read_page,
   # email_list_unread, facebook_*) and "czytaj dalej" (media_resume) — are all
   # matched by earlier intents and never reach here. The resolver decides the book.
+  # LIST audiobooks — "jakie masz książki", "co możesz przeczytać". Before
+  # audiobook_play so a question about the library isn't read as a play request
+  # (these have no play verb, so they wouldn't match it anyway, but keep it first).
+  - name: list_audiobooks
+    triggers:
+      pl:
+        - "jakie (masz|s(ą|a) dost(ę|e)pne|s(ą|a)) (ksi(ą|a)(ż|z)k\\w*|audiobook\\w*|lektur\\w*)"
+        - "co (masz|mo(ż|z)esz) (do )?(przeczyta(ć|c)|poczyta(ć|c)|s(ł|l)ucha(ć|c))"
+        - "lista (ksi(ą|a)(ż|z)ek|audiobook\\w*)|jakie ksi(ą|a)(ż|z)ki"
+      en:
+        - "what (books|audiobooks) (do you have|are available)"
+        - "list (the )?(books|audiobooks)|what can (you|i) read"
+    action: tool_call
+    tool: audiobooks.list
+
   - name: audiobook_play
     triggers:
       pl:

@@ -15,6 +15,7 @@ Gemini, RSS, the station directory, the memory store) — see
 from __future__ import annotations
 
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -35,6 +36,10 @@ from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.music import MusicD
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.news import (
     NewsClient,
     NewsError,
+)
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.openai import (
+    OpenAiClient,
+    OpenAiError,
 )
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.radio import RadioDirectory
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.semantic import SemanticLibrary
@@ -84,6 +89,19 @@ def _tidy(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip(" ,.:;!?–—-")
 
 
+# Strip web-search citations/links so the spoken news is clean (no URLs, no [1]).
+_MD_LINK = re.compile(r"\[([^\]]+)\]\((?:https?://[^)]+)\)")
+_URL = re.compile(r"\(https?://[^)]+\)|https?://\S+")
+_CITE = re.compile(r"\[\d+\]")
+
+
+def _clean_spoken(text: str) -> str:
+    text = _MD_LINK.sub(r"\1", text)
+    text = _URL.sub("", text)
+    text = _CITE.sub("", text)
+    return re.sub(r"[ \t]+", " ", text).strip()
+
+
 def _strip_lead(text: str) -> str:
     text = _tidy(text)
     prev = None
@@ -119,12 +137,16 @@ class Tools:
         news: NewsClient | None = None,
         radio: RadioDirectory | None = None,
         music: MusicDirectory | None = None,
+        openai: OpenAiClient | None = None,
         persona: str = PERSONA,
     ) -> None:
         self.memory = memory or MemoryStore()
         self.weather = weather or WeatherClient()
         self.gemini = gemini or GeminiClient()
         self.news = news or NewsClient()
+        # OpenAI client for live news (web-search model). Built lazily from news.yaml
+        # so the key (OPENAI_API_KEY / CHAT_GPT_KEY) is read at call time; injectable.
+        self._openai = openai
         self.radio = radio or RadioDirectory()
         self.music = music or MusicDirectory()
         self.audiobooks = AudiobookDirectory()
@@ -170,6 +192,8 @@ class Tools:
             return self.music_prev(lang)
         if tool == "audiobook.play":
             return self.audiobook_play(str(args.get("query", "")), lang)
+        if tool == "audiobooks.list":
+            return self.audiobook_list(lang)
         if tool == "library.search":
             return self.library_search(str(args.get("query", "")), lang)
         return ToolResult(False, _t(lang, "Nie znam tego narzędzia.", "I don't know that tool."), "error")
@@ -272,16 +296,54 @@ class Tools:
             )
         desc = describe_code(c.code, lang)
         temp, feels, wind = round(c.temperature), round(c.feels_like), round(c.wind_speed)
+        rng_txt = ""
+        if c.temp_max is not None and c.temp_min is not None:
+            lo, hi = round(c.temp_min), round(c.temp_max)
+            rng_txt = (f"Dziś od {lo} do {hi}{c.units_temp}. " if lang == "pl"
+                       else f"Today {lo} to {hi}{c.units_temp}. ")
         if lang == "pl":
-            out = (f"{c.place}: {temp}{c.units_temp}, {desc}. "
+            # Rain probability first — it's what people ask "czy będzie padać?" for.
+            rain = f"Szansa opadów {c.rain_prob}%. " if c.rain_prob is not None else ""
+            out = (f"{c.place}: {rain}teraz {temp}{c.units_temp}, {desc}. {rng_txt}"
                    f"Odczuwalna {feels}{c.units_temp}, wiatr {wind} {c.units_wind}.")
         else:
-            out = (f"In {c.place} it's {temp}{c.units_temp}, {desc}. "
+            rain = f"Chance of rain {c.rain_prob}%. " if c.rain_prob is not None else ""
+            out = (f"{c.place}: {rain}now {temp}{c.units_temp}, {desc}. {rng_txt}"
                    f"Feels like {feels}{c.units_temp}, wind {wind} {c.units_wind}.")
-        return ToolResult(True, out, "weather", {"place": c.place, "temp": temp, "code": c.code})
+        return ToolResult(True, out, "weather",
+                          {"place": c.place, "temp": temp, "code": c.code, "rain_prob": c.rain_prob})
 
     # -- news --------------------------------------------------------------
+    def _openai_news(self) -> OpenAiClient:
+        """OpenAI client for live news — a web-search model (default
+        gpt-4o-search-preview, override via OPENAI_NEWS_MODEL) with temperature
+        omitted (search models reject it). Key from OPENAI_API_KEY / CHAT_GPT_KEY."""
+        if self._openai is None:
+            model = os.environ.get("OPENAI_NEWS_MODEL", "gpt-4o-search-preview")
+            self._openai = OpenAiClient(model=model, temperature=None)
+        return self._openai
+
     def news_brief(self, lang: str) -> ToolResult:
+        # Cloud, opt-in: only when a key is present (Piper/on-device stays the floor).
+        client = self._openai_news()
+        if client.available:
+            today = datetime.now().strftime("%Y-%m-%d")
+            if lang == "pl":
+                query = (f"Jakie są najważniejsze wiadomości na dziś ({today}) z Polski i ze świata? "
+                         "Podaj dokładnie trzy, każdą w jednym krótkim zdaniu.")
+                sys = (self.persona + " Odpowiedz po polsku: dokładnie 3 najważniejsze wiadomości, "
+                       "każda w jednym krótkim zdaniu, bez wstępu, bez odnośników i adresów URL.")
+            else:
+                query = (f"What is today's ({today}) most important news from Poland and the world? "
+                         "Give exactly three, each in one short sentence.")
+                sys = (self.persona + " Answer in English: exactly 3 top news items, one short "
+                       "sentence each, no preamble, no links or URLs.")
+            try:
+                answer = _clean_spoken(client.chat(query, system=sys))
+                if answer:
+                    return ToolResult(True, answer, "news", {"source": "openai"})
+            except OpenAiError as e:
+                log.warning("news via OpenAI failed (%s); trying Gemini/RSS", e)
         if self.gemini.available:
             if lang == "pl":
                 query = ("Podaj najważniejsze aktualne wiadomości z międzynarodowych agencji "
@@ -436,6 +498,25 @@ class Tools:
                 "audiobook_offer",
             )
         return self._book_result(book, lang)
+
+    def audiobook_list(self, lang: str) -> ToolResult:
+        """Read back a spoken menu of the available audiobooks (from the shared
+        catalog), so a screenless user can hear what there is to read."""
+        if not self.audiobooks.available:
+            return ToolResult(
+                True,
+                _t(lang, "Nie mam jeszcze żadnych audiobooków.", "I don't have any audiobooks yet."),
+                "audiobook_offer",
+            )
+        total = len(self.audiobooks.books)
+        titles = ", ".join(b.title for b in self.audiobooks.offer(limit=6))
+        if lang == "pl":
+            more = f" I {total - 6} więcej." if total > 6 else ""
+            out = f"Mam {total} audiobooków. Na przykład: {titles}.{more} Powiedz „przeczytaj” i tytuł."
+        else:
+            more = f" And {total - 6} more." if total > 6 else ""
+            out = f"I have {total} audiobooks. For example: {titles}.{more} Say “read” and a title."
+        return ToolResult(True, out, "audiobook_offer", {"count": total})
 
     # -- semantic search (music + books BY MEANING) ------------------------
     def _play_item(self, item: dict[str, Any], lang: str) -> ToolResult | None:

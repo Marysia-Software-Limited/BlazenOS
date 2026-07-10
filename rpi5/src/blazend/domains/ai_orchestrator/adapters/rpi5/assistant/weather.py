@@ -25,7 +25,8 @@ from blazend.config import load
 _FORECAST = (
     "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
     "&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m"
-    "&wind_speed_unit={wind}&temperature_unit={temp}&timezone=auto"
+    "&daily=precipitation_probability_max,temperature_2m_max,temperature_2m_min,weather_code"
+    "&forecast_days=1&wind_speed_unit={wind}&temperature_unit={temp}&timezone=auto"
 )
 _GEOCODE = "https://geocoding-api.open-meteo.com/v1/search?name={q}&count=1&language={lang}&format=json"
 
@@ -68,7 +69,7 @@ class WeatherError(RuntimeError):
 
 @dataclass
 class Conditions:
-    """A resolved current-weather snapshot."""
+    """A resolved current-weather snapshot plus today's forecast (rain + range)."""
 
     place: str
     temperature: float
@@ -77,6 +78,9 @@ class Conditions:
     code: int
     units_temp: str = "°C"
     units_wind: str = "km/h"
+    rain_prob: int | None = None   # today's max precipitation probability, %
+    temp_max: float | None = None  # today's high
+    temp_min: float | None = None  # today's low
 
 
 @dataclass
@@ -143,6 +147,16 @@ class WeatherClient:
         url = _FORECAST.format(lat=p.latitude, lon=p.longitude, wind=wind_unit, temp=temp_unit)
         data = self._transport(url)
         cur = data.get("current") or {}
+        daily = data.get("daily") or {}
+
+        def _first(key: str) -> float | None:
+            seq = daily.get(key) or []
+            try:
+                return float(seq[0]) if seq else None
+            except (TypeError, ValueError):
+                return None
+
+        rain = _first("precipitation_probability_max")
         try:
             return Conditions(
                 place=p.name,
@@ -152,6 +166,9 @@ class WeatherClient:
                 code=int(cur.get("weather_code", -1)),
                 units_temp="°C" if self._metric else "°F",
                 units_wind="km/h" if self._metric else "mph",
+                rain_prob=int(rain) if rain is not None else None,
+                temp_max=_first("temperature_2m_max"),
+                temp_min=_first("temperature_2m_min"),
             )
         except (KeyError, TypeError, ValueError) as e:
             raise WeatherError(f"unexpected weather response: {data!r}"[:200]) from e

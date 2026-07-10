@@ -17,6 +17,9 @@ Group=blazen
 WorkingDirectory=/usr/lib/blazen
 Environment=PYTHONPATH=/usr/lib/blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
+# Cloud opt-in keys (OpenAI for live news, etc.) — the fast-path tool dispatcher
+# runs here, so it needs the same secrets the brain gets. Missing file is fine (-).
+EnvironmentFile=-/etc/blazen/secrets.env
 # Status LED: a single WS2812/NeoPixel on SPI0 MOSI (BCM10) shows Jessica's state
 # (blue=listening, magenta=thinking, blue=speaking, red=error, off=idle). Fail-
 # soft — no LED wired or SPI off → led.json stays the only status surface.

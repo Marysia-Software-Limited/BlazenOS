@@ -52,7 +52,7 @@ class OpenAiClient:
         api_key: str | None = None,
         *,
         model: str | None = None,
-        temperature: float = 0.4,
+        temperature: float | None = 0.4,
         transport: Transport | None = None,
     ):
         # CHAT_GPT_KEY is the appliance's preferred name for the escalation key
@@ -80,11 +80,11 @@ class OpenAiClient:
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": user})
-        body: dict[str, Any] = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": self.temperature,
-        }
+        body: dict[str, Any] = {"model": self.model, "messages": messages}
+        # Web-search models (e.g. gpt-4o-search-preview, used for live news) reject
+        # `temperature`; omit it when None so those models are callable.
+        if self.temperature is not None:
+            body["temperature"] = self.temperature
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",
