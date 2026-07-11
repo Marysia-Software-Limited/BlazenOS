@@ -1,0 +1,12 @@
+# Fires render-summary.service once a night (03:30 local). Persistent=true so a
+# summary is still written after a missed window (node asleep at 03:30). Pairs with
+# render-literatura.service — read the batch's manifest after the day's rendering.
+[Unit]
+Description=Nightly literatura render summary
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -57,6 +57,10 @@ breaks, drops `(...)` marks + page numbers), chunk it, and render via the mesh X
 - **Batch** (`scripts/render-literatura.py` + `render-literatura.service`): render
   every Calibre `literatura` book without audio — resumable per-book (manifest) and
   per-chapter, one at a time, for the long haul.
+- **Nightly summary** (`scripts/render-summary.py` + `render-summary.timer`, 03:30):
+  folds the batch manifest into a dated `render-YYYY-MM-DD` note (done / in-progress
+  / failed, with failed titles) in this node's `memory.json`, so the summary rides
+  the fabric to every node — no tailing logs on paul to see how the render is going.
 
 Progress is an `AudiobookProgress` in the library and rides the fabric, so a book's
 position syncs across nodes. Systemd unit templates live in `linux/systemd/`.

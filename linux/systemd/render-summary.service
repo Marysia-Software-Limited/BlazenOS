@@ -1,0 +1,14 @@
+# Nightly: fold the literatura render manifest into a dated fabric note, so the
+# constellation sees done/failed progress without tailing logs on paul. Oneshot,
+# driven by render-summary.timer. Install + enable:
+#   cp linux/systemd/render-summary.{service,timer} ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now render-summary.timer
+[Unit]
+Description=Write the nightly literatura render summary to the fabric log
+
+[Service]
+Type=oneshot
+Environment=BLAZEN_NODE=paul
+Environment=PYTHONUNBUFFERED=1
+# Adjust to your checkout.
+ExecStart=%h/dev/blazen_os/.venv/bin/python %h/dev/blazen_os/scripts/render-summary.py
