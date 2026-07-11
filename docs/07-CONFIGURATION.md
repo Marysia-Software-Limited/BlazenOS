@@ -161,14 +161,26 @@ Two explicit, user-initiated web lookups (Polish-first):
   (`metric`|`imperial`) flips °C/km/h ↔ °F/mph. Answered locally — never the
   chat model. (`blazend/assistant/weather.py`.)
 - **News (`news.yaml`)** — the "co w wiadomościach" / "what's in the news"
-  intent. Primary path asks Gemini (search-grounded) for the top stories from
-  **international agencies (Reuters, AP, AFP, BBC) focused on Kraków and
-  Poland**, summarised in the user's language (Polish by default). If Gemini is
-  absent or errors (quota/billing), it falls back to a **keyless RSS brief**
-  (`news.yaml` feeds — Poland-focused Polish feeds for `pl`, which are already in
-  Polish so no translation is needed; international agencies for `en`). So news
-  works even with no API key. Cloud/API error detail is logged, never read
-  aloud — the user hears a short message.
+  intent, a **news-of-the-day brief in three tiers**: Kraków → kraj → świat.
+  The **data is always keyless RSS** from `news.yaml`'s `tiers:` — real feeds,
+  no LLM, the on-device floor:
+  - `local` — Kraków (Radio Kraków, Onet Kraków, Gazeta Wyborcza Kraków);
+  - `national` — Poland (PAP, Onet, TVN24, Polsat);
+  - `world` — international agencies (**Guardian, BBC, CNN, AP**) — English;
+  - `world_pl` — Polish-language world coverage (the keyless floor for the
+    world tier, so the brief stays fully Polish offline).
+
+  Each tier merges all its feeds, de-duplicates, and caps at `max_per_tier`. A
+  dead feed is skipped, never fatal (PAP / Wyborcza-national public RSS are
+  currently unstable — kept best-effort with working Polish sources beside
+  them). When an **OpenAI (or Gemini) key** is present the collected headlines
+  are handed to the model, which **composes the spoken Polish brief and
+  translates the English world agencies** — opt-in, strict-improvement. With no
+  key the brief reads the Polish tiers natively (`world` → `world_pl`), so it
+  works fully on-device and stays Polish. Markdown, URLs and citations are
+  stripped before TTS; cloud/API error detail is logged, never read aloud.
+  Feeds that mislabel their charset (Radio Kraków declares UTF-8 but ships
+  ISO-8859-2) are decoded with a legacy fallback. (`blazend/assistant/news.py`.)
 
 Both are explicit web lookups, consistent with the privacy model (no telemetry;
 the user asked for fresh external data). The **time/date** intent stays fully

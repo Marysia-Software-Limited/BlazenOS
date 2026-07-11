@@ -218,18 +218,58 @@ class _FakeOpenAi:
         return self._text
 
 
+class _FakeNews:
+    """Offline tiered news client — canned headlines per tier, no network."""
+
+    def __init__(self, tiers: dict[str, list[str]] | None = None) -> None:
+        self._tiers = tiers or {
+            "local": ["Kraków: remont Wawelu"],
+            "national": ["Sejm uchwalił budżet"],
+            "world": ["UN summit opens in Geneva"],  # English → composer translates
+            "world_pl": ["Szczyt ONZ w Genewie"],
+        }
+
+    def by_tier(self, tier: str, limit: int | None = None) -> list[str]:
+        return list(self._tiers.get(tier, []))
+
+    def collect(self, tiers, limit=None) -> dict[str, list[str]]:
+        return {t: self.by_tier(t) for t in tiers}
+
+
 def test_news_uses_openai_when_key_present() -> None:
-    fake = _FakeOpenAi("Wiadomość jedna. Wiadomość dwa. Wiadomość trzy.")
-    res = _tools(openai=fake).news_brief("pl")
+    fake = _FakeOpenAi("Z Krakowa: remont. Z kraju: budżet. Ze świata: szczyt ONZ.")
+    res = _tools(openai=fake, news=_FakeNews()).news_brief("pl")
     assert res.ok and res.payload.get("source") == "openai"
-    assert "Wiadomość jedna" in res.text
+    assert "Z Krakowa" in res.text
     assert fake.calls  # OpenAI was actually called
+    # The composer was handed the real headlines to translate/summarise.
+    user_prompt = fake.calls[0][0]
+    assert "UN summit" in user_prompt and "remont Wawelu" in user_prompt
 
 
 def test_news_strips_urls_from_openai() -> None:
     fake = _FakeOpenAi("Nagłówek [źródło](https://x.com/a). Drugi https://y.com koniec.")
-    res = _tools(openai=fake).news_brief("pl")
+    res = _tools(openai=fake, news=_FakeNews()).news_brief("pl")
     assert "https://" not in res.text and "źródło" in res.text
+
+
+def test_news_strips_markdown_for_tts() -> None:
+    # A model that answers with Markdown must not read `**`/`#` aloud.
+    fake = _FakeOpenAi("**Z Krakowa:**\n# Nagłówek\nTreść *ważna* tutaj.")
+    res = _tools(openai=fake, news=_FakeNews()).news_brief("pl")
+    assert "*" not in res.text and "#" not in res.text
+    assert "\n" not in res.text  # one spoken line
+    assert "Z Krakowa:" in res.text and "ważna" in res.text
+
+
+def test_news_floor_speaks_polish_tiers_without_cloud() -> None:
+    # No OpenAI, no Gemini → keyless floor reads the Polish tiers, world in Polish.
+    fake = _FakeOpenAi(available=False)
+    res = _tools(openai=fake, news=_FakeNews()).news_brief("pl")
+    assert res.ok and res.payload.get("source") == "rss"
+    assert "Z Krakowa: Kraków: remont Wawelu." in res.text
+    assert "Szczyt ONZ w Genewie" in res.text  # world_pl, not the English headline
+    assert "UN summit" not in res.text
 
 
 class _FakeBook:

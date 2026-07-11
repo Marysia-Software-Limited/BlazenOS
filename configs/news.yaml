@@ -1,26 +1,59 @@
 # /etc/blazen/news.yaml
 #
-# Keyless RSS fallback for the "co w wiadomościach" / "what's in the news"
-# intent, used when Gemini search-grounding is unavailable (no key, or an API
-# error like quota/billing). Gemini stays the primary path — it can focus on
-# Kraków + Poland from international agencies and translate to Polish. The RSS
-# fallback is plain HTTP+XML (no LLM): Polish-language, Poland-focused feeds for
-# `pl` (already in Polish — no translation needed) and international agencies
-# for `en`. All feed URLs below were probed and return items.
+# News-of-the-day feeds for the "co w wiadomościach" / "what's in the news" intent.
+# Data is always plain RSS (keyless HTTP+XML, no LLM) — the on-device floor. Feeds
+# are grouped into tiers the brief reads in order: Kraków → kraj → świat.
+#
+# Polish tiers (local/national/world_pl) are spoken as-is. The `world` tier is the
+# international agencies the user asked for (Guardian, BBC, CNN, AP) — English — so
+# the cloud composer (OpenAI/Gemini, opt-in) TRANSLATES them into the Polish brief
+# when a key is present; with no key the brief uses `world_pl` (Polish-language
+# world coverage) instead, staying fully Polish offline.
+#
+# Feed reachability was probed 2026-07-11. Some Polish agencies no longer expose a
+# stable public RSS (PAP, Gazeta Wyborcza's national feed) — they're kept here as
+# best-effort and auto-skipped when down, with working Polish sources beside them
+# so each tier always fills. A tier merges all its feeds, de-dupes, then caps.
 
 version: 1
-max_headlines: 5
+max_per_tier: 3                          # headlines kept per tier (voice-length)
+max_headlines: 5                         # legacy single-feed headlines() cap
 
-feeds:
-  pl:                                    # Polish-language, Poland-focused
-    - name: RMF24
-      url: "https://www.rmf24.pl/fakty/feed"
+tiers:
+  local:                                 # Kraków — Polish
+    - name: Radio Kraków                 # declares UTF-8 but ships ISO-8859-2 (handled)
+      url: "https://radiokrakow.pl/rss.xml"
+    - name: Onet Kraków
+      url: "https://wiadomosci.onet.pl/krakow.feed"
+    - name: Gazeta Wyborcza Kraków
+      url: "https://krakow.wyborcza.pl/pub/rss/krakow.xml"
+
+  national:                              # Polska — Polish
+    - name: PAP                          # best-effort: public RSS unstable, auto-skipped
+      url: "https://www.pap.pl/rss.xml"
+    - name: Onet
+      url: "https://wiadomosci.onet.pl/kraj.feed"
+    - name: TVN24
+      url: "https://tvn24.pl/najnowsze.xml"
     - name: Polsat News
       url: "https://www.polsatnews.pl/rss/polska.xml"
-  en:                                    # international agencies
+
+  world:                                 # Świat — international agencies (English)
+    - name: The Guardian
+      url: "https://www.theguardian.com/world/rss"
     - name: BBC World
       url: "https://feeds.bbci.co.uk/news/world/rss.xml"
-    - name: Al Jazeera
-      url: "https://www.aljazeera.com/xml/rss/all.xml"
+    - name: CNN World
+      url: "http://rss.cnn.com/rss/edition_world.rss"
+    - name: AP Top News                  # best-effort: RSS not always reachable
+      url: "https://feeds.apnews.com/rss/apf-topnews"
+
+  world_pl:                              # Świat po polsku — keyless floor (no translation)
+    - name: Onet świat
+      url: "https://wiadomosci.onet.pl/swiat.feed"
+    - name: TVN24 świat
+      url: "https://tvn24.pl/swiat.xml"
+    - name: Polsat świat
+      url: "https://www.polsatnews.pl/rss/swiat.xml"
 
 timeout_s: 12

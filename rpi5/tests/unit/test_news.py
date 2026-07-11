@@ -73,7 +73,41 @@ def test_headlines_falls_through_to_next_feed_on_error():
         if len(seen) == 1:
             raise NewsError("first feed down")
         return _RSS
-    # Default pl config has two feeds (RMF24, Polsat); first fails → second used.
+    # Default pl config has several feeds (local+national); first fails → next used.
     client = NewsClient(transport=transport)
     titles = client.headlines("pl")
     assert titles and len(seen) >= 2
+
+
+# -- tiered collection --------------------------------------------------------
+
+def test_by_tier_merges_and_dedupes_across_feeds():
+    # The `local` tier (Kraków) has 3 configured feeds; two return the SAME
+    # headline, one a different one → merged, de-duplicated.
+    def transport(url: str) -> str:
+        if "onet" in url:
+            return ("<rss><channel><title>C</title>"
+                    "<item><title>Ta sama wiadomość</title></item></channel></rss>")
+        return ("<rss><channel><title>C</title>"
+                "<item><title>Ta sama wiadomość</title></item>"
+                "<item><title>Inna wiadomość</title></item></channel></rss>")
+    client = NewsClient(transport=transport)
+    titles = client.by_tier("local", limit=5)
+    assert titles.count("Ta sama wiadomość") == 1  # de-duplicated across feeds
+    assert "Inna wiadomość" in titles
+
+
+def test_by_tier_skips_a_dead_feed():
+    def transport(url: str) -> str:
+        if "radiokrakow" in url:
+            raise NewsError("radio down")
+        return "<rss><channel><title>C</title><item><title>Żywa</title></item></channel></rss>"
+    titles = NewsClient(transport=transport).by_tier("local")
+    assert "Żywa" in titles  # one dead feed doesn't sink the tier
+
+
+def test_collect_returns_all_requested_tiers():
+    client = NewsClient(transport=lambda _u: _RSS)
+    got = client.collect(["local", "national", "world"])
+    assert set(got) == {"local", "national", "world"}
+    assert all(got[t] for t in got)

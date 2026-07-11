@@ -15,7 +15,6 @@ Gemini, RSS, the station directory, the memory store) — see
 from __future__ import annotations
 
 import logging
-import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -33,10 +32,7 @@ from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.gemini import (
     GeminiError,
 )
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.music import MusicDirectory
-from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.news import (
-    NewsClient,
-    NewsError,
-)
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.news import NewsClient
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.openai import (
     OpenAiClient,
     OpenAiError,
@@ -89,17 +85,22 @@ def _tidy(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip(" ,.:;!?–—-")
 
 
-# Strip web-search citations/links so the spoken news is clean (no URLs, no [1]).
+# Strip web-search citations/links + Markdown so the spoken text is clean: no URLs,
+# no [1], and no `**bold**`/`#` headers a TTS would read as "gwiazdka" / "hash".
 _MD_LINK = re.compile(r"\[([^\]]+)\]\((?:https?://[^)]+)\)")
 _URL = re.compile(r"\(https?://[^)]+\)|https?://\S+")
 _CITE = re.compile(r"\[\d+\]")
+_MD_EMPH = re.compile(r"[*_`]{1,3}")            # ** bold, * italic, ` code
+_MD_HEAD = re.compile(r"(?m)^\s{0,3}#{1,6}\s*")  # # headers at line start
 
 
 def _clean_spoken(text: str) -> str:
     text = _MD_LINK.sub(r"\1", text)
     text = _URL.sub("", text)
     text = _CITE.sub("", text)
-    return re.sub(r"[ \t]+", " ", text).strip()
+    text = _MD_HEAD.sub("", text)
+    text = _MD_EMPH.sub("", text)
+    return re.sub(r"\s+", " ", text).strip()     # collapse newlines too (one spoken line)
 
 
 def _strip_lead(text: str) -> str:
@@ -314,64 +315,109 @@ class Tools:
                           {"place": c.place, "temp": temp, "code": c.code, "rain_prob": c.rain_prob})
 
     # -- news --------------------------------------------------------------
-    def _openai_news(self) -> OpenAiClient:
-        """OpenAI client for live news — a web-search model (default
-        gpt-4o-search-preview, override via OPENAI_NEWS_MODEL) with temperature
-        omitted (search models reject it). Key from OPENAI_API_KEY / CHAT_GPT_KEY."""
+    # The three tiers Jessica reads, in spoken order, with their section labels.
+    _NEWS_TIERS = ("local", "national", "world")
+    _NEWS_LABELS = {
+        "pl": {"local": "Z Krakowa", "national": "Z kraju", "world": "Ze świata"},
+        "en": {"local": "From Kraków", "national": "Nationally", "world": "Worldwide"},
+    }
+
+    def _news_composer(self) -> OpenAiClient:
+        """OpenAI client that turns the collected headlines into a spoken Polish
+        brief (translation + summarisation — a standard chat model, not search).
+        Injectable via the ``openai`` ctor arg; key from OPENAI_API_KEY / CHAT_GPT_KEY."""
         if self._openai is None:
-            model = os.environ.get("OPENAI_NEWS_MODEL", "gpt-4o-search-preview")
-            self._openai = OpenAiClient(model=model, temperature=None)
+            self._openai = OpenAiClient()  # OPENAI_MODEL (default gpt-4o)
         return self._openai
 
+    def _headline_block(self, tiers: dict[str, list[str]], lang: str) -> str:
+        """The collected headlines as a labelled, grouped block for the composer."""
+        labels = self._NEWS_LABELS.get(lang, self._NEWS_LABELS["pl"])
+        lines: list[str] = []
+        for key in self._NEWS_TIERS:
+            items = tiers.get(key) or []
+            if not items:
+                continue
+            lines.append(f"[{labels[key]}]")
+            lines.extend(f"- {t}" for t in items)
+        return "\n".join(lines)
+
+    def _spoken_from_tiers(self, tiers: dict[str, list[str]], lang: str) -> ToolResult:
+        """Keyless floor: read the tiers natively (Polish), two items each, no LLM."""
+        labels = self._NEWS_LABELS.get(lang, self._NEWS_LABELS["pl"])
+        parts: list[str] = []
+        counts: dict[str, int] = {}
+        for key in self._NEWS_TIERS:
+            items = (tiers.get(key) or [])[:2]
+            counts[key] = len(items)
+            if items:
+                parts.append(f"{labels[key]}: {'; '.join(items)}.")
+        if not parts:
+            return ToolResult(
+                False,
+                _t(lang, "Nie mogę teraz sprawdzić wiadomości.", "I can't check the news right now."),
+                "error", {"reason": "news_unavailable"},
+            )
+        return ToolResult(True, " ".join(parts), "news", {"source": "rss", "tiers": counts})
+
     def news_brief(self, lang: str) -> ToolResult:
-        # Cloud, opt-in: only when a key is present (Piper/on-device stays the floor).
-        client = self._openai_news()
-        if client.available:
-            today = datetime.now().strftime("%Y-%m-%d")
+        # Data is ALWAYS real RSS from the configured sources — keyless, on-device.
+        # Kraków + kraj are Polish; the world tier is the international agencies
+        # (English) the user asked for, translated into the Polish brief below.
+        tiers = self.news.collect(self._NEWS_TIERS)
+
+        # Preferred: the cloud composer folds the headlines into a spoken Polish
+        # brief, translating the world agencies. Opt-in; any failure → the floor.
+        composer = self._news_composer()
+        block = self._headline_block(tiers, lang)
+        if composer.available and block:
             if lang == "pl":
-                query = (f"Jakie są najważniejsze wiadomości na dziś ({today}) z Polski i ze świata? "
-                         "Podaj dokładnie trzy, każdą w jednym krótkim zdaniu.")
-                sys = (self.persona + " Odpowiedz po polsku: dokładnie 3 najważniejsze wiadomości, "
-                       "każda w jednym krótkim zdaniu, bez wstępu, bez odnośników i adresów URL.")
+                sys = (self.persona + " Jesteś prezenterką wiadomości. Z podanych nagłówków ułóż "
+                       "krótki, mówiony serwis po polsku w trzech częściach: „Z Krakowa”, „Z kraju”, "
+                       "„Ze świata” — po dwie wiadomości w każdej, każda jednym zdaniem. Nagłówki "
+                       "zagraniczne przetłumacz na polski. Nie dodawaj faktów spoza nagłówków, "
+                       "bez wstępu, bez adresów URL. Zwykły tekst do przeczytania na głos — bez "
+                       "formatowania Markdown, bez gwiazdek i nagłówków.")
+                query = "Nagłówki na dziś:\n" + block
             else:
-                query = (f"What is today's ({today}) most important news from Poland and the world? "
-                         "Give exactly three, each in one short sentence.")
-                sys = (self.persona + " Answer in English: exactly 3 top news items, one short "
-                       "sentence each, no preamble, no links or URLs.")
+                sys = (self.persona + " You are a news anchor. From these headlines compose a short "
+                       "spoken brief in three sections — From Kraków, Nationally, Worldwide — two "
+                       "items each, one sentence each. Add no facts beyond the headlines, no "
+                       "preamble, no URLs. Plain text to be read aloud — no Markdown, no asterisks "
+                       "or headers.")
+                query = "Today's headlines:\n" + block
             try:
-                answer = _clean_spoken(client.chat(query, system=sys))
+                answer = _clean_spoken(composer.chat(query, system=sys))
                 if answer:
-                    return ToolResult(True, answer, "news", {"source": "openai"})
+                    return ToolResult(True, answer, "news",
+                                      {"source": "openai", "tiers": {k: len(v) for k, v in tiers.items()}})
             except OpenAiError as e:
-                log.warning("news via OpenAI failed (%s); trying Gemini/RSS", e)
+                log.warning("news compose via OpenAI failed (%s); trying Gemini/RSS", e)
+
+        # Gemini does its own grounded Kraków+Poland search (independent of the RSS
+        # block), kept as the secondary cloud path.
         if self.gemini.available:
             if lang == "pl":
-                query = ("Podaj najważniejsze aktualne wiadomości z międzynarodowych agencji "
-                         "(Reuters, AP, AFP, BBC), ze szczególnym uwzględnieniem Krakowa i Polski.")
-                sys = self.persona + (" Odpowiedz po polsku, zwięźle, 3-4 najważniejsze punkty. "
-                                      "Przetłumacz nagłówki na polski.")
+                gquery = ("Podaj najważniejsze aktualne wiadomości z międzynarodowych agencji "
+                          "(Guardian, BBC, CNN, AP), ze szczególnym uwzględnieniem Krakowa i Polski.")
+                gsys = self.persona + (" Odpowiedz po polsku, zwięźle, 3-4 najważniejsze punkty. "
+                                       "Przetłumacz nagłówki na polski.")
             else:
-                query = ("Give the top current news from international agencies "
-                         "(Reuters, AP, AFP, BBC), focusing on Kraków and Poland.")
-                sys = self.persona + " Answer in English, briefly — 3-4 key points."
+                gquery = ("Give the top current news from international agencies "
+                          "(Guardian, BBC, CNN, AP), focusing on Kraków and Poland.")
+                gsys = self.persona + " Answer in English, briefly — 3-4 key points."
             try:
-                answer = self.gemini.grounded(query, system=sys)
+                answer = self.gemini.grounded(gquery, system=gsys)
                 return ToolResult(True, answer, "news", {"grounded": True, "focus": "krakow-poland"})
             except GeminiError as e:
                 log.warning("news via Gemini failed (%s); falling back to RSS", e)
-        try:
-            items = self.news.headlines(lang)
-        except NewsError as e:
-            log.warning("RSS news fallback failed (%s)", e)
-            items = []
-        if items:
-            lead = _t(lang, "Najważniejsze wiadomości:", "Top headlines:")
-            body = " ".join(f"{i + 1}. {h}." for i, h in enumerate(items))
-            return ToolResult(True, f"{lead} {body}", "news", {"source": "rss", "count": len(items)})
-        return ToolResult(
-            False, _t(lang, "Nie mogę teraz sprawdzić wiadomości.", "I can't check the news right now."),
-            "error", {"reason": "news_unavailable"},
-        )
+
+        # Keyless floor: local + national spoken natively; the world tier switches
+        # to the Polish-language world feed so the brief stays fully Polish offline
+        # (falling back to the English agencies only if no Polish world feed answers).
+        floor = dict(tiers)
+        floor["world"] = self.news.by_tier("world_pl") or tiers.get("world", [])
+        return self._spoken_from_tiers(floor, lang)
 
     # -- web lookup --------------------------------------------------------
     def web_lookup(self, query: str, lang: str) -> ToolResult:
