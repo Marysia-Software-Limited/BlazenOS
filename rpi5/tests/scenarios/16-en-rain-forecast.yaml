@@ -1,0 +1,27 @@
+id: 16-en-rain-forecast
+language: en
+description: |
+  Rain forecast — dedicated intent. "Will it rain?" leads with the chance of rain
+  (not a full weather dump); "will it rain tomorrow?" asks about tomorrow.
+  Open-Meteo, keyless, default Kraków. Needs network.
+tags: [weather, rain, forecast, internet, krakow, en]
+synth_voice: en_US-lessac-medium
+preconditions:
+  llm.active_engine: cpu
+turns:
+  - user: "hey Jessica"
+    expect:
+      wake_acknowledged: true
+      detected_language: en
+
+  - user: "will it rain today"
+    expect:
+      assistant_says_contains: "Chance of rain"
+      assistant_language: en
+
+  - user: "will it rain tomorrow"
+    expect:
+      assistant_says_contains: "Tomorrow"
+      assistant_language: en
+postconditions:
+  no_unit_restarts: true

@@ -160,6 +160,18 @@ Two explicit, user-initiated web lookups (Polish-first):
   resolve via Open-Meteo geocoding when `allow_geocoding: true`. `units`
   (`metric`|`imperial`) flips °C/km/h ↔ °F/mph. Answered locally — never the
   chat model. (`blazend/assistant/weather.py`.)
+- **Rain forecast (`weather.yaml`, same file)** — a **dedicated** intent for
+  "czy będzie padać?" / "kiedy?" / "czy wziąć parasol?" / "a jutro?" (and the
+  English equivalents), matched **before** general weather so a rain question
+  leads with the **chance of rain** — never a full conditions dump. The reply is
+  rain-first: *"Szansa opadów dziś N%. Najwięcej koło H:00. Jutro M%."*
+  `forecast_days` (default 2) covers today + tomorrow so "a jutro?" is
+  answerable; `hourly_window_h` (default 8) is how far ahead the peak-hour is
+  scanned; `rain_peak_threshold` (default 40 %) is the chance below which the
+  "najwięcej koło…" clause is omitted (nothing worth timing). If the provider
+  returns **no rain data**, Jessica says *"Nie mam dostępu do prognozy opadów."*
+  rather than guessing. Keyless, on-device. (`weather.py rain()` +
+  `tools.rain_forecast`.)
 - **News (`news.yaml`)** — the "co w wiadomościach" / "what's in the news"
   intent, a **news-of-the-day brief in three tiers**: Kraków → kraj → świat.
   The **data is always keyless RSS** from `news.yaml`'s `tiers:` — real feeds,

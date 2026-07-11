@@ -17,7 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from blazend.config import load
@@ -27,6 +27,17 @@ _FORECAST = (
     "&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m"
     "&daily=precipitation_probability_max,temperature_2m_max,temperature_2m_min,weather_code"
     "&forecast_days=1&wind_speed_unit={wind}&temperature_unit={temp}&timezone=auto"
+)
+# Rain-focused query: daily max probability across `days`, plus an hourly
+# probability track so Jessica can say WHEN it will rain ("koło 15:00"). `current`
+# is fetched only for its `time` (to locate "now" in the hourly arrays — no local
+# clock math). timezone=auto so hourly times are local.
+_RAIN = (
+    "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
+    "&current=temperature_2m"
+    "&hourly=precipitation_probability"
+    "&daily=precipitation_probability_max"
+    "&forecast_days={days}&timezone=auto"
 )
 _GEOCODE = "https://geocoding-api.open-meteo.com/v1/search?name={q}&count=1&language={lang}&format=json"
 
@@ -84,6 +95,22 @@ class Conditions:
 
 
 @dataclass
+class RainOutlook:
+    """A rain-focused forecast: today's + tomorrow's max chance, and when it peaks.
+
+    ``next_hours`` is ``[(local_hour, prob_pct)]`` over the coming window; ``peak_*``
+    is the highest-probability hour in that window (``None`` when no hourly data or
+    the window is dry). ``today_max`` / ``tomorrow_max`` are the daily maxima."""
+
+    place: str
+    today_max: int | None = None
+    tomorrow_max: int | None = None
+    next_hours: list[tuple[int, int]] = field(default_factory=list)
+    peak_hour: int | None = None
+    peak_prob: int | None = None
+
+
+@dataclass
 class Place:
     name: str
     latitude: float
@@ -109,6 +136,7 @@ class WeatherClient:
         self._transport = transport or _http_get
         # Load defaults defensively — works even with no config root (tests).
         name, lat, lon, units, geo = "Kraków", 50.0614, 19.9366, "metric", True
+        days, window, peak = 2, 8, 40
         try:
             cfg = load(config_name)
             loc = cfg.get("default_location", {}) or {}
@@ -117,11 +145,17 @@ class WeatherClient:
             lon = float(loc.get("longitude", lon))
             units = str(cfg.get("units", units))
             geo = bool(cfg.get("allow_geocoding", geo))
+            days = int(cfg.get("forecast_days", days))
+            window = int(cfg.get("hourly_window_h", window))
+            peak = int(cfg.get("rain_peak_threshold", peak))
         except Exception:  # noqa: BLE001 — missing/unreadable config → Kraków defaults
             pass
         self.default_place = Place(name, lat, lon)
         self._metric = units != "imperial"
         self._allow_geocoding = geo
+        self._forecast_days = max(1, min(days, 7))       # Open-Meteo daily cap
+        self._hourly_window = max(1, min(window, 24))
+        self._peak_threshold = peak                       # below this, "kiedy" says "raczej sucho"
 
     @property
     def available(self) -> bool:
@@ -173,10 +207,58 @@ class WeatherClient:
         except (KeyError, TypeError, ValueError) as e:
             raise WeatherError(f"unexpected weather response: {data!r}"[:200]) from e
 
+    def rain(self, place: Place | None = None) -> RainOutlook:
+        """Rain-focused outlook for ``place``: today's + tomorrow's max chance, and
+        the peak hour over the coming ``hourly_window_h`` (so Jessica can say WHEN)."""
+        p = place or self.default_place
+        url = _RAIN.format(lat=p.latitude, lon=p.longitude, days=self._forecast_days)
+        data = self._transport(url)
+        cur = data.get("current") or {}
+        daily = data.get("daily") or {}
+        hourly = data.get("hourly") or {}
+
+        def _daymax(i: int) -> int | None:
+            seq = daily.get("precipitation_probability_max") or []
+            try:
+                return int(seq[i]) if i < len(seq) and seq[i] is not None else None
+            except (TypeError, ValueError):
+                return None
+
+        # Locate "now" in the hourly track by matching the current hour (string
+        # compare on "YYYY-MM-DDTHH" — no local clock arithmetic).
+        times = hourly.get("time") or []
+        probs = hourly.get("precipitation_probability") or []
+        now_key = str(cur.get("time", ""))[:13]
+        start = next((i for i, t in enumerate(times) if str(t)[:13] >= now_key), 0) if now_key else 0
+
+        next_hours: list[tuple[int, int]] = []
+        for t, pr in zip(times[start:start + self._hourly_window],
+                         probs[start:start + self._hourly_window], strict=False):
+            if pr is None:
+                continue
+            try:
+                next_hours.append((int(str(t)[11:13]), int(pr)))
+            except (TypeError, ValueError):
+                continue
+
+        peak_hour = peak_prob = None
+        if next_hours:
+            peak_hour, peak_prob = max(next_hours, key=lambda hp: hp[1])
+
+        return RainOutlook(
+            place=p.name,
+            today_max=_daymax(0),
+            tomorrow_max=_daymax(1),
+            next_hours=next_hours,
+            peak_hour=peak_hour,
+            peak_prob=peak_prob,
+        )
+
 
 __all__ = [
     "WeatherClient",
     "Conditions",
+    "RainOutlook",
     "Place",
     "WeatherError",
     "describe_code",

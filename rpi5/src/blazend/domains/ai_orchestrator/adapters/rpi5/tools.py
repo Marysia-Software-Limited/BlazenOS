@@ -177,6 +177,8 @@ class Tools:
             return self.add_reminder(str(args.get("text", "")), lang)
         if tool == "weather.query":
             return self.weather_now(args.get("place"), lang)
+        if tool == "rain.forecast":
+            return self.rain_forecast(args.get("place"), str(args.get("when", "")), lang)
         if tool == "news.brief":
             return self.news_brief(lang)
         if tool == "web.lookup":
@@ -313,6 +315,60 @@ class Tools:
                    f"Feels like {feels}{c.units_temp}, wind {wind} {c.units_wind}.")
         return ToolResult(True, out, "weather",
                           {"place": c.place, "temp": temp, "code": c.code, "rain_prob": c.rain_prob})
+
+    # -- rain forecast (dedicated: rain probability + when) -----------------
+    def rain_forecast(self, place_name: str | None, when: str, lang: str) -> ToolResult:
+        """"czy będzie padać?" / "kiedy?" / "a jutro?" — leads with the chance of
+        rain and, when it's likely, the hour it peaks. On missing rain data (or a
+        lookup failure) Jessica says she has no access to the rain forecast."""
+        place = None
+        if place_name and place_name.strip():
+            try:
+                place = self.weather.geocode(place_name.strip(), lang)
+            except WeatherError:
+                place = None
+        try:
+            o = self.weather.rain(place)
+        except WeatherError as e:
+            log.warning("rain lookup failed (%s)", e)
+            return ToolResult(
+                False,
+                _t(lang, "Nie mam dostępu do prognozy opadów.",
+                   "I don't have access to the rain forecast."),
+                "error", {"reason": "rain_unavailable"},
+            )
+        if o.today_max is None and o.tomorrow_max is None:
+            return ToolResult(
+                False,
+                _t(lang, "Nie mam dostępu do prognozy opadów.",
+                   "I don't have access to the rain forecast."),
+                "error", {"reason": "rain_unavailable"},
+            )
+
+        tomorrow = "tomorrow" in when.lower() or "jutro" in when.lower()
+        if tomorrow and o.tomorrow_max is not None:
+            text = _t(lang, f"Jutro szansa opadów {o.tomorrow_max}%.",
+                      f"Tomorrow the chance of rain is {o.tomorrow_max}%.")
+            return ToolResult(True, text, "rain",
+                              {"when": "tomorrow", "place": o.place, "tomorrow": o.tomorrow_max})
+
+        # Today (default): chance first, then WHEN it peaks, then tomorrow as a tail.
+        today = o.today_max if o.today_max is not None else (o.peak_prob or 0)
+        if lang == "pl":
+            text = f"Szansa opadów dziś {today}%."
+            if o.peak_hour is not None and o.peak_prob is not None and o.peak_prob >= self.weather._peak_threshold:
+                text += f" Najwięcej koło {o.peak_hour}:00."
+            if o.tomorrow_max is not None:
+                text += f" Jutro {o.tomorrow_max}%."
+        else:
+            text = f"Chance of rain today {today}%."
+            if o.peak_hour is not None and o.peak_prob is not None and o.peak_prob >= self.weather._peak_threshold:
+                text += f" Highest around {o.peak_hour}:00."
+            if o.tomorrow_max is not None:
+                text += f" Tomorrow {o.tomorrow_max}%."
+        return ToolResult(True, text, "rain",
+                          {"when": "today", "place": o.place, "today": today,
+                           "peak_hour": o.peak_hour, "tomorrow": o.tomorrow_max})
 
     # -- news --------------------------------------------------------------
     # The three tiers Jessica reads, in spoken order, with their section labels.

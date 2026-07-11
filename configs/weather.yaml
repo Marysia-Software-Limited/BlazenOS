@@ -19,4 +19,11 @@ default_location:
 # Allow resolving other cities by name via Open-Meteo's geocoding API.
 allow_geocoding: true
 
+# Rain forecast ("czy będzie padać?" / "kiedy?" / "a jutro?"). Rain probability is
+# the headline number; these tune the dedicated rain path (assistant/weather.py
+# rain() + tools.rain_forecast).
+forecast_days: 2            # 1..7 — today + tomorrow, so "a jutro?" is answerable
+hourly_window_h: 8          # 1..24 — hours ahead scanned for the peak ("koło 15:00")
+rain_peak_threshold: 40     # %; below this, the peak-hour ("najwięcej koło…") is omitted
+
 timeout_s: 15

@@ -605,14 +605,39 @@ intents:
   # --- Phase 4d: commands the Rust mind dispatches to the Python tool server.
   # `tool:` mirrors jessica_core::dispatch; slot groups (place / query) ride
   # nlu.intent params. Ported from the old engine's command regexes.
+  # Rain gets its own intent BEFORE weather_query (first match wins), so "czy
+  # będzie padać?" leads with the chance of rain + when it peaks, not a full
+  # conditions dump. Captures <place> and <when> (jutro/tomorrow → tomorrow path).
+  - name: rain_forecast
+    triggers:
+      pl:
+        - "(?:czy )?(?:b(ę|e)dzie )?pad\\w*.*\\b(?:w|we)\\s+(?P<place>[a-ząćęłńóśźż'’\\- ]+?)\\s*$"
+        - "(?:czy )?(?P<when>jutro).*pad\\w*"
+        - "pad\\w*.*(?P<when>jutro)"
+        - "kiedy (b(ę|e)dzie )?pad\\w*"
+        - "czy (b(ę|e)dzie )?pad\\w*"
+        - "(?P<when>jutro)\\s+(deszcz\\w*|opad\\w*)"
+        - "deszcz\\w*|opad\\w*|parasol\\w*"
+        - "czy (wzi(ą|a)(ć|c)|potrzebuj\\w*).*parasol\\w*"
+      en:
+        - "rain.*\\bin\\s+(?P<place>[a-z'’\\- ]+?)\\s*$"
+        - "(?P<when>tomorrow).*\\brain\\b"
+        - "\\brain\\b.*(?P<when>tomorrow)"
+        - "when.*\\brain\\b"
+        - "(will|is) it (going to )?rain\\w*|is it raining"
+        - "\\brain\\b|\\bshower\\b|umbrella"
+        - "do i need (an )?umbrella"
+    action: tool_call
+    tool: rain.forecast
+
   - name: weather_query
     triggers:
       pl:
         - "pogod\\w*.*\\b(?:w|we)\\s+(?P<place>[a-ząćęłńóśźż'’\\- ]+?)\\s*$"
-        - "pogod\\w*|jaka (jest )?aura|czy (b(ę|e)dzie )?pad\\w*|deszcz\\w*|opad\\w*|(ś|s)nieg\\w*|temperatur\\w*"
+        - "pogod\\w*|jaka (jest )?aura|(ś|s)nieg\\w*|temperatur\\w*"
       en:
         - "(?:weather|forecast|temperatur\\w*).*\\bin\\s+(?P<place>[a-z'’\\- ]+?)\\s*$"
-        - "weather|forecast|temperatur\\w*|\\brain\\b|\\bsnow\\b|is it (going to )?(rain|snow)"
+        - "weather|forecast|temperatur\\w*|\\bsnow\\b|is it (going to )?snow"
     action: tool_call
     tool: weather.query
 

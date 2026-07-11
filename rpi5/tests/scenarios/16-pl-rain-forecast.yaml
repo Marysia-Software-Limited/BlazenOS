@@ -1,0 +1,27 @@
+id: 16-pl-rain-forecast
+language: pl
+description: |
+  Prognoza opadów — dedykowany intent. „Czy będzie padać?” prowadzi szansą opadów
+  (nie pełnym raportem pogody); „a jutro?” pyta o jutro. Open-Meteo, bez klucza,
+  domyślnie Kraków. Wymaga sieci.
+tags: [weather, rain, forecast, internet, krakow, pl]
+synth_voice: pl_PL-gosia-medium
+preconditions:
+  llm.active_engine: cpu
+turns:
+  - user: "hej Jessico"
+    expect:
+      wake_acknowledged: true
+      detected_language: pl
+
+  - user: "czy będzie dzisiaj padać"
+    expect:
+      assistant_says_contains: "Szansa opadów"
+      assistant_language: pl
+
+  - user: "czy jutro będzie padać"
+    expect:
+      assistant_says_contains: "Jutro"
+      assistant_language: pl
+postconditions:
+  no_unit_restarts: true

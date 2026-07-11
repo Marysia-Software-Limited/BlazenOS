@@ -56,6 +56,50 @@ def test_describe_code_is_bilingual():
     assert "unknown" in describe_code(123, "en")
 
 
+def _rain_client(*, now="2026-07-11T11:00", days_max=(76, 40), hourly=None):
+    times = ["2026-07-11T09:00", "2026-07-11T10:00", "2026-07-11T11:00",
+             "2026-07-11T12:00", "2026-07-11T13:00", "2026-07-11T14:00"]
+    probs = [10, 20, 30, 80, 50, 40]
+    if hourly is not None:
+        times, probs = hourly
+
+    def transport(url):
+        if "geocoding-api" in url:
+            return {"results": []}
+        return {
+            "current": {"time": now, "temperature_2m": 19.0},
+            "daily": {"time": ["2026-07-11", "2026-07-12"],
+                      "precipitation_probability_max": list(days_max)},
+            "hourly": {"time": times, "precipitation_probability": probs},
+        }
+    return WeatherClient(transport=transport)
+
+
+def test_rain_today_and_tomorrow_maxima():
+    o = _rain_client().rain()
+    assert o.today_max == 76 and o.tomorrow_max == 40
+
+
+def test_rain_peak_hour_from_now_onward():
+    # now=11:00 → the window starts at 11:00; peak is the 12:00 bucket at 80%.
+    o = _rain_client().rain()
+    assert o.peak_hour == 12 and o.peak_prob == 80
+    assert o.next_hours[0] == (11, 30)          # starts at "now", not midnight
+
+
+def test_rain_ignores_past_hours():
+    # A big spike at 10:00 (before now=11:00) must not become the peak.
+    hourly = (["2026-07-11T10:00", "2026-07-11T11:00", "2026-07-11T12:00"],
+              [99, 20, 45])
+    o = _rain_client(hourly=hourly).rain()
+    assert o.peak_hour == 12 and o.peak_prob == 45  # 99% at 10:00 is in the past
+
+
+def test_rain_handles_missing_daily():
+    o = _rain_client(days_max=()).rain()
+    assert o.today_max is None and o.tomorrow_max is None
+
+
 def test_imperial_units_when_configured(monkeypatch, tmp_path):
     # A weather.yaml with imperial units flips the unit labels.
     (tmp_path / "weather.yaml").write_text(

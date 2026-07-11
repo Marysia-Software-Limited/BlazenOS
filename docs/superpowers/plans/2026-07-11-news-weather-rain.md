@@ -44,7 +44,14 @@ it serves rain; general-weather polish is explicitly de-prioritized. News second
 
 ---
 
-## Phase R — Rain forecast (priority)
+## Phase R — Rain forecast (priority) — ✅ SHIPPED 2026-07-11
+
+> Done: `weather.py rain()` + `RainOutlook` (hourly + 2-day, peak hour);
+> `tools.rain_forecast()` (rain-first reply, dedicated "Nie mam dostępu do prognozy
+> opadów." on missing data); `rain_forecast` intent before `weather_query` with
+> `<place>`/`<when>`; config knobs (W1). Deployed + live-verified on the Pi.
+> Original spec below.
+
 
 ### R1. Hourly + multi-day data in `weather.py`
 - Extend `_FORECAST`: add `hourly=precipitation_probability,precipitation` and

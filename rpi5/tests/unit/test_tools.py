@@ -205,6 +205,56 @@ def test_weather_omits_rain_when_absent() -> None:
     assert res.ok and "Szansa opadów" not in res.text
 
 
+def _rain_weather(*, days_max=(76, 40), now="2026-07-11T11:00", hourly=None) -> WeatherClient:
+    times = ["2026-07-11T11:00", "2026-07-11T12:00", "2026-07-11T13:00"]
+    probs = [30, 80, 50]
+    if hourly is not None:
+        times, probs = hourly
+
+    def transport(url: str) -> dict:
+        return {
+            "current": {"time": now, "temperature_2m": 19.0},
+            "daily": {"precipitation_probability_max": list(days_max)},
+            "hourly": {"time": times, "precipitation_probability": probs},
+        }
+    return WeatherClient(transport=transport)
+
+
+def test_rain_forecast_leads_with_chance_then_peak_then_tomorrow() -> None:
+    res = _tools(weather=_rain_weather()).rain_forecast(None, "", "pl")
+    assert res.ok and res.action == "rain"
+    assert res.text.startswith("Szansa opadów dziś 76%.")
+    assert "Najwięcej koło 12:00." in res.text      # peak hour (80% ≥ threshold)
+    assert "Jutro 40%." in res.text
+
+
+def test_rain_forecast_tomorrow_when_asked() -> None:
+    res = _tools(weather=_rain_weather()).rain_forecast(None, "jutro", "pl")
+    assert res.ok and res.payload.get("when") == "tomorrow"
+    assert res.text == "Jutro szansa opadów 40%."
+
+
+def test_rain_forecast_omits_peak_below_threshold() -> None:
+    # All hours under the 40% peak threshold → no "najwięcej koło" clause.
+    calm = (["2026-07-11T11:00", "2026-07-11T12:00"], [10, 20])
+    res = _tools(weather=_rain_weather(days_max=(20, 15), hourly=calm)).rain_forecast(None, "", "pl")
+    assert res.ok and "Najwięcej" not in res.text
+    assert res.text.startswith("Szansa opadów dziś 20%.")
+
+
+def test_rain_forecast_no_access_when_data_missing() -> None:
+    # The explicit user ask: no rain data → say she has no access (not a temp dump).
+    res = _tools(weather=_rain_weather(days_max=())).rain_forecast(None, "", "pl")
+    assert not res.ok and res.payload.get("reason") == "rain_unavailable"
+    assert res.text == "Nie mam dostępu do prognozy opadów."
+
+
+def test_rain_forecast_english() -> None:
+    res = _tools(weather=_rain_weather()).rain_forecast(None, "", "en")
+    assert res.text.startswith("Chance of rain today 76%.")
+    assert "Highest around 12:00." in res.text
+
+
 class _FakeOpenAi:
     def __init__(self, text: str = "", available: bool = True) -> None:
         self._text, self._available, self.calls = text, available, []
