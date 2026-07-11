@@ -158,8 +158,10 @@ Two explicit, user-initiated web lookups (Polish-first):
   plain HTTP+JSON (not a cloud LLM), so it fits the on-device contract.
   `default_location` is **Kraków** (used when no city is named); other cities
   resolve via Open-Meteo geocoding when `allow_geocoding: true`. `units`
-  (`metric`|`imperial`) flips °C/km/h ↔ °F/mph. Answered locally — never the
-  chat model. (`blazend/assistant/weather.py`.)
+  (`metric`|`imperial`) flips °C/km/h ↔ °F/mph. The answer **leads with and
+  focuses on the chance of rain** (*"Szansa opadów N%. Teraz T°C, {sky}, od X do
+  Y°C."*) — wind and feels-like are dropped so the rain number isn't buried.
+  Answered locally — never the chat model. (`blazend/assistant/weather.py`.)
 - **Rain forecast (`weather.yaml`, same file)** — a **dedicated** intent for
   "czy będzie padać?" / "kiedy?" / "czy wziąć parasol?" / "a jutro?" (and the
   English equivalents), matched **before** general weather so a rain question

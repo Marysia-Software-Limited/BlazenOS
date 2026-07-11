@@ -298,21 +298,21 @@ class Tools:
                 "error", {"reason": "weather_failed"},
             )
         desc = describe_code(c.code, lang)
-        temp, feels, wind = round(c.temperature), round(c.feels_like), round(c.wind_speed)
+        temp = round(c.temperature)
         rng_txt = ""
         if c.temp_max is not None and c.temp_min is not None:
             lo, hi = round(c.temp_min), round(c.temp_max)
-            rng_txt = (f"Dziś od {lo} do {hi}{c.units_temp}. " if lang == "pl"
-                       else f"Today {lo} to {hi}{c.units_temp}. ")
+            rng_txt = (f", od {lo} do {hi}{c.units_temp}" if lang == "pl"
+                       else f", {lo} to {hi}{c.units_temp}")
+        # A weather answer LEADS with — and focuses on — the chance of rain; temp,
+        # sky and the day's range follow. Wind / feels-like are dropped so the rain
+        # number isn't buried (they stay in Conditions for callers that want them).
         if lang == "pl":
-            # Rain probability first — it's what people ask "czy będzie padać?" for.
             rain = f"Szansa opadów {c.rain_prob}%. " if c.rain_prob is not None else ""
-            out = (f"{c.place}: {rain}teraz {temp}{c.units_temp}, {desc}. {rng_txt}"
-                   f"Odczuwalna {feels}{c.units_temp}, wiatr {wind} {c.units_wind}.")
+            out = f"{c.place}: {rain}Teraz {temp}{c.units_temp}, {desc}{rng_txt}."
         else:
             rain = f"Chance of rain {c.rain_prob}%. " if c.rain_prob is not None else ""
-            out = (f"{c.place}: {rain}now {temp}{c.units_temp}, {desc}. {rng_txt}"
-                   f"Feels like {feels}{c.units_temp}, wind {wind} {c.units_wind}.")
+            out = f"{c.place}: {rain}Now {temp}{c.units_temp}, {desc}{rng_txt}."
         return ToolResult(True, out, "weather",
                           {"place": c.place, "temp": temp, "code": c.code, "rain_prob": c.rain_prob})
 

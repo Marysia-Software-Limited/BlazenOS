@@ -205,6 +205,16 @@ def test_weather_omits_rain_when_absent() -> None:
     assert res.ok and "Szansa opadów" not in res.text
 
 
+def test_weather_focuses_on_rain_probability() -> None:
+    # The weather answer LEADS with rain and drops wind / feels-like so the
+    # probability isn't buried.
+    wc = _weather({"precipitation_probability_max": [70],
+                   "temperature_2m_max": [24.0], "temperature_2m_min": [15.0]})
+    res = _tools(weather=wc).weather_now(None, "pl")
+    assert res.text.index("Szansa opadów 70%") < res.text.index("Teraz")  # rain first
+    assert "wiatr" not in res.text and "Odczuwalna" not in res.text         # trimmed
+
+
 def _rain_weather(*, days_max=(76, 40), now="2026-07-11T11:00", hourly=None) -> WeatherClient:
     times = ["2026-07-11T11:00", "2026-07-11T12:00", "2026-07-11T13:00"]
     probs = [30, 80, 50]
