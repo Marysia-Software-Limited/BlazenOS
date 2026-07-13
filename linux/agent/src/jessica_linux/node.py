@@ -20,6 +20,18 @@ from mesh_registry import Mesh
 
 _NO_LOCAL = "no local model on this node — reason over the mesh (Ollama/cloud)"
 
+# Node-local processing (decision 2026-07-13): every node reasons on its OWN
+# hardware. The shared llm.yaml expresses that for the Pi (all tasks →
+# on-device bielik-1.5b), which a Linux GPU node cannot run (`_NoLocalModel`).
+# This node's local brain is its GPU Ollama — the mesh resolves `ollama-11b`
+# to this host — so override the task policy here instead of forking the
+# appliance config.
+_NODE_LOCAL_TASKS = {"routing": {"tasks": {
+    "command": ["ollama-11b"],
+    "recommend": ["ollama-11b"],
+    "open_qa": ["ollama-11b"],
+}}}
+
 
 class _NoLocalModel:
     """Stand-in for the Pi's local llama.cpp Bielik. A Linux GPU node has none, so
@@ -50,9 +62,11 @@ def build_router(
     ollama: OllamaLlm | None = None,
 ) -> ModelRouter:
     """A `ModelRouter` that resolves its `ollama-11b` backend URL from the mesh
-    (task→backend *policy* stays in `llm.yaml`; the mesh supplies the *where*).
-    Tests may inject `ollama` to bypass resolution + the network."""
+    (task→backend *policy* is this node's `_NODE_LOCAL_TASKS`; the mesh
+    supplies the *where*). Tests may inject `ollama` to bypass resolution +
+    the network."""
     return ModelRouter(
+        cfg=_NODE_LOCAL_TASKS,
         ollama=ollama,  # None → the router resolves the URL from `mesh`
         openai=openai or OpenAiClient(),
         local_factory=lambda model: _NoLocalModel(model),

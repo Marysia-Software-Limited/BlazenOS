@@ -176,6 +176,12 @@ weather/rain stay keyless Open-Meteo. TTS is likewise local: the voice cache
 (pre-rendered XTTS phrases) → Piper `pl_PL-gosia-medium`; live XTTS on paul is
 disabled (empty `BLAZEN_TTS_XTTS_URL` in `blazend-tts.service`).
 
+"Node-local" is per node: the shared `llm.yaml` task lists are the **Pi's**
+policy. A Linux GPU node (paul) has no on-device Bielik, so its agent overrides
+the task policy to its own mesh-resolved Ollama (`_NODE_LOCAL_TASKS` in
+`linux/agent/src/jessica_linux/node.py`) — every node reasons on its own
+hardware, none forks the appliance config.
+
 ## Internet info — weather + news
 
 Two explicit, user-initiated web lookups (Polish-first):

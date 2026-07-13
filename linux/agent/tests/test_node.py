@@ -55,7 +55,8 @@ class _FakeLlm:
 def test_router_resolves_ollama_from_mesh_and_routes_to_it():
     ollama = _FakeLlm("ollama")
     router = build_router(_mesh_with_ollama(), ollama=ollama, openai=_FakeLlm("gpt", available=False))
-    # command + recommend prefer ollama-11b (llm.yaml policy); it's up here.
+    # Node-local policy: every task runs on THIS node's GPU Ollama (the shared
+    # llm.yaml routes the Pi to its on-device Bielik instead); it's up here.
     name, backend = router.first(Task.COMMAND)
     assert name == "ollama-11b"
     assert backend.chat("hej") == "ollama:hej"
