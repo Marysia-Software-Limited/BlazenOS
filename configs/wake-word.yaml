@@ -57,14 +57,18 @@ harvest_false_wakes: true
 # two ship with openwakeword). Retrained 2026-07-13 against the false-wake storm
 # (~6 ambient wakes/min): --neg-dir now carries 460 real negatives — Radio Kraków
 # stream clips PLUS the appliance room's own ambient recorded off the Jabra
-# (`scripts/record-wake-samples.sh`), ×4 oversample. Validated: 9/9 held-out real
-# "dżesika" fire at every thr 0.3–0.9; held-out real negatives 1/92 clips @0.8.
+# (`scripts/record-wake-samples.sh`), ×4 oversample. Retrained again 2026-07-13
+# (2nd pass) with 193 SELF-HARVESTED false-wake clips (see harvest_false_wakes
+# above; screened via GPU large-v3 transcription — zero wake-like content — and
+# journal correlation, clips within ±2 min of real commands excluded) → 653 real
+# negatives total. Validated: 9/9 held-out real "dżesika" fire at every thr
+# 0.3–0.9; held-out real negatives (incl. storm ambient) 2/130 clips @0.8.
 models:
   jessica_en:
     backend: openwakeword
     file: wake/jessica.onnx                   # under models/; gitignored, regen via train-wake.py
     trained_by: scripts/train-wake.py
-    sha256: "0cac3a99bf5b5cf063f030aed53ab1fe74b0caafa1c981ecfd42c76fd73a95cd"
+    sha256: "fd063355f8833e1af058469f8028e5f41a8e223e3e86b387383c9376f89616d3"
     size_mb: 1
     language: en
     phrases: ["jessica", "hey jessica"]
@@ -73,7 +77,7 @@ models:
     backend: openwakeword
     file: wake/jessica.onnx                   # same unified bilingual model
     trained_by: scripts/train-wake.py
-    sha256: "0cac3a99bf5b5cf063f030aed53ab1fe74b0caafa1c981ecfd42c76fd73a95cd"
+    sha256: "fd063355f8833e1af058469f8028e5f41a8e223e3e86b387383c9376f89616d3"
     size_mb: 1
     language: pl
     phrases: ["dżesika"]
