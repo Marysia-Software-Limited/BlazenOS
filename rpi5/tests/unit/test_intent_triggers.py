@@ -95,6 +95,16 @@ def test_rain_place_is_captured():
     assert _named("rain_forecast", "will it rain in London", "place", "en") == "London"
 
 
+def test_ambient_listopadzie_does_not_fire_rain():
+    # Live false positive 2026-07-13: a false wake transcribed TV speech and
+    # "pad\w*" matched inside "listoPADzie" → an unprompted rain forecast.
+    # The stems are now \b-anchored; mid-word hits must not match.
+    for s in ("czy przeciwnika. Zasadę tę zastosowano w listopadzie 1918 roku",
+              "spotkamy się w listopadzie w Warszawie",
+              "wypadek na autostradzie w Gdańsku"):
+        assert not _matches("rain_forecast", s), s
+
+
 def test_general_weather_does_not_hijack_to_rain():
     # "jaka pogoda" / temperature go to weather_query, not rain_forecast.
     for q in ("jaka jest pogoda", "jaka pogoda w Krakowie", "jaka temperatura"):

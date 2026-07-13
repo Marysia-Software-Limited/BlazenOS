@@ -611,13 +611,16 @@ intents:
   - name: rain_forecast
     triggers:
       pl:
-        - "(?:czy )?(?:b(ę|e)dzie )?pad\\w*.*\\b(?:w|we)\\s+(?P<place>[a-ząćęłńóśźż'’\\- ]+?)\\s*$"
-        - "(?:czy )?(?P<when>jutro).*pad\\w*"
-        - "pad\\w*.*(?P<when>jutro)"
-        - "kiedy (b(ę|e)dzie )?pad\\w*"
-        - "czy (b(ę|e)dzie )?pad\\w*"
+        # \bpad — bare "pad" must start the word, or ambient words like
+        # "listopadzie" ("…zastosowano w listopadzie…") match and trigger an
+        # unprompted forecast (seen live 2026-07-13).
+        - "(?:czy )?(?:b(ę|e)dzie )?\\bpad\\w*.*\\b(?:w|we)\\s+(?P<place>[a-ząćęłńóśźż'’\\- ]+?)\\s*$"
+        - "(?:czy )?(?P<when>jutro).*\\bpad\\w*"
+        - "\\bpad\\w*.*(?P<when>jutro)"
+        - "kiedy (b(ę|e)dzie )?\\bpad\\w*"
+        - "czy (b(ę|e)dzie )?\\bpad\\w*"
         - "(?P<when>jutro)\\s+(deszcz\\w*|opad\\w*)"
-        - "deszcz\\w*|opad\\w*|parasol\\w*"
+        - "\\bdeszcz\\w*|\\bopad\\w*|\\bparasol\\w*"
         - "czy (wzi(ą|a)(ć|c)|potrzebuj\\w*).*parasol\\w*"
       en:
         - "rain.*\\bin\\s+(?P<place>[a-z'’\\- ]+?)\\s*$"
