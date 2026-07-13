@@ -108,6 +108,70 @@ async def test_orchestrator_records_three_events(runtime_dir: Path):
 
 
 @pytest.mark.asyncio
+async def test_prepare_speaker_warms_audio_out_only_when_down(
+    runtime_dir: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    """The pre-roll brings audio-out up (and lets it subscribe to tts.frame) BEFORE a
+    reply is published — but only when it was down. A rapid follow-up (already up)
+    skips the warm-up, so we don't add latency mid-conversation."""
+    from blazend.domains.systems.adapters.rpi5.orchestrator import supervisor as sup
+    monkeypatch.setattr(sup, "_SPEAKER_WARMUP_S", 0.01)  # keep the test quick
+    orch = Orchestrator(peers=(), runtime_dir_=runtime_dir)
+    applied: list[bool] = []
+
+    async def fake_apply(up: bool) -> None:
+        applied.append(up)
+        orch._audio_out_up = up  # noqa: SLF001
+
+    orch._apply_audio_out = fake_apply  # type: ignore[method-assign]  # noqa: SLF001
+
+    # Idle: audio-out down → warm it up so the (possibly cache-fast) frame isn't lost.
+    orch._audio_out_up = False  # noqa: SLF001
+    await orch._prepare_speaker(20)  # noqa: SLF001
+    assert applied == [True]
+
+    # Already up (a follow-up reply in the same conversation) → no extra warm-up.
+    applied.clear()
+    await orch._prepare_speaker(20)  # noqa: SLF001
+    assert applied == []
+
+
+@pytest.mark.asyncio
+async def test_not_understood_cue_is_rate_limited(runtime_dir: Path):
+    """A false-wake storm feeds ambient noise → asr.no_text → the 'Nie zrozumiałam'
+    cue. Without a cooldown each false wake speaks it (and churns audio-out); the
+    cooldown collapses a burst to a single cue."""
+    peer_asr = Publisher(runtime_dir / "asr.sock")
+    await peer_asr.bind()
+
+    orch = Orchestrator(peers=("asr",), runtime_dir_=runtime_dir)
+    said: list[str] = []
+
+    async def fake_speak(text: str, lang: str = "pl") -> None:
+        said.append(text)
+
+    orch._speak = fake_speak  # type: ignore[method-assign]  # noqa: SLF001
+    task = asyncio.create_task(orch.run())
+    await asyncio.sleep(0.4)  # let it connect to the asr peer
+    orch._awake_until = asyncio.get_running_loop().time() + 1000  # stay awake  # noqa: SLF001
+
+    err = Envelope(
+        topic="error", source="blazend-asr",
+        data={"code": "asr.no_text", "message": "no speech recognised"},
+    )
+    for _ in range(3):  # three false-wake captures in quick succession
+        await peer_asr.publish(err)
+
+    await _wait_for(lambda: len(said) >= 1, timeout=2.0)
+    await asyncio.sleep(0.3)  # give any (wrongly) un-throttled extra cues time to land
+    assert said == ["Nie zrozumiałam."]  # burst collapsed to one cue
+
+    await orch.shutdown()
+    await asyncio.wait_for(task, timeout=2.0)
+    await peer_asr.close()
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_survives_missing_peer(runtime_dir: Path):
     """No peers exist — orchestrator should still bind, write initial state,
     and shut down cleanly."""

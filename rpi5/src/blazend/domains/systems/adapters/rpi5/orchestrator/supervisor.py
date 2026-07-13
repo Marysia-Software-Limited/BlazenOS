@@ -52,6 +52,18 @@ _DEFAULT_VOLUME_PCT = 30  # startup output volume (kept low: less speaker→mic 
 # Min gap between "Słucham?" prompts, so the over-firing wake model can't turn an
 # empty-capture cue into a chant on repeated false wakes.
 _LISTENING_CUE_COOLDOWN_S = 12.0
+# Same guard for the "Nie zrozumiałam" cue: a false-wake storm captures ambient
+# noise → whisper-empty (asr.no_text) → without this, one cue per false wake turns
+# the storm into a chant (and churns audio-out up/down each time). A genuine single
+# mis-hearing still gets one cue; a burst gets one, not ten.
+_NOT_UNDERSTOOD_CUE_COOLDOWN_S = 8.0
+# Pre-roll before publishing a supervisor-originated spoken reply: audio-out is DOWN
+# while idle (half-duplex) and takes ~1 s to start ALSA + subscribe to tts.frame. A
+# cache-rendered reply synthesises in ~90 ms — so without this wait the TTS frame is
+# published into a ring no one is reading yet: short replies VANISH, long ones start
+# CLIPPED. We bring audio-out up and let it subscribe first. Only paid when audio-out
+# was down (idle); rapid follow-ups (already up) skip the wait.
+_SPEAKER_WARMUP_S = 1.5
 # After handling one wake, ignore further wake.detected for this long. Breaks the
 # beep→mic→wake feedback loop and stops a false-wake burst from firing a beep +
 # opening a capture window every couple of seconds. One real "dżesika" → one beep
@@ -151,6 +163,7 @@ class Orchestrator:
         self._beep_wav = _make_wake_beep_wav()
         self._beep_device = self._load_beep_device()
         self._listening_cue_at = 0.0  # loop time of the last "Słucham?" (cooldown)
+        self._not_understood_cue_at = 0.0  # loop time of the last "Nie zrozumiałam" (cooldown)
         self._wake_handled_at = -1e9  # loop time of the last acted-on wake (refractory)
         self._book_activity_at = 0.0     # loop time the attention interval counts from
         self._awaiting_attention = False
@@ -356,6 +369,23 @@ class Orchestrator:
         window = 6.0 + text_len * 0.04
         self._speak_until = asyncio.get_running_loop().time() + min(window, 30.0)
 
+    async def _prepare_speaker(self, text_len: int = 0) -> None:
+        """Bring audio-out UP and let it subscribe to tts.frame BEFORE the caller
+        publishes a supervisor-originated reply, closing the publish-before-subscribe
+        race that made short (cache-rendered) replies vanish and long ones start
+        clipped. Marks the speak window either way. The warm-up wait is only paid when
+        audio-out was actually down (idle start); when it's already up — a rapid
+        follow-up in the same conversation — we return immediately. Skipped while a
+        stream owns the Jabra (the spoken path won't seize the device from playback).
+        Only use this on paths where the SUPERVISOR publishes the reply; a brain/LLM
+        reply is already in flight to TTS when we see it (and is slow enough to synth
+        that audio-out is up by the time its frame lands)."""
+        self._mark_speaking(text_len)
+        if self._audio_out_up is True or self._radio.playing:
+            return
+        await self._apply_audio_out(True)
+        await asyncio.sleep(_SPEAKER_WARMUP_S)
+
     async def _apply_audio_out(self, up: bool) -> None:
         """Start/stop blazend-audio-out to match desired state (only on change)."""
         if up == self._audio_out_up:
@@ -547,6 +577,10 @@ class Orchestrator:
                         # the single output PCM out from under the player (silent death).
                         # Non-playback replies (volume, time, …) are spoken via TTS.
                         if action not in ("radio_play", "radio_stop", "music_play", "music_stop"):
+                            # Warm audio-out (subscribe to tts.frame) BEFORE publishing,
+                            # or a cache-rendered confirmation races ahead of the speaker
+                            # and is lost (short reply vanishes / long one clips).
+                            await self._prepare_speaker(len(str(reply.data.get("text", ""))))
                             await self._publisher.publish(reply)
                         # Execute the reply's action INLINE — a fast-path reply is never
                         # received back as an incoming brain.reply, so play/stop the
@@ -570,7 +604,10 @@ class Orchestrator:
         if (env.topic == "error" and env.data.get("code") == "asr.no_text"
                 and self._earcons.get("error_tone") and self._awake()
                 and not self._radio.playing):
-            await self._speak(self._cues["not_understood"])
+            now = asyncio.get_running_loop().time()
+            if now - self._not_understood_cue_at >= _NOT_UNDERSTOOD_CUE_COOLDOWN_S:
+                self._not_understood_cue_at = now
+                await self._speak(self._cues["not_understood"])
         # State cue: wake fired but the capture window came back empty — nothing was
         # said (or too quiet/far). Prompt "Słucham?" so a blind user knows Jessica is
         # still waiting, instead of dead air. Rate-limited (the wake model over-fires,
@@ -733,7 +770,7 @@ class Orchestrator:
 
     async def _speak(self, text: str, lang: str = "pl") -> None:
         """Say something proactively (attention prompt / 'finished the book')."""
-        self._mark_speaking(len(text))
+        await self._prepare_speaker(len(text))  # audio-out up + subscribed before the frame
         await self._publisher.publish(Envelope(
             topic="brain.reply", source="blazend-orchestrator",
             data={"language": lang, "text": text, "chunk": text, "final_": True,
@@ -984,7 +1021,7 @@ class Orchestrator:
         lang = self._recovery_lang()
         ann = recovery_for_level(level, lang)
         if ann.speak:
-            self._mark_speaking(len(ann.speak))  # spoken cue → audio-out up
+            await self._prepare_speaker(len(ann.speak))  # audio-out up + subscribed before the frame
             await self._publisher.publish(Envelope(
                 topic="brain.reply",
                 source="blazend-orchestrator",
