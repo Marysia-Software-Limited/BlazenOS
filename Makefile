@@ -80,6 +80,7 @@ $(VENV)/bin/python:
 venv python: $(VENV)/bin/python ## Create the Python virtualenv and install the rpi5 appliance package
 	$(PIP) install -e domains/audiobook-catalog
 	$(PIP) install -e domains/mesh-registry
+	$(PIP) install -e domains/mesh-llm
 	$(PIP) install -e domains/context-sync
 	cd rpi5 && $(PIP) install -e ".[dev]"
 	$(PIP) install -e linux/agent           # Linux-node agent (imports blazend from rpi5, installed above)
@@ -207,7 +208,7 @@ test: test-fast test-vm ## Full pyramid (Tier 0..3)
 .PHONY: test-fast
 test-fast: venv lint ## Tier 0 (unit) + Tier 1 (component, mocked) — Python AND Rust (core + appliance)
 	cd rpi5 && $(PY) -m pytest tests/unit tests/component -x --tb=short
-	$(PY) -m pytest domains/audiobook-catalog/tests domains/mesh-registry/tests domains/context-sync/tests linux/agent/tests -q --ignore=linux/agent/tests/integration
+	$(PY) -m pytest domains/audiobook-catalog/tests domains/mesh-registry/tests domains/mesh-llm/tests domains/context-sync/tests linux/agent/tests -q --ignore=linux/agent/tests/integration
 	cd domains && $(CARGO) test --workspace --quiet
 	cd rpi5/crates && $(CARGO) test --workspace --quiet
 
@@ -235,10 +236,11 @@ audio-fixtures: venv ## Synthesise all WAV inputs from scenario YAMLs (via Piper
 # Rust: rustfmt --check + clippy -D warnings, both workspaces.
 .PHONY: lint
 lint: venv ## Static hygiene: ruff + mypy (Python), fmt --check + clippy (Rust, both workspaces)
-	$(RUFF) check rpi5 scripts linux/agent domains/context-sync
+	$(RUFF) check rpi5 scripts linux/agent domains/context-sync domains/mesh-llm
 	cd rpi5 && $(MYPY)
 	cd linux/agent && $(MYPY) src
 	cd domains/context-sync && $(MYPY) src
+	cd domains/mesh-llm && $(MYPY) src
 	cd domains && $(CARGO) fmt --check
 	cd rpi5/crates && $(CARGO) fmt --check
 	cd domains && $(CARGO) clippy --workspace --all-targets -- -D warnings

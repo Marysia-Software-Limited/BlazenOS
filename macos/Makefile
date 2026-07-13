@@ -11,6 +11,8 @@ venv: ## Create the agent venv and install rachel + the shared domains lib
 	$(PY) -m pip install -q --upgrade pip
 	$(PY) -m pip install -q -e ../domains/audiobook-catalog
 	$(PY) -m pip install -q -e ../domains/mesh-registry
+	$(PY) -m pip install -q -e ../domains/mesh-llm
+	$(PY) -m pip install -q -e ../domains/context-sync
 	$(PY) -m pip install -q -e '$(AGENT)[azure,dev]'
 
 test: ## Run the rachel unit suite

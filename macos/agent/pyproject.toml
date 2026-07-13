@@ -10,6 +10,9 @@ requires-python = ">=3.11"
 dependencies = [
   "audiobook-catalog",
   "mesh-registry",
+  "mesh-llm",
+  "context-sync",
+  "pyyaml>=6.0",
   "ebooklib>=0.18",
   "beautifulsoup4>=4.12",
 ]
@@ -20,6 +23,7 @@ dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [project.scripts]
 rachel-audiobook = "rachel.cli:main"
+rachel-chat = "rachel.chat_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -36,3 +40,5 @@ extend-select = ["I", "B", "UP"]
 [tool.uv.sources]
 audiobook-catalog = { path = "../../domains/audiobook-catalog", editable = true }
 mesh-registry = { path = "../../domains/mesh-registry", editable = true }
+mesh-llm = { path = "../../domains/mesh-llm", editable = true }
+context-sync = { path = "../../domains/context-sync", editable = true }
