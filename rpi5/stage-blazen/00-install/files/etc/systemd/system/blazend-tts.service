@@ -17,12 +17,20 @@ Environment=PATH=/usr/lib/blazen/.venv/bin:/usr/local/bin:/usr/bin:/bin
 # (offline, instant) → live XTTS on paul's GPU for novel text → Piper floor when
 # paul is off. URL mirrors the mesh tts.xtts resource. Empty = Piper only.
 Environment=BLAZEN_TTS_XTTS_URL=http://192.168.50.102:8091/synthesize
-ExecStart=/usr/lib/blazen/bin/blazend-tts --voice-cache /var/lib/blazen/voice-cache
+# --ring-seconds 40: the ring must hold ONE FULL reply. At the 15 s default a
+# 16.7 s answer (audiobook list) wrapped and overwrote its own first ~2 s before
+# audio-out read it — the user heard the reply start mid-word ("first seconds of
+# speech missing"). 40 s covers the longest spoken replies (news digest, book
+# menu) at a cost of 1.7 MB shm.
+ExecStart=/usr/lib/blazen/bin/blazend-tts --voice-cache /var/lib/blazen/voice-cache --ring-seconds 40
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/run/blazen
+# voice-cache must be writable or the XTTS self-warming cache writes fail
+# SILENTLY — every repeated phrase re-renders over the network forever and a
+# one-off bad render can't be replaced by a better one.
+ReadWritePaths=/run/blazen /var/lib/blazen/voice-cache
 ProtectHome=yes
 
 [Install]
