@@ -162,14 +162,19 @@ the `runtime` extra) is imported lazily, so a host without it (or without the
 GGUF) simply reports the local engine as unavailable and falls through.
 
 Backend selection is **task-based** via the brain's `ModelRouter`, configured in
-`llm.yaml` `routing:` — `command`→Bielik 1.5B, `recommend`→Bielik 4.5B,
-`open_qa`→GPT-5.5, all preferring the LAN Ollama 11B when reachable, then Gemini,
-then a canned reply. See [`05-MODELS.md`](05-MODELS.md#task-based-routing-the-brains-modelrouter)
-for the full table and the book/music RAG. Cloud layers activate only when their
-key is set (sourced from `/etc/blazen/secrets.env`): `OPENAI_API_KEY`
-(+ `OPENAI_MODEL`, e.g. `gpt-5.5`) is used **only for open questions**;
-`GEMINI_API_KEY` (+ `GEMINI_MODEL`) remains the path for web-grounded
-**news/site** lookups. Commands and recommendations never leave the box.
+`llm.yaml` `routing:`. **Decision 2026-07-13 — node-local processing:** every
+task (`command`, `recommend`, `open_qa`) routes to the on-device **Bielik 1.5B**
+only, which is also `active_model` (the unrouted default). No LLM hop leaves the
+Pi — not to paul's Ollama, rachel's MLX, or OpenAI. The `backends:` catalogue
+keeps the mesh/cloud entries, so re-enabling them is a one-line list edit per
+task (the previous locality-aware orders are preserved in a comment in
+`llm.yaml`). See [`05-MODELS.md`](05-MODELS.md#task-based-routing-the-brains-modelrouter)
+for the router mechanics and the book/music RAG. Exception kept by user choice:
+the **news brief** still composes via `OPENAI_API_KEY`/`GEMINI_API_KEY` (from
+`/etc/blazen/secrets.env`) when present, with the keyless RSS tiers as the floor;
+weather/rain stay keyless Open-Meteo. TTS is likewise local: the voice cache
+(pre-rendered XTTS phrases) → Piper `pl_PL-gosia-medium`; live XTTS on paul is
+disabled (empty `BLAZEN_TTS_XTTS_URL` in `blazend-tts.service`).
 
 ## Internet info — weather + news
 

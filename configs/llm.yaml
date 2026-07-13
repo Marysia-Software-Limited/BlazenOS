@@ -7,7 +7,11 @@
 version: 1
 
 active_engine: auto                      # auto | cpu | hailo
-active_model: bielik-4.5b-v3-instruct-q6_k  # voice-mutable; Bielik (PL-first). 4.5B Q6_K = richer Polish. MEASURED on Pi 5 8 GB, no swap: fits with ~3 GB headroom alongside Whisper-small + Piper (mmap, use_mlock:false), but SLOW (~2.2 tok/s → multi-second replies). For snappier latency use a 16 GB Pi / Hailo, or demote to bielik-1.5b-v3-instruct-q4_k_m (9.6 tok/s) via "use the smaller brain".
+# Decision 2026-07-13 (node-local processing): the Pi's default LLM is Bielik
+# 1.5B — snappy on-device command replies (9.6 tok/s measured on the Pi 5 8 GB).
+# 4.5B (richer Polish, 2.2 tok/s, fits with ~3 GB headroom, mmap/no-mlock) stays
+# installed; "use the bigger brain" still switches per-session.
+active_model: bielik-1.5b-v3-instruct-q4_k_m  # voice-mutable; Bielik (PL-first)
 
 # Sampling.
 temperature: 0.4
@@ -39,16 +43,18 @@ routing:
   single_local_model: true               # 8 GB: evict one local Bielik before loading another
   ollama_probe_ttl_s: 30                 # cache the Ollama /api/version probe this long
   tasks:
-    # Locality-aware order. `ollama-11b` (paul's GPU) leads latency-sensitive
-    # `command`; rachel's big MLX brains (mlx-qwen72b flagship, mlx-bielik-11b)
-    # lead where quality beats a few ms. Every list ends at an on-device Bielik so
-    # the Pi answers with all peers off (strict-improvement, never a precondition).
-    command:   [ollama-11b, mlx-bielik-11b, bielik-1.5b]
-    recommend: [mlx-qwen72b, ollama-11b, mlx-bielik-11b, bielik-4.5b]
-    # OpenAI (gpt-5.5) leads open/complex questions when a key is present (user
-    # opt-in); it drops out automatically with no key, then rachel's Qwen-72B, the
-    # LAN GPU, and the on-device Bielik answer. See docs/13… / OPENAI_MODEL env.
-    open_qa:   [gpt-5.5, mlx-qwen72b, ollama-11b, bielik-4.5b]
+    # Decision 2026-07-13 (node-local processing): ALL command processing happens
+    # on the Pi itself — every task routes to the on-device Bielik 1.5B only. No
+    # off-node hop (paul's ollama-11b, rachel's mlx-*) and no cloud (gpt-5.5) in
+    # the command path. The `backends:` catalogue below is kept intact so
+    # re-enabling mesh/cloud routing is a one-line list edit per task, e.g. the
+    # previous locality-aware order was:
+    #   command:   [ollama-11b, mlx-bielik-11b, bielik-1.5b]
+    #   recommend: [mlx-qwen72b, ollama-11b, mlx-bielik-11b, bielik-4.5b]
+    #   open_qa:   [gpt-5.5, mlx-qwen72b, ollama-11b, bielik-4.5b]
+    command:   [bielik-1.5b]
+    recommend: [bielik-1.5b]
+    open_qa:   [bielik-1.5b]
   # Per-backend catalogue mapping + optional per-call caps. `mlx-*` are mesh peers
   # (rachel, kind: openai) — the URL + served model come from mesh.yaml; only the
   # cap lives here.

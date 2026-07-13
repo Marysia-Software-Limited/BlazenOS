@@ -13,10 +13,13 @@ Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 # bare name `piper`, which otherwise isn't found → synth fails with ENOENT).
 WorkingDirectory=/var/lib/blazen
 Environment=PATH=/usr/lib/blazen/.venv/bin:/usr/local/bin:/usr/bin:/bin
-# Jessica's ONE voice: pre-rendered/self-warmed XTTS phrases in the voice cache
-# (offline, instant) → live XTTS on paul's GPU for novel text → Piper floor when
-# paul is off. URL mirrors the mesh tts.xtts resource. Empty = Piper only.
-Environment=BLAZEN_TTS_XTTS_URL=http://192.168.50.102:8091/synthesize
+# Voice resolver: pre-rendered XTTS phrases in the local voice cache (offline,
+# instant, Ana Florence) → live XTTS → Piper (pl_PL-gosia-medium, always-local
+# Polish floor). Decision 2026-07-13 (node-local processing): live XTTS is OFF —
+# empty URL skips only that branch, so novel replies render locally via Piper
+# and cached phrases keep Ana. Restore the URL to re-enable paul's GPU voice:
+#   Environment=BLAZEN_TTS_XTTS_URL=http://192.168.50.102:8091/synthesize
+Environment=BLAZEN_TTS_XTTS_URL=
 # --ring-seconds 40: the ring must hold ONE FULL reply. At the 15 s default a
 # 16.7 s answer (audiobook list) wrapped and overwrote its own first ~2 s before
 # audio-out read it — the user heard the reply start mid-word ("first seconds of

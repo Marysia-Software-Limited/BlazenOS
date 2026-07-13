@@ -40,14 +40,50 @@ class _Fake:
         self.closed = True
 
 
+# Mesh-style multi-backend routing table for the MECHANICS tests below
+# (preference order, skip-unavailable, eviction, probe cache). The repo's real
+# llm.yaml routes every task to the on-device bielik-1.5b (node-local processing,
+# decision 2026-07-13) — that POLICY is asserted separately in
+# test_default_config_routes_everything_local.
+_MESH_CFG = {"routing": {
+    "single_local_model": True,
+    "ollama_probe_ttl_s": 30,
+    "tasks": {
+        "command":   ["ollama-11b", "bielik-1.5b"],
+        "recommend": ["ollama-11b", "bielik-4.5b"],
+        "open_qa":   ["gpt-5.5", "ollama-11b", "bielik-4.5b"],
+    },
+    "backends": {
+        "bielik-1.5b": {"model": "bielik-1.5b-v3-instruct-q4_k_m"},
+        "bielik-4.5b": {"model": "bielik-4.5b-v3-instruct-q6_k"},
+    },
+}}
+
+
 def _router(*, ollama_up: bool, key: bool):
     seen: dict[str, _Fake] = {}
     r = ModelRouter(
+        cfg=_MESH_CFG,
         ollama=_Fake("ollama", available=ollama_up),
         openai=_Fake("gpt", available=key),
         local_factory=lambda model: seen.setdefault(model, _Fake(model)),
     )
     return r, seen
+
+
+def test_default_config_routes_everything_local():
+    """POLICY (2026-07-13, node-local processing): with the repo's real llm.yaml,
+    every task routes to the on-device bielik-1.5b — even with paul's Ollama UP
+    and an OpenAI key present. No LLM hop leaves the Pi."""
+    seen: dict[str, _Fake] = {}
+    r = ModelRouter(  # no cfg override → loads configs/llm.yaml
+        ollama=_Fake("ollama", available=True),
+        openai=_Fake("gpt", available=True),
+        local_factory=lambda model: seen.setdefault(model, _Fake(model)),
+    )
+    assert r.first(Task.COMMAND)[0] == "bielik-1.5b"
+    assert r.first(Task.RECOMMEND)[0] == "bielik-1.5b"
+    assert r.first(Task.OPEN_QA)[0] == "bielik-1.5b"
 
 
 def test_prefers_ollama_when_up():
@@ -98,6 +134,7 @@ def test_probe_cache_avoids_repeat_network_calls():
 
     ticks = iter([0.0, 1.0, 2.0])
     r = ModelRouter(
+        cfg=_MESH_CFG,
         ollama=Probe("ollama"),
         openai=_Fake("gpt", available=False),
         local_factory=lambda m: _Fake(m),
@@ -135,6 +172,7 @@ def test_ollama_falls_back_to_env_when_absent_from_mesh(monkeypatch):
 def test_paul_off_still_answers_locally():
     # DoD: paul's Ollama unreachable → command falls to the on-device Bielik.
     r = ModelRouter(
+        cfg=_MESH_CFG,
         ollama=_Fake("ollama", available=False),
         openai=_Fake("gpt", available=False),
         local_factory=lambda m: _Fake(m),
