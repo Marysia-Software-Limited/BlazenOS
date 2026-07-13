@@ -31,6 +31,15 @@ async def _connect(path, *, tries: int = 40) -> Subscriber:
     raise AssertionError(f"socket never appeared: {path}")
 
 
+async def _next_reply(sub: Subscriber, *, timeout: float = 3.0) -> Envelope:
+    """Next brain.reply, skipping cue traffic (system.event kind=thinking)."""
+    async with asyncio.timeout(timeout):
+        while True:
+            env = await sub.next()
+            if env.topic == "brain.reply":
+                return env
+
+
 @pytest.mark.asyncio
 async def test_asr_final_routes_through_brain(tmp_path):
     rt = tmp_path
@@ -55,8 +64,7 @@ async def test_asr_final_routes_through_brain(tmp_path):
             topic="nlu.miss", source="blazend-nlu",
             data={"language": "pl", "transcript": "zapamiętaj że kod do bramy to 4729"},
         ))
-        env = await asyncio.wait_for(brain_sub.next(), timeout=3.0)
-        assert env.topic == "brain.reply"
+        env = await _next_reply(brain_sub)
         assert env.data["action"] == "note"
         assert "4729" in env.data["text"]
 
@@ -65,9 +73,9 @@ async def test_asr_final_routes_through_brain(tmp_path):
             topic="nlu.miss", source="blazend-nlu",
             data={"language": "pl", "transcript": "przypomnij mi o herbacie za 1 sekundę"},
         ))
-        ack = await asyncio.wait_for(brain_sub.next(), timeout=3.0)
+        ack = await _next_reply(brain_sub)
         assert ack.data["action"] == "reminder"
-        fired = await asyncio.wait_for(brain_sub.next(), timeout=4.0)
+        fired = await _next_reply(brain_sub, timeout=4.0)
         assert "herbacie" in fired.data["text"] and fired.data.get("action") == "reminder"
     finally:
         stop.set()
