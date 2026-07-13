@@ -397,6 +397,19 @@ class Assistant:
         return header + "".join(parts) if parts else ""
 
     # -- top-level -----------------------------------------------------
+    def engages(self, text: str) -> bool:
+        """True when :meth:`route` would reach a real command handler (possibly a
+        slow LLM call) — i.e. not asleep, not empty, not a bare wake. Pure probe
+        (no state change), so a caller can emit a "thinking" cue BEFORE the
+        potentially slow route() without double-routing."""
+        text = text.strip()
+        if not text:
+            return False
+        if wake.is_wake(text):
+            command = wake.strip_wake(text)
+            return bool(command) and not (command == text and wake.is_wake(command))
+        return self.awake
+
     def route(
         self,
         text: str,

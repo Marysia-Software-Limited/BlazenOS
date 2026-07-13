@@ -65,6 +65,10 @@ earcons:
   error_tone: true
   shutdown_tone: true
   custom_voice_marker: false
+  # Spoken "Chwileczkę." when the answer will take a while (LLM generation or a
+  # long reply's XTTS render) — announces the wait instead of dead air. One cue
+  # per question (cooldown in the supervisor). Cue text: phrases.yaml cues.working.
+  thinking: true
 
 # Output dynamics in blazend-player (radio / music / audiobooks). The player
 # measures its OWN output level and auto-holds a constant loudness, so a quiet

@@ -82,6 +82,22 @@ watch the real output volume it's holding. Manual volume (`głośniej`/`ciszej`,
 Jessica's TTS voice + voice memos play through the separate `blazend-audio-out`
 (Piper) service — same compressor is a planned follow-up there.
 
+## Audible state cues (`audio.yaml earcons` + `phrases.yaml cues`)
+
+Blind-first feedback about what Jessica is doing. Flags in `audio.yaml
+earcons:`; spoken cue text (PL/EN) in `phrases.yaml cues:`.
+
+- `wake_chime` — instant beep on "dżesika" (currently `false` pending a stricter
+  wake model).
+- `error_tone` — spoken "Nie zrozumiałam." (ASR heard sound but no words) and
+  "Słucham?" (capture window closed empty). Both cooldown-limited so a
+  false-wake burst can't chant.
+- `thinking` (default `true`) — spoken "Chwileczkę." when the answer will take a
+  while: the brain announces it before blocking on LLM generation
+  (`system.event kind=thinking`), and the orchestrator says it before publishing
+  a tool reply long enough (≥120 chars) that its XTTS render leaves seconds of
+  dead air. One cue per question (6 s cooldown); muted while a stream plays.
+
 ## Hands-free voice runner (`wake-word.yaml`)
 
 The single-process hands-free loop (`blazend.domains.voice_input.adapters.rpi5.voice.runner`, started by

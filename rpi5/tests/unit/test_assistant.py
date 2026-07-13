@@ -706,3 +706,23 @@ def test_engine_voice_note_play_lists_stored(tmp_path):
     a = Assistant(memory=mem, gemini=GeminiClient(api_key=""), always_awake=True)
     r = a.route("play my voice notes", now=NOW)
     assert r.action == "voice_note_play" and len(r.data["paths"]) == 1
+
+
+def test_engages_probe_is_pure_and_matches_route_gating(tmp_path):
+    """`engages()` predicts whether route() will reach a real handler (the slow
+    path worth a "Chwileczkę." cue) WITHOUT mutating awake state — so the brain
+    can cue before routing, and never cues an asleep brush-off or a bare wake."""
+    a = _assistant(tmp_path)
+    # Asleep: a plain command must not engage (route would answer "Śpię…").
+    assert not a.engages("jaka godzina")
+    assert not a.awake  # pure probe — no state change
+    # A bare wake engages nothing (route answers "Tak? Słucham." instantly).
+    assert not a.engages("Jessica")
+    assert not a.engages("")
+    # Wake + command engages even from asleep.
+    assert a.engages("Jessica, opowiedz mi o Krakowie")
+    assert not a.awake  # still pure
+    # Awake: any command engages.
+    a.awake = True
+    assert a.engages("opowiedz mi o Krakowie")
+    assert not a.engages("")  # empty transcript never engages

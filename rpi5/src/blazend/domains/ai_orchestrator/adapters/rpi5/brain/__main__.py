@@ -103,6 +103,14 @@ async def serve(
                 break
             if env.topic == "nlu.miss":
                 text = env.data.get("transcript", "")
+                # Thinking cue: routing may block on the LLM for many seconds; tell
+                # the orchestrator FIRST so it can speak "Chwileczkę." instead of
+                # dead air (blind-first). Only when the engine will actually engage
+                # (awake, real command) — never before an "asleep" brush-off.
+                if engine.engages(text):
+                    await pub.publish(
+                        system_event(source="blazend-brain", kind="thinking")
+                    )
                 reply = engine.route(text, now=datetime.now())
                 if reply.text:
                     log.info("reply (%s/%s): %s", reply.language, reply.action, reply.text)

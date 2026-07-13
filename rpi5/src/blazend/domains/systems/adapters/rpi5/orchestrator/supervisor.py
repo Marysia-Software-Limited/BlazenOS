@@ -57,6 +57,13 @@ _LISTENING_CUE_COOLDOWN_S = 12.0
 # the storm into a chant (and churns audio-out up/down each time). A genuine single
 # mis-hearing still gets one cue; a burst gets one, not ten.
 _NOT_UNDERSTOOD_CUE_COOLDOWN_S = 8.0
+# Thinking cue ("Chwileczkę."): spoken when the answer will take a while — the
+# brain says it's engaging the LLM (system.event kind=thinking), or a fast-path
+# tool reply is long enough that its XTTS render leaves seconds of dead air. A
+# blind user needs to hear that Jessica HEARD them and is working. One cue per
+# question: cooldown collapses duplicates.
+_WORKING_CUE_COOLDOWN_S = 6.0
+_WORKING_CUE_MIN_CHARS = 120  # tool replies longer than this get the cue first
 # Pre-roll before publishing a supervisor-originated spoken reply: audio-out is DOWN
 # while idle (half-duplex) and takes ~1 s to start ALSA + subscribe to tts.frame. A
 # cache-rendered reply synthesises in ~90 ms — so without this wait the TTS frame is
@@ -164,6 +171,7 @@ class Orchestrator:
         self._beep_device = self._load_beep_device()
         self._listening_cue_at = 0.0  # loop time of the last "Słucham?" (cooldown)
         self._not_understood_cue_at = 0.0  # loop time of the last "Nie zrozumiałam" (cooldown)
+        self._working_cue_at = 0.0  # loop time of the last "Chwileczkę." (cooldown)
         self._wake_handled_at = -1e9  # loop time of the last acted-on wake (refractory)
         self._book_activity_at = 0.0     # loop time the attention interval counts from
         self._awaiting_attention = False
@@ -209,9 +217,10 @@ class Orchestrator:
             earcons = {
                 "wake_chime": bool(audio.get("earcons.wake_chime", True)),
                 "error_tone": bool(audio.get("earcons.error_tone", True)),
+                "thinking": bool(audio.get("earcons.thinking", True)),
             }
         except Exception:  # noqa: BLE001
-            earcons = {"wake_chime": True, "error_tone": True}
+            earcons = {"wake_chime": True, "error_tone": True, "thinking": True}
         lang = self._default_lang or "pl"
         fallback = {"not_understood": "Nie zrozumiałam.", "listening": "Słucham?",
                     "working": "Chwileczkę."}
@@ -500,6 +509,10 @@ class Orchestrator:
         if env.topic == "system.event" and env.data.get("kind") == "heartbeat":
             patch["ready"] = True
             patch["units"][peer]["status"] = "running"
+        # Thinking cue: the brain is about to block on the LLM for this question —
+        # say "Chwileczkę." now so the wait is announced, not dead air.
+        if env.topic == "system.event" and env.data.get("kind") == "thinking":
+            await self._speak_working_cue()
         if env.topic == "wake.detected":
             now = asyncio.get_running_loop().time()
             # Refractory: ignore wakes that arrive too soon after the last handled
@@ -577,10 +590,15 @@ class Orchestrator:
                         # the single output PCM out from under the player (silent death).
                         # Non-playback replies (volume, time, …) are spoken via TTS.
                         if action not in ("radio_play", "radio_stop", "music_play", "music_stop"):
+                            text_len = len(str(reply.data.get("text", "")))
+                            # Long tool reply (book menu, news digest): its XTTS
+                            # render takes seconds — announce the wait first.
+                            if text_len >= _WORKING_CUE_MIN_CHARS:
+                                await self._speak_working_cue()
                             # Warm audio-out (subscribe to tts.frame) BEFORE publishing,
                             # or a cache-rendered confirmation races ahead of the speaker
                             # and is lost (short reply vanishes / long one clips).
-                            await self._prepare_speaker(len(str(reply.data.get("text", ""))))
+                            await self._prepare_speaker(text_len)
                             await self._publisher.publish(reply)
                         # Execute the reply's action INLINE — a fast-path reply is never
                         # received back as an incoming brain.reply, so play/stop the
@@ -767,6 +785,19 @@ class Orchestrator:
             self._book["slug"], chapter=int(self._book["index"]), offset_s=offset,
             title=str(self._book.get("name", "")),
             updated=datetime.now(UTC).isoformat(timespec="seconds"))
+
+    async def _speak_working_cue(self) -> None:
+        """Speak "Chwileczkę." once per question when the real answer will take a
+        while (LLM generation / long XTTS render), so the user hears Jessica is
+        working instead of dead air. Gated by `audio.yaml earcons.thinking`, muted
+        while a stream owns the Jabra, cooldown-collapsed."""
+        if not self._earcons.get("thinking") or self._radio.playing:
+            return
+        now = asyncio.get_running_loop().time()
+        if now - self._working_cue_at < _WORKING_CUE_COOLDOWN_S:
+            return
+        self._working_cue_at = now
+        await self._speak(self._cues["working"])
 
     async def _speak(self, text: str, lang: str = "pl") -> None:
         """Say something proactively (attention prompt / 'finished the book')."""

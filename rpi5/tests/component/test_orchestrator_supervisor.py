@@ -187,3 +187,37 @@ async def test_orchestrator_survives_missing_peer(runtime_dir: Path):
 
     await orch.shutdown()
     await asyncio.wait_for(task, timeout=2.0)
+
+
+@pytest.mark.asyncio
+async def test_thinking_event_speaks_working_cue_once(runtime_dir: Path):
+    """The brain's system.event kind=thinking (published just before it blocks on
+    the LLM) makes the supervisor speak "Chwileczkę." — announced wait, not dead
+    air. The cooldown collapses a burst to one cue per question."""
+    peer_brain = Publisher(runtime_dir / "brain.sock")
+    await peer_brain.bind()
+
+    orch = Orchestrator(peers=("brain",), runtime_dir_=runtime_dir)
+    said: list[str] = []
+
+    async def fake_speak(text: str, lang: str = "pl") -> None:
+        said.append(text)
+
+    orch._speak = fake_speak  # type: ignore[method-assign]  # noqa: SLF001
+    task = asyncio.create_task(orch.run())
+    await asyncio.sleep(0.4)  # let it connect to the brain peer
+
+    thinking = Envelope(
+        topic="system.event", source="blazend-brain",
+        data={"kind": "thinking"},
+    )
+    for _ in range(3):  # duplicate events inside one question's window
+        await peer_brain.publish(thinking)
+
+    await _wait_for(lambda: len(said) >= 1, timeout=2.0)
+    await asyncio.sleep(0.3)
+    assert said == ["Chwileczkę."]
+
+    await orch.shutdown()
+    await asyncio.wait_for(task, timeout=2.0)
+    await peer_brain.close()
