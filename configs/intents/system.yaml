@@ -644,7 +644,7 @@ intents:
   - name: news_brief
     triggers:
       pl:
-        - "wiadomo(ś|s)\\w*|co (nowego|s(ł|l)ycha(ć|c))|aktualno(ś|s)\\w*"
+        - "wiadomo(ś|s)\\w*|co (nowego|s(ł|l)ycha(ć|c))|aktualno(ś|s)\\w*|wie(ś|s)ci|co na (ś|s)wiecie"
       en:
         - "news|headlines|what'?s happening"
     action: tool_call

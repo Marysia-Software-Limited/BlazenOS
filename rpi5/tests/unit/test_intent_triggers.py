@@ -100,3 +100,21 @@ def test_general_weather_does_not_hijack_to_rain():
     for q in ("jaka jest pogoda", "jaka pogoda w Krakowie", "jaka temperatura"):
         assert _matches("weather_query", q), q
         assert not _matches("rain_forecast", q), q
+
+
+# -- news: "jakie wieści?" fell through to LLM chat (2026-07-13) --------------
+@pytest.mark.parametrize("q", [
+    "Jessica? Jakie wieści?",            # the exact live transcript that missed
+    "jakie są wieści",
+    "co w wiadomościach",
+    "co słychać",
+    "co na świecie",
+    "aktualności",
+])
+def test_news_questions_fire_news_brief(q):
+    assert _matches("news_brief", q)
+
+
+@pytest.mark.parametrize("q", ["what's the news", "any headlines", "what's happening"])
+def test_english_news_questions_fire_news_brief(q):
+    assert _matches("news_brief", q, lang="en")
