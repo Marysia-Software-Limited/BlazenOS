@@ -98,6 +98,12 @@ HAT button delimits its own held window as a push-to-talk fallback.
   length in seconds. Env override: `BLAZEN_CAPTURE_S`.
 - `wake-word.yaml require_wake` / `conversation_window_s` — wake gating: each
   acted-on utterance re-opens the follow-up window.
+- `wake-word.yaml harvest_false_wakes` (default `true`) — when a wake fires but
+  the capture yields no command, ASR saves the window to
+  `/var/lib/blazen/wake-negatives/` (newest 200 kept). Screened clips feed
+  `train-wake.py --neg-dir`, so every false activation hardens the next wake
+  model. On-device only; screen before ingesting (a distant real "dżesika"
+  lands in the same branch).
 - Runner env (rig/dev only): `PTT_OUT` (ALSA `aplay -D` output device),
   `BLAZEN_PIPER` (piper binary), `BLAZEN_BUTTON=0` to disable the GPIO button,
   `BLAZEN_BUTTON_CHIP` / `BLAZEN_BUTTON_LINE` (default `gpiochip0` line `17`).

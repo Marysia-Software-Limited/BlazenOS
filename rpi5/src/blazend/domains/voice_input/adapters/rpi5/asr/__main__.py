@@ -12,6 +12,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import wave
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -22,6 +24,40 @@ from blazend.events import Envelope, system_event
 from blazend.ipc import Publisher, Subscriber, runtime_dir
 
 log = logging.getLogger("blazend.domains.voice_input.adapters.rpi5.asr")
+
+# Self-harvesting wake negatives: every false wake whose capture window yields no
+# command IS a recording of the exact sound that fooled the wake model — save it so
+# the next `train-wake.py --neg-dir` retrain learns from every false activation.
+# Clips are screened at retrain time, NOT auto-ingested: a real but too-far/too-quiet
+# "dżesika" lands in the same branches, and blindly training on it would teach the
+# model to reject the user's own distant voice.
+_HARVEST_DIR = Path("/var/lib/blazen/wake-negatives")
+_HARVEST_KEEP = 200  # newest clips kept; ~160 KB each → ~32 MB cap
+
+
+def _save_false_wake(pcm: np.typing.ArrayLike, sample_rate: int, kind: str,
+                     root: Path = _HARVEST_DIR) -> Path | None:
+    """Persist a failed capture window as a mono 16-bit wav (best-effort: harvesting
+    must never break the voice path). ``kind`` tags WHY it failed — ``empty`` (below
+    the level floor: quiet ambient) vs ``notext`` (audio present, whisper found no
+    words: TV/coughs, but possibly garbled real speech). Prunes to the newest
+    ``_HARVEST_KEEP`` files."""
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        path = root / f"{stamp}_{kind}.wav"
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(sample_rate)
+            w.writeframes(np.asarray(pcm, dtype=np.int16).tobytes())
+        for stale in sorted(root.glob("*.wav"))[:-_HARVEST_KEEP]:
+            stale.unlink(missing_ok=True)
+    except OSError as exc:
+        log.debug("false-wake harvest failed: %s", exc)
+        return None
+    return path
+
 
 MOCK_UTTERANCES = [
     ("pl", "która godzina"),
@@ -89,6 +125,7 @@ async def _real_loop(pub: Publisher) -> None:
     _cfg = load("asr")
     min_rms = float(_cfg.get("min_capture_rms", 200.0))
     min_rms_playing = float(_cfg.get("min_capture_rms_playing", 40.0))
+    harvest = bool(load("wake-word").get("harvest_false_wakes", True))
     speaker_busy = rt / "speaker-busy"
     transcriber = Transcriber()
     log.info("asr real path: model=%s ring=%dHz fixed-window=%.1fs",
@@ -149,6 +186,8 @@ async def _real_loop(pub: Publisher) -> None:
         floor = min_rms_playing if speaker_busy.exists() else min_rms
         if peak < floor:
             log.info("fixed-window peak=%.0f below floor %.0f — dropping (false wake)", peak, floor)
+            if harvest and (saved := _save_false_wake(pcm, ring.sample_rate, "empty")):
+                log.info("harvested false-wake clip %s", saved.name)
             # Wake fired but the window came back empty — no command spoken (or too
             # quiet/far to clear the floor). Signal it so the orchestrator can prompt
             # "Słucham?" rather than leave a blind user in silence. Distinct from
@@ -182,6 +221,8 @@ async def _real_loop(pub: Publisher) -> None:
             # or a non-speech peak like a cough). Log it — otherwise the trace goes
             # silent after "read" and the drop looks like a hang.
             log.info("asr: no speech recognised (whisper empty) — rms=%.0f peak=%.0f", rms, peak)
+            if harvest and (saved := _save_false_wake(pcm, ring.sample_rate, "notext")):
+                log.info("harvested false-wake clip %s", saved.name)
             await pub.publish(
                 Envelope(
                     topic="error",

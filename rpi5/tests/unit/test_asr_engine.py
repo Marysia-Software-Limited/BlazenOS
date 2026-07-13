@@ -69,3 +69,41 @@ def test_transcribe_coerces_unsupported_to_polish():
     t = Transcriber(backend=FakeBackend("de", "guten morgen"))
     out = t.transcribe(np.zeros(1600, dtype=np.int16))
     assert out.language == "pl"  # Polish-first
+
+
+# -- false-wake harvest (`asr.__main__._save_false_wake`) ---------------------
+
+
+def test_save_false_wake_writes_wav_and_prunes(tmp_path: Path) -> None:
+    """A failed capture window is persisted as a mono 16 kHz wav tagged with WHY
+    it failed, and the directory is pruned to the newest `_HARVEST_KEEP` clips —
+    the raw material for `train-wake.py --neg-dir` retrains."""
+    import wave
+
+    from blazend.domains.voice_input.adapters.rpi5.asr import __main__ as asr_main
+
+    pcm = [int(1000 * np.sin(i / 10)) for i in range(16_000)]  # 1 s of tone
+    saved = asr_main._save_false_wake(pcm, 16_000, "empty", root=tmp_path)
+    assert saved is not None and saved.exists()
+    assert saved.name.endswith("_empty.wav")
+    with wave.open(str(saved)) as w:
+        assert w.getnchannels() == 1
+        assert w.getframerate() == 16_000
+        assert w.getnframes() == 16_000
+
+    # Prune: fill past the cap, then one more save keeps only the newest KEEP.
+    for i in range(asr_main._HARVEST_KEEP + 5):
+        (tmp_path / f"20260101-{i:06d}_empty.wav").write_bytes(b"RIFF")
+    asr_main._save_false_wake(pcm, 16_000, "notext", root=tmp_path)
+    assert len(list(tmp_path.glob("*.wav"))) == asr_main._HARVEST_KEEP
+
+
+def test_save_false_wake_survives_unwritable_root(tmp_path: Path) -> None:
+    """Harvesting is best-effort: an unwritable target must not raise (the voice
+    path always wins over the training-data side quest)."""
+    from blazend.domains.voice_input.adapters.rpi5.asr import __main__ as asr_main
+
+    blocked = tmp_path / "file-not-dir"
+    blocked.write_text("occupies the path")  # mkdir(parents) under a FILE → OSError
+    assert asr_main._save_false_wake([0] * 100, 16_000, "empty",
+                                     root=blocked / "sub") is None
