@@ -97,6 +97,10 @@ earcons:`; spoken cue text (PL/EN) in `phrases.yaml cues:`.
   (`system.event kind=thinking`), and the orchestrator says it before publishing
   a tool reply long enough (≥120 chars) that its XTTS render leaves seconds of
   dead air. One cue per question (6 s cooldown); muted while a stream plays.
+- The asleep brush-off ("Śpię — powiedz „Jessica”…") is spoken only for short,
+  command-like utterances (plausibly the user with the wake word dropped by
+  ASR). Long mid-stream prose reaching the engine asleep is overheard TV/radio
+  after a false wake — it gets silence, and never wakes her.
 
 ## Hands-free voice runner (`wake-word.yaml`)
 

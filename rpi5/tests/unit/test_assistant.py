@@ -102,6 +102,25 @@ def test_engine_requires_wake(tmp_path):
     assert a.route("zapamiętaj że lubię kawę", now=NOW).action == "note"
 
 
+def test_asleep_brushoff_speaks_only_for_command_like_utterances(tmp_path):
+    # Short wake-less utterance while asleep — plausibly the user with the wake
+    # word dropped by whisper — still gets the audible "Śpię…" brush-off…
+    a = _assistant(tmp_path)
+    short = a.route("włącz trójkę", now=NOW)
+    assert short.action == "asleep" and "Śpię" in short.text
+
+    # …but ambient prose (overheard TV after a false wake; live captures
+    # 2026-07-13) is answered with SILENCE — empty text is never spoken.
+    for tv in ("Dziesięć katastrof, dziesięć zasad. Żadna z nich nie narodziła "
+               "się w Sztabie.",
+               "przebicia, jak na przykład Amerykanie i Abramsy i na przykład "
+               "komponenty to chyba.",
+               "The previous owner sold it last year. Nobody knew why at the time."):
+        amb = a.route(tv, now=NOW)
+        assert amb.action == "asleep" and amb.text == "", tv
+    assert not a.awake  # ambient speech never wakes her
+
+
 def test_engine_remember_and_recall(tmp_path):
     a = _assistant(tmp_path)
     a.awake = True

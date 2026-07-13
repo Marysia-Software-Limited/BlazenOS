@@ -262,6 +262,18 @@ def _split_title_content(body: str) -> tuple[str, str]:
     return title, content
 
 
+def _looks_ambient(text: str) -> bool:
+    """Heuristic: a transcript that reached us asleep and wake-less but reads as
+    mid-stream prose is overheard TV/radio, not the user (a real attempt whose
+    wake word whisper dropped is a short imperative — "włącz trójkę"). Ambient
+    tells: many words, or a sentence boundary inside the capture window."""
+    words = text.split()
+    if len(words) >= 9:
+        return True
+    inner = text.strip().rstrip(".?!…")
+    return any(mark in inner for mark in (". ", "? ", "! "))
+
+
 @dataclass
 class Reply:
     """The assistant's response to one utterance."""
@@ -432,6 +444,10 @@ class Assistant:
         elif self.awake:
             command = text
         else:
+            if _looks_ambient(text):
+                # Overheard TV/radio after a false wake — answering "Śpię…" to a
+                # television is noise. Stay silent (empty text is never spoken).
+                return Reply("", lang, "asleep")
             return Reply(
                 _t(lang, "Śpię — powiedz „Jessica”, żeby mnie obudzić.",
                    "I'm asleep — say \"Jessica\" to wake me."),
