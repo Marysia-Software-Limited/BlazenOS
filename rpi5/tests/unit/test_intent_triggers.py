@@ -128,3 +128,25 @@ def test_news_questions_fire_news_brief(q):
 @pytest.mark.parametrize("q", ["what's the news", "any headlines", "what's happening"])
 def test_english_news_questions_fire_news_brief(q):
     assert _matches("news_brief", q, lang="en")
+
+
+# -- radio stop: whisper drops the "s" of "stop" over a loud radio (2026-07-21)
+@pytest.mark.parametrize("cmd", [
+    "Jessica, stop.",       # clean hearing — worked all along
+    "Jessica, top!",        # the live mis-hearings that fell through to chat
+    "Jessica. Top.",
+    "Wszystkie. Top.",
+])
+def test_stop_survives_s_drop(cmd):
+    assert _matches("radio_stop", cmd)
+
+
+@pytest.mark.parametrize("cmd", ["stop", "top", "stop the music"])
+def test_english_stop_survives_s_drop(cmd):
+    assert _matches("radio_stop", cmd, lang="en")
+
+
+def test_laptop_does_not_stop_radio():
+    # \b keeps the s?top stem from firing mid-word.
+    assert not _matches("radio_stop", "podaj mi laptopa z biurka")
+    assert not _matches("radio_stop", "hand me the laptop", lang="en")

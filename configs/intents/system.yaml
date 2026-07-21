@@ -838,9 +838,11 @@ intents:
         - "(wy(ł|l)(ą|a)cz|zatrzymaj|zga(ś|s)|przesta(ń|n)).*(radio|muzyk\\w*|stacj\\w*|gra\\w*)"
         # bare stop verbs anywhere in the utterance (the transcript keeps the
         # "Jessica," wake prefix, so these must NOT be anchored to start/end).
-        - "\\b(stop|zatrzymaj|przesta(ń|n)|zga(ś|s)|cisza|pauza|wy(ł|l)(ą|a)cz)\\b"
+        # s?top — over a loud radio whisper drops the masked "s" and hears
+        # "top" ("Jessica, top!", live 2026-07-21); \b keeps "laptop" out.
+        - "\\b(s?top|zatrzymaj|przesta(ń|n)|zga(ś|s)|cisza|pauza|wy(ł|l)(ą|a)cz)\\b"
       en:
         - "(stop|turn off|pause).*(radio|music|station|playing)"
-        - "\\b(stop|quiet|silence|pause|enough)\\b"
+        - "\\b(s?top|quiet|silence|pause|enough)\\b"
     action: tool_call
     tool: radio.stop
