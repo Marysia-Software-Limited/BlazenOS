@@ -1,0 +1,36 @@
+id: 17-en-music-album
+language: en
+description: |
+  EN parity for 17-pl-music-album (asset retained; runtime ships PL-only —
+  see docs/13-LANGUAGES.md). "Play murder ballads" queues the WHOLE album in
+  track order, auto-advances on natural EOF, "next/previous" steps the queue,
+  "stop" halts it. Offline: local index + blazend-player only.
+  Requires the fixture music library with one multi-track album. Engine: cpu.
+tags: [music, album, playlist, offline, en]
+synth_voice: en_US-lessac-medium
+preconditions:
+  llm.active_engine: cpu
+  languages.enabled_includes: en
+  fixtures.music_library: album-ballady-mordercow
+turns:
+  - user: "jessica"
+    expect:
+      wake_acknowledged: true
+      detected_language: en
+
+  - user: "play the album murder ballads"
+    expect:
+      assistant_says_any: ["playing the album", "tracks"]
+      player_state: playing
+      player_queue_length_gt: 1
+
+  - user: "jessica, next"
+    expect:
+      player_state: playing
+      player_queue_index: 1
+
+  - user: "jessica stop"
+    expect:
+      player_state: stopped
+postconditions:
+  no_unit_restarts: true

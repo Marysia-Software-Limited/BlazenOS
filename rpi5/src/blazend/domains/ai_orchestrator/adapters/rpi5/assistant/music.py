@@ -27,6 +27,14 @@ _RANDOM_WORDS = frozenset({"cos", "cokolwiek", "losowo", "random", "muzyk", "muz
 _MIN_BYTES = 16 * 1024
 
 
+def _num(entry: dict[str, object], key: str) -> int:
+    """Non-negative int field of an index entry (0 = absent/garbage)."""
+    try:
+        return max(0, int(str(entry.get(key, 0) or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _playable(path: str) -> bool:
     try:
         return os.path.getsize(path) >= _MIN_BYTES
@@ -40,6 +48,8 @@ class Track:
     title: str
     artist: str
     album: str
+    disc: int = 0   # album ordering (0 = unknown; from ID3 tag or "03 …" filename)
+    track: int = 0
     _title: set[str] = field(default_factory=set, repr=False)
     _artist: set[str] = field(default_factory=set, repr=False)
     _album: set[str] = field(default_factory=set, repr=False)
@@ -76,6 +86,7 @@ class MusicDirectory:
             title, artist, album = str(e.get("title", "")), str(e.get("artist", "")), str(e.get("album", ""))
             self.tracks.append(Track(
                 path=str(e["path"]), title=title, artist=artist, album=album,
+                disc=_num(e, "disc"), track=_num(e, "track"),
                 _title=_tokens(title), _artist=_tokens(artist), _album=_tokens(album),
                 _folder=_folder_tokens(str(e["path"])),
             ))
@@ -114,6 +125,35 @@ class MusicDirectory:
         if best_score == 0:
             return None
         return random.choice(matches)  # noqa: S311 — among equally-good, pick one (artist → random track)
+
+    def resolve_album(self, query: str) -> list[Track] | None:
+        """The ordered tracks of the ALBUM the query names, or None when the
+        query isn't an album-level request. A bare artist name stays a
+        random-track request (resolve()), so "zagraj Kazika" keeps surprising —
+        only a query that names no artist but does name an album/collection
+        folder becomes a queue. The library holds several rips of the same
+        album, so matches are grouped by their on-disk folder and the most
+        complete single rip wins; the index has no track numbers but the rip
+        filenames carry them ("01 …", "09 …") → filename order is album order."""
+        q = _tokens(query)
+        if not q or _fold(query).strip() in _RANDOM_WORDS:
+            return None
+        if any(q <= t._artist and t._artist for t in self.tracks):
+            return None  # artist request → single random track via resolve()
+        rips: dict[str, list[Track]] = {}
+        for t in self.tracks:
+            if (q <= t._album and t._album) or (q <= t._folder and t._folder):
+                rips.setdefault(str(Path(t.path).parent), []).append(t)
+        if not rips:
+            return None
+        # Most complete rip wins; on a tie (the same album ripped twice), the
+        # better-tagged one — more tracks carrying disc/track numbers — plays.
+        best = max(rips.values(), key=lambda ts: (len(ts), sum(1 for t in ts if t.track)))
+        if len(best) < 2:
+            return None  # one file is a track, not an album — let resolve() handle it
+        # Album order: disc+track numbers (ID3 tag / numbered filename, via the
+        # index) lead; unnumbered leftovers follow alphabetically.
+        return sorted(best, key=lambda t: (t.disc, t.track or 9999, Path(t.path).name.lower()))
 
 
 __all__ = ["MusicDirectory", "Track"]

@@ -65,6 +65,15 @@ def _t(lang: str, pl: str, en: str) -> str:
     return pl if lang == "pl" else en
 
 
+def _pl_tracks(n: int) -> str:
+    """Polish plural for track counts: 1 utwór, 2-4 utwory, 5+ utworów."""
+    if n == 1:
+        return "1 utwór"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return f"{n} utwory"
+    return f"{n} utworów"
+
+
 # Reminder parsing helpers (ported from the engine). The NLU strips the trigger
 # verb; the tool removes the time expression + leftover filler to get the task.
 _TIME_SPAN = re.compile(
@@ -538,6 +547,22 @@ class Tools:
         if not self.music.available:
             return ToolResult(True, _t(lang, "Biblioteka muzyki jest pusta.", "The music library is empty."), "music_offer")
         self._last_query = query  # remember context for "zagraj inny"
+        album = self.music.resolve_album(query)
+        if album is not None:
+            # An album request queues the WHOLE album in track order (audiobook-
+            # style payload; the orchestrator auto-advances on each track's EOF).
+            # Announce with the user's own words, not the ID3 album tag — several
+            # rips carry mojibake tags that would garble the TTS.
+            name = query.strip().rstrip(".?!")
+            n = len(album)
+            return ToolResult(
+                True,
+                _t(lang, f"Gram album {name} — {_pl_tracks(n)}.",
+                   f"Playing the album {name} — {n} tracks."),
+                "music_play", {
+                    "path": album[0].path, "name": name, "is_playlist": True,
+                    "chapters": [t.path for t in album], "chapter": 0,
+                })
         track = self.music.resolve(query)
         if track is None:
             # No literal match → fall back to MEANING (e.g. "coś spokojnego").

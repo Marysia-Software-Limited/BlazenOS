@@ -261,6 +261,29 @@ spoken command frees the speaker (stops the stream) so Jessica can answer. Env:
 `BLAZEN_PLAYER` overrides the player binary; the ALSA device is the runner's
 `PTT_OUT`. (ffmpeg is no longer required for radio.)
 
+## Local music library + album queues
+
+The on-device library lives under `/var/lib/blazen/music/` and is indexed into
+`/var/lib/blazen/music-index.json` (artist/title/album/path) by
+`scripts/index-music.py`; `BLAZEN_MUSIC_INDEX` overrides the index path.
+Matching is accent-folded and lightly stemmed, so messy ID3 tags and Polish
+inflection both resolve ("ballady morderców" hits `ballady mordercow` and
+mojibake tag variants alike). What a request plays (2026-07-21):
+
+- **Artist or title** — "zagraj Kazika" plays a **random** track of that
+  artist; "następny/zagraj inny" draws another from the same pool.
+- **Album** — a query that names an album (ID3 tag or album folder) and *not*
+  an artist queues the **whole album in track order**: "zagraj ballady
+  morderców" → "Gram album ballady morderców — 11 utworów.", then each track
+  auto-advances on the previous one's natural end and "Koniec albumu." closes
+  the set. The library may hold several rips of one album; the most complete
+  single rip wins (never a mix), ordered by the numbered filenames. While an
+  album plays, "następny/poprzedni" steps the queue (bounds are spoken: "To
+  ostatni utwór albumu."), "stop" halts it, "kontynuj" resumes at the current
+  track, and — unlike audiobooks — there is **no** "Czy jeszcze słuchasz?"
+  attention check and no speech compression (music DSP only).
+- **Neither** — falls through to semantic search ("coś spokojnego").
+
 ## Personal memory + semantic recall (`embeddings.yaml`)
 
 Jessica remembers **titled, long-form notes** dictated by voice — say

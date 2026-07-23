@@ -720,15 +720,18 @@ class Orchestrator:
             # Remember the last source so "kontynuj" can restore it after a stop.
             self._last_source = source
             self._last_source_name = str(payload.get("name", ""))
-            # Audiobook? track the book so we can auto-advance chapters, remember
-            # position (via the player's position-file) and resume.
+            # Audiobook or album queue? Track it so we can auto-advance on each
+            # part's natural EOF (via the player's position-file). An album
+            # (`is_playlist`) rides the same chapters engine as a book, minus the
+            # book-only bits: no progress slug, no attention check, music DSP.
             start_seconds, position_file = 0.0, ""
-            if payload.get("is_audiobook"):
+            if payload.get("is_audiobook") or payload.get("is_playlist"):
                 self._book = {
                     "slug": str(payload.get("slug", "")),
                     "chapters": list(payload.get("chapters", [])),
                     "index": int(payload.get("chapter", 0)),
                     "name": self._last_source_name,
+                    "kind": "album" if payload.get("is_playlist") else "book",
                 }
                 self._last_book = self._book  # remember for "kontynuj" after a stop
                 self._book_stopping = False
@@ -823,9 +826,10 @@ class Orchestrator:
         await asyncio.sleep(0.3)
         await asyncio.to_thread(self._radio.play, self._last_source, self._last_source_name,
                                 position_file=str(self._position_file), start_seconds=start_seconds,
-                                speech=True)  # a book chapter is always spoken-word
+                                speech=book.get("kind", "book") != "album")  # book = spoken-word DSP
         self._speaker_busy.touch()
-        log.info("audiobook chapter %d/%d — %s", index + 1, len(book["chapters"]), self._last_source_name)
+        log.info("%s part %d/%d — %s", book.get("kind", "book"), index + 1,
+                 len(book["chapters"]), self._last_source_name)
 
     async def _attention_present(self) -> None:
         """The listener replied to 'Czy słuchasz?' → resume the paused book."""
@@ -856,7 +860,11 @@ class Orchestrator:
             if self._book_paused_for_attention:
                 continue
             if self._radio.playing:
-                if (self._attention_enabled and self._book_activity_at
+                # Attention checks are a BOOK feature (losing your place in a
+                # story matters); interrupting an album with "Czy słuchasz?" is
+                # just annoying — music plays through.
+                if (self._attention_enabled and book.get("kind", "book") != "album"
+                        and self._book_activity_at
                         and now - self._book_activity_at >= self._attention_interval_s):
                     self._save_book_progress()          # remember before pausing
                     self._book_paused_for_attention = True
@@ -877,11 +885,35 @@ class Orchestrator:
             if done and nxt < len(book["chapters"]):
                 await self._play_book_chapter(book, nxt)
             else:
-                if done:  # ran off the end of the last chapter → finished
-                    self._book_progress.clear(str(book.get("slug", "")))
+                if done:  # ran off the end of the last chapter/track → finished
                     self._last_book = None  # finished → nothing to resume
-                    await self._speak("Skończyłam książkę.")
+                    if book.get("kind", "book") == "album":
+                        await self._speak("Koniec albumu.")
+                    else:
+                        self._book_progress.clear(str(book.get("slug", "")))
+                        await self._speak("Skończyłam książkę.")
                 self._book = None
+
+    def _album_nav(self, delta: int) -> Envelope:
+        """Jump ±1 track in the now-playing album queue (or say why we can't).
+        Mirrors _chapter_nav; the returned music_play envelope flows through
+        _act_on_reply and rebuilds the queue state at the new index."""
+        def spoken(msg: str) -> Envelope:
+            return Envelope(topic="brain.reply", source="blazend-orchestrator",
+                            data={"language": "pl", "text": msg, "chunk": msg,
+                                  "final_": True, "action": "command.track"})
+        book = self._book
+        assert book is not None  # caller gates on an active album queue
+        chapters = list(book["chapters"])
+        idx = int(book["index"]) + delta
+        if idx < 0:
+            return spoken("To pierwszy utwór albumu.")
+        if idx >= len(chapters):
+            return spoken("To ostatni utwór albumu.")
+        return Envelope(topic="brain.reply", source="blazend-orchestrator",
+                        data={"action": "music_play", "payload": {
+                            "path": chapters[idx], "name": str(book["name"]),
+                            "is_playlist": True, "chapters": chapters, "chapter": idx}})
 
     def _chapter_nav(self, delta: int) -> Envelope:
         """Jump ±1 chapter in the now-playing book (or say why we can't)."""
@@ -889,7 +921,7 @@ class Orchestrator:
             return Envelope(topic="brain.reply", source="blazend-orchestrator",
                             data={"language": "pl", "text": msg, "chunk": msg,
                                   "final_": True, "action": "command.chapter"})
-        if self._book is None:
+        if self._book is None or self._book.get("kind", "book") == "album":
             return spoken("Nie czytam teraz książki.")
         chapters = list(self._book["chapters"])
         idx = int(self._book["index"]) + delta
@@ -923,11 +955,13 @@ class Orchestrator:
                 idx = int(prog.get("chapter", book.get("index", 0)))
                 chapters = list(book.get("chapters", []))
                 if 0 <= idx < len(chapters):
+                    is_album = book.get("kind") == "album"  # resume keeps the queue's kind
                     return Envelope(
                         topic="brain.reply", source="blazend-orchestrator",
                         data={"action": "music_play", "payload": {
                             "path": chapters[idx], "name": str(book.get("name", "")),
-                            "is_audiobook": True, "slug": str(book.get("slug", "")),
+                            "is_audiobook": not is_album, "is_playlist": is_album,
+                            "slug": str(book.get("slug", "")),
                             "chapters": chapters, "chapter": idx,
                             "start_seconds": float(prog.get("offset_s", 0.0))}},
                     )
@@ -951,6 +985,11 @@ class Orchestrator:
         # now-playing book (the orchestrator owns that state).
         if intent_name in ("chapter_next", "chapter_prev"):
             return self._chapter_nav(1 if intent_name == "chapter_next" else -1)
+        # While an ALBUM queue plays, "następny/poprzedni" steps the queue in
+        # order — the dispatcher's history/random walk would abandon the album.
+        if (intent_name in ("music_next", "music_prev") and self._book is not None
+                and self._book.get("kind") == "album"):
+            return self._album_nav(1 if intent_name == "music_next" else -1)
         result = self._dispatcher.dispatch(
             intent_name,
             env.data.get("params", {}),

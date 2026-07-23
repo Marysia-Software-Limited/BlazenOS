@@ -1,0 +1,47 @@
+id: 17-pl-music-album
+language: pl
+description: |
+  Album z lokalnej biblioteki: "zagraj ballady morderców" kolejkuje CAŁY album
+  w kolejności utworów (jeden rip, nie mieszanka duplikatów), auto-przechodzi
+  do następnego utworu po naturalnym końcu poprzedniego, "następny/poprzedni"
+  krąży po kolejce, "stop" przerywa, a po ostatnim utworze pada "Koniec
+  albumu.". Bez chmury — czysty lokalny indeks + blazend-player.
+  Wymaga fixture-owej biblioteki muzycznej z co najmniej jednym wielościeżkowym
+  albumem ("Ballady Morderców"). Engine: cpu.
+tags: [music, album, playlist, offline, pl]
+synth_voice: pl_PL-gosia-medium
+preconditions:
+  llm.active_engine: cpu
+  fixtures.music_library: album-ballady-mordercow
+turns:
+  - user: "dżesika"
+    expect:
+      wake_acknowledged: true
+      detected_language: pl
+
+  - user: "zagraj ballady morderców"
+    expect:
+      assistant_says_any: ["gram album", "utwory", "utworów"]
+      player_state: playing
+      player_queue_length_gt: 1
+
+  - user: "dżesika, następny"
+    expect:
+      player_state: playing
+      player_queue_index: 1
+
+  - user: "dżesika, poprzedni"
+    expect:
+      player_state: playing
+      player_queue_index: 0
+
+  - inject: "player.track_eof"   # natural end of track 1 → auto-advance, no voice
+    expect:
+      player_state: playing
+      player_queue_index: 1
+
+  - user: "dżesika stop"
+    expect:
+      player_state: stopped
+postconditions:
+  no_unit_restarts: true

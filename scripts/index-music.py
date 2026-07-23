@@ -28,7 +28,7 @@ def probe_tags(path: Path) -> dict[str, str]:
     try:
         out = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries",
-             "format_tags=artist,album_artist,title,album", "-of", "json", str(path)],
+             "format_tags=artist,album_artist,title,album,track,disc", "-of", "json", str(path)],
             capture_output=True, text=True, timeout=15,
         )
         tags = (json.loads(out.stdout or "{}").get("format", {}) or {}).get("tags", {}) or {}
@@ -37,7 +37,20 @@ def probe_tags(path: Path) -> dict[str, str]:
     return {k.lower(): str(v).strip() for k, v in tags.items()}
 
 
-def derive(path: Path, src: Path, tags: dict[str, str]) -> dict[str, str]:
+def _track_no(tags: dict[str, str], path: Path) -> tuple[int, int]:
+    """(disc, track) for album ordering: the ID3 tag ("3" or "3/12"), falling
+    back to a numbered filename ("03 …"). 0 = unknown."""
+    def lead_int(s: str) -> int:
+        m = re.match(r"\s*(\d{1,3})", s)
+        return int(m.group(1)) if m else 0
+    track = lead_int(tags.get("track", ""))
+    if not track:
+        m = _TRACK_PREFIX.match(path.stem)
+        track = lead_int(m.group(0)) if m else 0
+    return lead_int(tags.get("disc", "")), track
+
+
+def derive(path: Path, src: Path, tags: dict[str, str]) -> dict[str, object]:
     stem = _TRACK_PREFIX.sub("", path.stem).strip()
     # "Artist - Title" in the filename is common when tags are missing.
     fn_artist, fn_title = "", stem
@@ -49,7 +62,8 @@ def derive(path: Path, src: Path, tags: dict[str, str]) -> dict[str, str]:
     title = tags.get("title") or fn_title
     artist = tags.get("artist") or tags.get("album_artist") or fn_artist or folder
     album = tags.get("album") or folder
-    return {"title": title, "artist": artist, "album": album}
+    disc, track = _track_no(tags, path)
+    return {"title": title, "artist": artist, "album": album, "disc": disc, "track": track}
 
 
 def main() -> int:
