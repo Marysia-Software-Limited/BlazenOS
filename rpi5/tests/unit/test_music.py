@@ -1,10 +1,11 @@
-"""Tier 0 — offline music directory: album-queue resolution (2026-07-21).
+"""Tier 0 — offline music directory: album/artist queue resolution.
 
 "Zagraj ballady morderców" used to play ONE random track of the album and go
-silent. `resolve_album` now turns an album-naming request into the ordered
-track list of the most complete single rip, while a bare artist request keeps
-its random-track behaviour. Runs against a synthetic index in tmp_path (the
-loader drops files under ~16 kB as dead rips, so fixtures are padded).
+silent. An album request now queues the ordered track list of the most
+complete single rip; an artist request queues their whole catalogue shuffled
+(decision 2026-07-27: play everything until "stop"). Runs against a synthetic
+index in tmp_path (the loader drops files under ~16 kB as dead rips, so
+fixtures are padded).
 """
 from __future__ import annotations
 
@@ -137,6 +138,38 @@ def test_tools_title_payload_stays_single_track(music):
     r = Tools(music=music).music_play("istny cud", "pl")
     assert r.action == "music_play"
     assert "is_playlist" not in r.payload and "chapters" not in r.payload
+
+
+def test_fast_path_reply_envelope_carries_the_queue(music):
+    # The seam that actually broke live (2026-07-27): tools built a correct
+    # queue payload, but the supervisor's reply-envelope builder re-created the
+    # payload and forwarded only audiobook queues — every album/artist queue
+    # silently became a single track ("następny" replayed track 1 forever).
+    from types import SimpleNamespace
+
+    from blazend.domains.ai_orchestrator.adapters.rpi5.dispatch import DispatchResult
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import Orchestrator
+    from blazend.events import Envelope
+
+    belt = Tools(music=music)
+
+    class _Disp:
+        def dispatch(self, intent: str, params: dict, lang: str) -> DispatchResult:
+            res = belt.music_play(str(params.get("query", "")), lang)
+            # Mirrors dispatch.py's tool-call flattening: payload merges into data.
+            return DispatchResult(res.text, lang, "tool",
+                                  data={"tool": "music.play", "ok": res.ok, **res.payload})
+
+    stub = SimpleNamespace(_dispatcher=_Disp(), _radio=SimpleNamespace(playing=False),
+                           _music_enabled=True, _book=None, _last_book=None,
+                           _last_source="", _last_source_name="")
+    env = Envelope(topic="nlu.intent", source="test", data={
+        "intent": "music_play", "params": {"query": "ballady morderców"}, "language": "pl"})
+    reply = Orchestrator._dispatch_intent(stub, env)  # unbound: the stub is `self`
+    assert reply is not None and reply.data["action"] == "music_play"
+    payload = reply.data["payload"]
+    assert payload["is_playlist"] is True and payload["chapter"] == 0
+    assert len(payload["chapters"]) == 3
 
 
 def test_indexer_demojibake_repairs_cp1250_tags():

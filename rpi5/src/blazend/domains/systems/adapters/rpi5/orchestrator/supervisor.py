@@ -1179,6 +1179,15 @@ class Orchestrator:
                         "chapter": int(result.data.get("chapter", 0)),
                         "start_seconds": float(result.data.get("start_seconds", 0.0)),
                     })
+                # Album/artist queues ride the same engine — dropping these keys
+                # here silently downgraded every queue to a single track (live
+                # 2026-07-27: "następny" replayed track 1 forever, no auto-advance).
+                elif result.data.get("is_playlist"):
+                    data["payload"].update({
+                        "is_playlist": True,
+                        "chapters": list(result.data.get("chapters", [])),
+                        "chapter": int(result.data.get("chapter", 0)),
+                    })
         elif tool == "radio.stop":
             data["action"] = "radio_stop"
         return Envelope(
