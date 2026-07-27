@@ -769,25 +769,58 @@ intents:
   # `^…$` anchoring + optional leading wake word (it leaks into the transcript,
   # e.g. "Jessica, następny"), so a bare keyword buried in a sentence can't fire
   # track nav, but a real short command still does. See test_intent_triggers.
+  # The wake prefix tolerates the punctuation whisper writes after the name
+  # ("Jessica? Następny." / "Jessica, następny.") and the tail eats trailing
+  # ".?!" — live 2026-07-27: 'Jessica, następny.' matched nothing and fell
+  # through to LLM chat while the album kept playing.
   - name: music_prev
     triggers:
       pl:
-        - "^\\s*(?:(?:hej\\s+|ok\\s+)?(?:d(ż|z)esi\\w*|jessi\\w*)[\\s,]+)?(poprzedni\\w*|wstecz|cofnij)(\\s+(utw(ó|o)r\\w*|piosenk\\w*|kaw(a|ą)(ł|l)\\w*|nagran\\w*|prosz(ę|e)\\w*))?\\s*$"
+        - "^\\s*(?:(?:hej\\s+|ok\\s+)?(?:d(ż|z)esi\\w*|jessi\\w*)[\\s,.?!]+)?(poprzedni\\w*|wstecz|cofnij)(\\s+(utw(ó|o)r\\w*|piosenk\\w*|kaw(a|ą)(ł|l)\\w*|nagran\\w*|prosz(ę|e)\\w*))?[\\s.?!…]*$"
       en:
-        - "^\\s*(?:(?:hey\\s+)?jessi\\w*[\\s,]+)?(previous|prev|go\\s+back)(\\s+(track|song|one|please))?\\s*$"
+        - "^\\s*(?:(?:hey\\s+)?jessi\\w*[\\s,.?!]+)?(previous|prev|go\\s+back)(\\s+(track|song|one|please))?[\\s.?!…]*$"
     action: tool_call
     tool: music.prev
 
   - name: music_next
     triggers:
       pl:
-        - "^\\s*(?:(?:hej\\s+|ok\\s+)?(?:d(ż|z)esi\\w*|jessi\\w*)[\\s,]+)?(zagraj|pu(ś|s)(ć|c)|w(ł|l)(ą|a)cz|graj)\\s+(co(ś|s)\\s+)?(inn\\w+|nast(ę|e)pn\\w+|kolejn\\w+)\\b.*"
-        - "^\\s*(?:(?:hej\\s+|ok\\s+)?(?:d(ż|z)esi\\w*|jessi\\w*)[\\s,]+)?(nast(ę|e)pn\\w+|kolejn\\w+|dalej|pomi(ń|n)\\w*)(\\s+(utw(ó|o)r\\w*|piosenk\\w*|kaw(a|ą)(ł|l)\\w*|nagran\\w*|prosz(ę|e)\\w*))?\\s*$"
-        - "^\\s*(?:(?:hej\\s+|ok\\s+)?(?:d(ż|z)esi\\w*|jessi\\w*)[\\s,]+)?co(ś|s)\\s+inn\\w+(\\s+(utw(ó|o)r\\w*|piosenk\\w*|nagran\\w*|prosz(ę|e)\\w*))?\\s*$"
+        - "^\\s*(?:(?:hej\\s+|ok\\s+)?(?:d(ż|z)esi\\w*|jessi\\w*)[\\s,.?!]+)?(zagraj|pu(ś|s)(ć|c)|w(ł|l)(ą|a)cz|graj)\\s+(co(ś|s)\\s+)?(inn\\w+|nast(ę|e)pn\\w+|kolejn\\w+)\\b.*"
+        - "^\\s*(?:(?:hej\\s+|ok\\s+)?(?:d(ż|z)esi\\w*|jessi\\w*)[\\s,.?!]+)?(nast(ę|e)pn\\w+|kolejn\\w+|dalej|pomi(ń|n)\\w*)(\\s+(utw(ó|o)r\\w*|piosenk\\w*|kaw(a|ą)(ł|l)\\w*|nagran\\w*|prosz(ę|e)\\w*))?[\\s.?!…]*$"
+        - "^\\s*(?:(?:hej\\s+|ok\\s+)?(?:d(ż|z)esi\\w*|jessi\\w*)[\\s,.?!]+)?co(ś|s)\\s+inn\\w+(\\s+(utw(ó|o)r\\w*|piosenk\\w*|nagran\\w*|prosz(ę|e)\\w*))?[\\s.?!…]*$"
       en:
-        - "^\\s*(?:(?:hey\\s+)?jessi\\w*[\\s,]+)?(play\\s+)?(another|next|different|skip)(\\s+(song|track|one))?(\\s+please)?\\s*$"
+        - "^\\s*(?:(?:hey\\s+)?jessi\\w*[\\s,.?!]+)?(play\\s+)?(another|next|different|skip)(\\s+(song|track|one))?(\\s+please)?[\\s.?!…]*$"
     action: tool_call
     tool: music.next
+
+  # Shuffle the playing queue: "dżesika, tasuj / przetasuj / pomieszaj".
+  # The orchestrator owns the queue, so it intercepts this intent (the
+  # dispatcher never sees it) — current track keeps playing, the rest reshuffles.
+  - name: music_shuffle
+    triggers:
+      pl:
+        - "^\\s*(?:(?:hej\\s+|ok\\s+)?(?:d(ż|z)esi\\w*|jessi\\w*)[\\s,.?!]+)?(prze)?tasuj\\w*(\\s+(utwory|piosenki|album|p(ł|l)yt(ę|e)|kolejk(ę|e)))?[\\s.?!…]*$"
+        - "^\\s*(?:(?:hej\\s+|ok\\s+)?(?:d(ż|z)esi\\w*|jessi\\w*)[\\s,.?!]+)?pomieszaj\\w*(\\s+(utwory|piosenki|album|p(ł|l)yt(ę|e)|kolejk(ę|e)))?[\\s.?!…]*$"
+      en:
+        - "^\\s*(?:(?:hey\\s+)?jessi\\w*[\\s,.?!]+)?shuffle(\\s+(the\\s+)?(songs|tracks|album|queue|it))?[\\s.?!…]*$"
+    action: tool_call
+    tool: music.shuffle
+
+  # "Co teraz gra?" — answered by the orchestrator from live queue state
+  # (pause → answer → resume; the Jabra has one output PCM).
+  - name: music_now_playing
+    triggers:
+      pl:
+        - "co (teraz |w(ł|l)a(ś|s)nie )?(gra|leci)\\b"
+        - "jaki to (utw(ó|o)r|kawa(ł|l)ek|numer)"
+        - "co to za (piosenk\\w*|utw(ó|o)r|kawa(ł|l)ek|numer|p(ł|l)yta|album)"
+        - "kt(ó|o)ry to utw(ó|o)r"
+      en:
+        - "what('s| is) (now |currently )?playing"
+        - "what (song|track|tune) is (this|that)"
+        - "name (this|that) (song|track)"
+    action: tool_call
+    tool: music.now_playing
 
   # MUSIC (offline local library) — listed BEFORE radio_play. "zagraj X" is the
   # unambiguous music verb; "puść/graj MUZYKĘ/piosenkę X" also music; "zagraj coś"

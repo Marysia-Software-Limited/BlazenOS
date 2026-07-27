@@ -40,6 +40,16 @@ turns:
       player_state: playing
       player_queue_index: 1
 
+  - user: "dżesika, co teraz gra?"   # pause → answer → resume mid-track
+    expect:
+      assistant_says_any: ["gram", "z albumu", "utwór"]
+      player_state: playing
+
+  - user: "dżesika, przetasuj"       # rest of the queue reshuffles; track resumes
+    expect:
+      assistant_says_any: ["przetasowałam", "następny będzie"]
+      player_state: playing
+
   - user: "dżesika stop"
     expect:
       player_state: stopped

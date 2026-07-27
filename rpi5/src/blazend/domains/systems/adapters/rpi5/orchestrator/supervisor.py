@@ -15,6 +15,8 @@ import json
 import logging
 import math
 import os
+import random
+import re
 import struct
 import subprocess
 import wave
@@ -93,6 +95,14 @@ DEFAULT_PEERS: tuple[str, ...] = (
 # which is slow to start and down while idle) so it's pre-verbal and adds no latency.
 _BEEP_RATE_HZ = 22050          # Jabra playback rate (matches audio.yaml output)
 _BEEP_DEVICE = "plughw:CARD=USB,DEV=0"  # concrete Jabra ALSA device (aplay -D)
+
+
+_TRACK_NO_PREFIX = re.compile(r"^\s*\d{1,3}\s*[-.)]?\s+")
+
+
+def _track_label(path: str) -> str:
+    """Spoken name of a queued file: the stem minus the "03 " track prefix."""
+    return _TRACK_NO_PREFIX.sub("", Path(path).stem).replace("_", " ").strip()
 
 
 def _make_wake_beep_wav(rate: int = _BEEP_RATE_HZ) -> bytes:
@@ -571,6 +581,18 @@ class Orchestrator:
                 # acknowledge in state, but stay silent.
                 log.info("asleep — ignoring %s", env.data.get("intent"))
                 patch["awake"] = False
+            elif str(env.data.get("intent", "")) in ("music_now_playing", "music_shuffle"):
+                # Queue services the orchestrator answers ITSELF, asynchronously —
+                # they pause/resume the exclusive player mid-track, which a sync
+                # dispatcher reply cannot do. Conversation stays open.
+                self._awake_until = asyncio.get_running_loop().time() + self._wake_window_s
+                lang = str(env.data.get("language", "") or "pl")
+                if env.data.get("intent") == "music_now_playing":
+                    await self._answer_now_playing(lang)
+                else:
+                    await self._shuffle_queue(lang)
+                patch["last_command"] = {
+                    "intent": env.data.get("intent"), "result": env.data.get("intent")}
             else:
                 reply = self._dispatch_intent(env)
                 # Acting on a command keeps the conversation open for follow-ups.
@@ -893,6 +915,89 @@ class Orchestrator:
                         self._book_progress.clear(str(book.get("slug", "")))
                         await self._speak("Skończyłam książkę.")
                 self._book = None
+
+    def _describe_playback(self, lang: str) -> str:
+        """One spoken sentence about what's on the speaker right now."""
+        def t(pl: str, en: str) -> str:
+            return pl if lang != "en" else en
+        if not self._radio.playing:
+            return t("Nic teraz nie gra.", "Nothing is playing right now.")
+        book = self._book
+        if book is not None:
+            idx, n = int(book["index"]) + 1, len(book["chapters"])
+            if book.get("kind") == "album":
+                track = _track_label(str(book["chapters"][int(book["index"])]))
+                return t(f"Gram „{track}” z albumu {book['name']} — utwór {idx} z {n}.",
+                         f"Playing “{track}” from the album {book['name']} — track {idx} of {n}.")
+            return t(f"Czytam „{book['name']}” — rozdział {idx} z {n}.",
+                     f"Reading “{book['name']}” — chapter {idx} of {n}.")
+        name = str(self._last_source_name or "")
+        if name:
+            return t(f"Gra {name}.", f"Playing {name}.")
+        return t("Gra radio.", "The radio is playing.")
+
+    async def _wait_speech_done(self) -> None:
+        """Wait until the just-published spoken reply has actually played out:
+        first for TTS frames to reach audio-out (speaker-busy appears), then for
+        the queue to drain. Bounded, so a lost frame can't wedge playback."""
+        loop = asyncio.get_running_loop()
+        t0 = loop.time()
+        while loop.time() - t0 < 10.0 and not self._speaker_busy.exists():
+            await asyncio.sleep(0.2)
+        while loop.time() - t0 < 30.0 and self._speaker_busy.exists():
+            await asyncio.sleep(0.3)
+        self._speak_until = 0.0  # answer done — release the speak window early
+
+    async def _speak_over_playback(self, text: str, lang: str = "pl") -> None:
+        """Speak even while the exclusive player holds the Jabra: audio-out
+        stays down during a stream, so a plain reply would vanish. Pause the
+        stream at its offset, say it, resume right where it left off (the queue
+        engine's position-file makes the resume mid-track). Idle → just speak."""
+        if not self._radio.playing:
+            await self._speak(text, lang)
+            return
+        book = self._book
+        offset, _done = self._read_position()
+        self._book_stopping = True  # the watcher must not read this stop as EOF
+        await asyncio.to_thread(self._radio.stop)
+        self._speaker_busy.unlink(missing_ok=True)
+        await self._speak(text, lang)
+        await self._wait_speech_done()
+        if book is not None:  # album/book → resume mid-track via the queue engine
+            await self._play_book_chapter(book, int(book["index"]), start_seconds=offset)
+        elif self._last_source:  # live stream / single track → restart it
+            await self._act_on_reply({"action": "music_play", "payload": {
+                "path": self._last_source, "name": self._last_source_name}})
+
+    async def _answer_now_playing(self, lang: str) -> None:
+        """"Co teraz gra?" — say what's on, then give the speaker back."""
+        await self._speak_over_playback(self._describe_playback(lang), lang)
+
+    async def _shuffle_queue(self, lang: str) -> None:
+        """"Przetasuj" — reshuffle the REST of the playing queue; the current
+        track finishes normally (it moves to slot 0 of the reordered queue).
+        Confirmation names the upcoming track — audible proof the shuffle
+        happened, which a silent reorder wouldn't give a blind user."""
+        def t(pl: str, en: str) -> str:
+            return pl if lang != "en" else en
+        book = self._book
+        if not self._radio.playing or book is None or book.get("kind") != "album":
+            await self._speak_over_playback(
+                t("Nie gram teraz kolejki utworów.", "No track queue is playing."), lang)
+            return
+        chapters = list(book["chapters"])
+        idx = int(book["index"])
+        rest = chapters[:idx] + chapters[idx + 1:]
+        random.shuffle(rest)
+        book["chapters"] = [chapters[idx], *rest]
+        book["index"] = 0
+        if rest:
+            nxt = _track_label(str(rest[0]))
+            msg = t(f"Przetasowałam. Następny będzie „{nxt}”.",
+                    f"Shuffled. Next up: “{nxt}”.")
+        else:
+            msg = t("Przetasowałam.", "Shuffled.")
+        await self._speak_over_playback(msg, lang)
 
     def _album_nav(self, delta: int) -> Envelope:
         """Jump ±1 track in the now-playing album queue (or say why we can't).

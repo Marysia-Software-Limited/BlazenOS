@@ -547,13 +547,19 @@ class Tools:
         if not self.music.available:
             return ToolResult(True, _t(lang, "Biblioteka muzyki jest pusta.", "The music library is empty."), "music_offer")
         self._last_query = query  # remember context for "zagraj inny"
-        album = self.music.resolve_album(query)
+        # Queue ladder (decision 2026-07-27: album/artist requests play
+        # EVERYTHING until "stop", not one surprise track): explicit
+        # cały/wszystko/coś → shuffled; album name → in track order; artist
+        # name → their whole catalogue shuffled; a title → that single track.
+        # Spoken name = the user's words minus a leading container word, so
+        # "zagraj album X" confirms as "Gram album X", not "Gram album album X".
+        name = re.sub(r"^\s*(album\w*|p(?:ł|l)yt\w*)\s+", "", query.strip().rstrip(".?!"),
+                      flags=re.IGNORECASE)
+        queue = self.music.resolve_all(query)
+        album = None if queue is not None else self.music.resolve_album(query)
         if album is not None:
-            # An album request queues the WHOLE album in track order (audiobook-
-            # style payload; the orchestrator auto-advances on each track's EOF).
-            # Announce with the user's own words, not the ID3 album tag — several
-            # rips carry mojibake tags that would garble the TTS.
-            name = query.strip().rstrip(".?!")
+            # Announce with the user's own words, not the ID3 album tag —
+            # several rips carry mojibake tags that would garble the TTS.
             n = len(album)
             return ToolResult(
                 True,
@@ -562,6 +568,19 @@ class Tools:
                 "music_play", {
                     "path": album[0].path, "name": name, "is_playlist": True,
                     "chapters": [t.path for t in album], "chapter": 0,
+                })
+        queue = queue or self.music.resolve_artist(query)
+        if queue is not None:
+            # The count is the confirmation; naming the pool would fight the
+            # genitive the user just used, so keep it grammar-neutral.
+            n = len(queue)
+            return ToolResult(
+                True,
+                _t(lang, f"Dobrze — {_pl_tracks(n)} w losowej kolejności.",
+                   f"Alright — {n} tracks, shuffled."),
+                "music_play", {
+                    "path": queue[0].path, "name": name, "is_playlist": True,
+                    "chapters": [t.path for t in queue], "chapter": 0,
                 })
         track = self.music.resolve(query)
         if track is None:

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -21,6 +22,18 @@ from audiobook_catalog.text_norm import _fold, _stem_phrase
 
 _DEFAULT_INDEX = "/var/lib/blazen/music-index.json"
 _RANDOM_WORDS = frozenset({"cos", "cokolwiek", "losowo", "random", "muzyk", "muzyke", "muzyka"})
+# "zagraj ALBUM ballady morderców" — the container word is filler, not part of
+# the album name; strip it before matching. (Raw-text regexes: the shared
+# stemmer deletes ł/diacritics outright, so token-level checks would misfire.)
+_FILLER_RE = re.compile(
+    r"\b(album\w*|p(ł|l)yt\w*|kr(ą|a)(ż|z)\w*|utw(ó|o)r\w*|piosenk\w*"
+    r"|kawa(ł|l)\w*|nagran\w*|tracks?|songs?)\b", re.IGNORECASE)
+# "zagraj CAŁEGO Kazika" / "zagraj WSZYSTKO" — an explicit everything-request.
+_ALL_RE = re.compile(r"\b(ca(ł|l)(y|e|a|ego|ej|ą))\b|\bwszystk\w*|\b(all|entire|whole)\b",
+                     re.IGNORECASE)
+# "Zagraj wszystko" over a 2000-track library still needs a bound (the queue
+# rides in one payload) — 500 tracks ≈ a full day of music before "stop".
+_QUEUE_CAP = 500
 # Skip dead rips: some ripped albums contain 0-byte / header-only stubs. A random
 # pick that lands on one plays nothing ("no reaction"), so drop anything too small
 # to hold even ~1 s of audio (128 kbps ≈ 16 kB/s) at load time.
@@ -126,6 +139,49 @@ class MusicDirectory:
             return None
         return random.choice(matches)  # noqa: S311 — among equally-good, pick one (artist → random track)
 
+    def _shuffled_queue(self, pool: list[Track]) -> list[Track]:
+        """Dedupe by title (duplicate rips must not play a song twice),
+        shuffle, cap."""
+        seen: set[str] = set()
+        unique: list[Track] = []
+        for t in pool:
+            key = " ".join(sorted(t._title)) or t.path
+            if key not in seen:
+                seen.add(key)
+                unique.append(t)
+        random.shuffle(unique)
+        return unique[:_QUEUE_CAP]
+
+    def resolve_all(self, query: str) -> list[Track] | None:
+        """"Zagraj całego Kazika" / "zagraj wszystko" / "zagraj coś" — an
+        everything-request: the named artist's tracks (or, with no name left,
+        the whole library) as a shuffled queue. None unless the request says
+        cały/wszystko or is a bare something-request."""
+        if not self.tracks:
+            return None
+        if not (_ALL_RE.search(query) or _fold(query).strip() in _RANDOM_WORDS):
+            return None
+        q = _tokens(_FILLER_RE.sub(" ", _ALL_RE.sub(" ", query))) - _RANDOM_WORDS
+        if q:
+            pool = [t for t in self.tracks
+                    if (q <= t._artist and t._artist) or (q <= t._folder and t._folder)]
+        else:
+            pool = list(self.tracks)
+        return self._shuffled_queue(pool) if pool else None
+
+    def resolve_artist(self, query: str) -> list[Track] | None:
+        """A query that names an ARTIST (or their band folder) → ALL their
+        tracks as a shuffled queue (decision 2026-07-27: artist and album
+        requests play everything until "stop", not one surprise track)."""
+        q = _tokens(_FILLER_RE.sub(" ", query))
+        if not q or not self.tracks:
+            return None
+        pool = [t for t in self.tracks
+                if (q <= t._artist and t._artist) or (q <= t._folder and t._folder)]
+        if len(pool) < 2:
+            return None  # zero/one hit is a track request, not an artist's catalogue
+        return self._shuffled_queue(pool)
+
     def resolve_album(self, query: str) -> list[Track] | None:
         """The ordered tracks of the ALBUM the query names, or None when the
         query isn't an album-level request. A bare artist name stays a
@@ -135,7 +191,7 @@ class MusicDirectory:
         album, so matches are grouped by their on-disk folder and the most
         complete single rip wins; the index has no track numbers but the rip
         filenames carry them ("01 …", "09 …") → filename order is album order."""
-        q = _tokens(query)
+        q = _tokens(_FILLER_RE.sub(" ", query))
         if not q or _fold(query).strip() in _RANDOM_WORDS:
             return None
         if any(q <= t._artist and t._artist for t in self.tracks):

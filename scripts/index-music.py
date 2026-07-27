@@ -23,6 +23,30 @@ from pathlib import Path
 AUDIO_EXT = {".mp3", ".flac", ".m4a", ".ogg", ".opus", ".aac"}
 _TRACK_PREFIX = re.compile(r"^\s*\d{1,3}\s*[-.\)]?\s+")  # "01 ", "01. ", "01-"
 
+_PL_LETTERS = set("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ")
+# What a broken round-trip produces: replacement chars and C1 controls.
+_GARBAGE = {"�"} | {chr(i) for i in range(0x80, 0xA0)}
+
+
+def demojibake(s: str) -> str:
+    """Repair cp1250 tags mis-decoded as latin-1/cp1252 by old rippers —
+    "Przekleñstwo" → "Przekleństwo", "Go\\x9ccie" → "Goście". The reverse
+    round-trip is accepted only when it yields MORE Polish letters and no new
+    garbage, so already-correct tags pass through untouched. Best-effort: tags
+    mangled beyond these two encodings come back unchanged."""
+    if not s or s.isascii():
+        return s
+    best = s
+    for enc in ("latin-1", "cp1252"):
+        try:
+            fixed = s.encode(enc).decode("cp1250")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+        if _GARBAGE.isdisjoint(fixed) and (
+                sum(c in _PL_LETTERS for c in fixed) > sum(c in _PL_LETTERS for c in best)):
+            best = fixed
+    return best
+
 
 def probe_tags(path: Path) -> dict[str, str]:
     try:
@@ -34,7 +58,10 @@ def probe_tags(path: Path) -> dict[str, str]:
         tags = (json.loads(out.stdout or "{}").get("format", {}) or {}).get("tags", {}) or {}
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
         tags = {}
-    return {k.lower(): str(v).strip() for k, v in tags.items()}
+    # Repair mojibake; a tag ffprobe already lost bytes on (U+FFFD) is dropped
+    # entirely so `derive` falls back to the (clean) filename/folder instead.
+    return {k.lower(): demojibake(str(v).strip()) for k, v in tags.items()
+            if "�" not in str(v)}
 
 
 def _track_no(tags: dict[str, str], path: Path) -> tuple[int, int]:
@@ -60,8 +87,15 @@ def derive(path: Path, src: Path, tags: dict[str, str]) -> dict[str, object]:
     rel_parts = path.relative_to(src).parts
     folder = rel_parts[-2] if len(rel_parts) >= 2 else ""
     title = tags.get("title") or fn_title
-    artist = tags.get("artist") or tags.get("album_artist") or fn_artist or folder
     album = tags.get("album") or folder
+    artist = tags.get("artist") or tags.get("album_artist") or fn_artist
+    # Folder as last-resort artist ONLY when it isn't just the album again — an
+    # album-titled folder says nothing about who plays, and an "artist" equal to
+    # the album name makes the resolver treat album requests as artist requests
+    # (live 2026-07-27: dropped FFFD artist tags → artist="ballady mordercow" →
+    # "zagraj ballady morderców" shuffled instead of playing in order).
+    if not artist and folder != album:
+        artist = folder
     disc, track = _track_no(tags, path)
     return {"title": title, "artist": artist, "album": album, "disc": disc, "track": track}
 

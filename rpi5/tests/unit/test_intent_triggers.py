@@ -150,3 +150,51 @@ def test_laptop_does_not_stop_radio():
     # \b keeps the s?top stem from firing mid-word.
     assert not _matches("radio_stop", "podaj mi laptopa z biurka")
     assert not _matches("radio_stop", "hand me the laptop", lang="en")
+
+
+# -- track nav: whisper's trailing punctuation broke the ^…$ anchors (2026-07-27)
+@pytest.mark.parametrize("cmd", [
+    "Jessica, następny.",   # the live transcript that fell through to LLM chat
+    "Jessica? Następny.",   # "?" after the wake word broke the [\s,]+ prefix
+    "Jessica, następny!",
+    "następny.",
+])
+def test_next_survives_whisper_punctuation(cmd):
+    assert _matches("music_next", cmd)
+
+
+@pytest.mark.parametrize("cmd", ["Jessica, poprzedni.", "Jessica? Poprzedni.", "poprzedni."])
+def test_prev_survives_whisper_punctuation(cmd):
+    assert _matches("music_prev", cmd)
+
+
+# -- shuffle + now-playing (2026-07-27) ----------------------------------------
+@pytest.mark.parametrize("cmd", [
+    "Jessica, tasuj.", "Jessica, przetasuj!", "przetasuj", "pomieszaj utwory",
+    "Jessica? Tasuj.",
+])
+def test_shuffle_commands_match(cmd):
+    assert _matches("music_shuffle", cmd)
+
+
+def test_shuffle_stays_whole_utterance():
+    # Anchored like track nav — a keyword buried in ambient prose must not fire.
+    assert not _matches("music_shuffle", "musisz przetasować karty zanim zaczniemy grę")
+
+
+@pytest.mark.parametrize("cmd", [
+    "co teraz gra?", "Jessica, co gra?", "co to za piosenka", "jaki to utwór",
+    "co leci teraz",
+])
+def test_now_playing_questions_match(cmd):
+    assert _matches("music_now_playing", cmd)
+
+
+@pytest.mark.parametrize("cmd", ["shuffle", "shuffle the queue"])
+def test_english_shuffle_matches(cmd):
+    assert _matches("music_shuffle", cmd, lang="en")
+
+
+@pytest.mark.parametrize("cmd", ["what's playing", "what song is this"])
+def test_english_now_playing_matches(cmd):
+    assert _matches("music_now_playing", cmd, lang="en")

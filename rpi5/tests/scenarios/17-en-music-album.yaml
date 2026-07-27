@@ -29,6 +29,16 @@ turns:
       player_state: playing
       player_queue_index: 1
 
+  - user: "jessica, what's playing?"
+    expect:
+      assistant_says_any: ["playing", "from the album"]
+      player_state: playing
+
+  - user: "jessica, shuffle"
+    expect:
+      assistant_says_any: ["shuffled", "next up"]
+      player_state: playing
+
   - user: "jessica stop"
     expect:
       player_state: stopped

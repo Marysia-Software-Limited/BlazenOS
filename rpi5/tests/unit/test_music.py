@@ -76,21 +76,43 @@ def test_album_tag_alone_is_enough(music):
         "Wewnetrzne sprawy", "Piosenka mlodych wioslarzy"]
 
 
-def test_artist_request_stays_a_random_track(music):
-    # "zagraj Kazika" must keep surprising — no queue for a bare artist.
-    assert music.resolve_album("kazika") is None
-    t = music.resolve("kazika")
-    assert t is not None and "Kazik" in t.artist  # pools Kazik AND Kazik Staszewski
+def test_artist_request_queues_their_whole_catalogue_shuffled(music):
+    # Decision 2026-07-27: "zagraj Kazika" plays EVERYTHING of the artist
+    # until "stop" — a shuffled queue, deduped across duplicate rips.
+    assert music.resolve_album("kazika") is None  # not an album-level match
+    q = music.resolve_artist("kazika")
+    assert q is not None
+    titles = [t.title for t in q]
+    assert sorted(set(titles)) == sorted(titles)  # duplicate rips deduped
+    assert set(titles) == {"Wewnetrzne sprawy", "Piosenka mlodych wioslarzy", "Henry Lee"}
 
 
-def test_random_words_never_queue(music):
-    assert music.resolve_album("coś") is None
-    assert music.resolve_album("") is None
+def test_explicit_all_request_queues(music):
+    # "zagraj całego Kazika" — same catalogue queue via the explicit modifier.
+    q = music.resolve_all("całego kazika")
+    assert q is not None and len(q) == 3
+    # "zagraj wszystko" → the whole library, shuffled + deduped.
+    lib = music.resolve_all("wszystko")
+    assert lib is not None and len(lib) >= 6
+
+
+def test_something_request_shuffles_the_library(music):
+    # "zagraj coś" keeps playing until "stop" too — a library shuffle,
+    # not one random track.
+    q = music.resolve_all("coś")
+    assert q is not None and len(q) >= 6
+
+
+def test_album_filler_word_is_stripped(music):
+    # "zagraj album ballady morderców" — "album" is filler, not the name.
+    q = music.resolve_album("album ballady morderców")
+    assert q is not None and len(q) == 3
 
 
 def test_single_track_match_is_not_an_album(music):
     # A title that happens to sit in a folder alone is a track, not a queue.
     assert music.resolve_album("istny cud") is None
+    assert music.resolve_artist("istny cud") is None
 
 
 def test_tools_album_payload_is_an_ordered_playlist(music):
@@ -104,7 +126,42 @@ def test_tools_album_payload_is_an_ordered_playlist(music):
     assert "ballady morderców" in r.text and "3 utwory" in r.text
 
 
-def test_tools_artist_payload_stays_single_track(music):
+def test_tools_artist_payload_is_a_shuffled_playlist(music):
     r = Tools(music=music).music_play("kazika", "pl")
     assert r.action == "music_play"
+    assert r.payload["is_playlist"] is True and len(r.payload["chapters"]) == 3
+    assert "losowej" in r.text  # shuffled confirmation, count included
+
+
+def test_tools_title_payload_stays_single_track(music):
+    r = Tools(music=music).music_play("istny cud", "pl")
+    assert r.action == "music_play"
     assert "is_playlist" not in r.payload and "chapters" not in r.payload
+
+
+def test_indexer_demojibake_repairs_cp1250_tags():
+    # The indexer un-mangles cp1250 tags mis-decoded as latin-1/cp1252 by old
+    # rippers, and leaves clean/foreign text alone.
+    import importlib.util
+    repo = Path(__file__).resolve().parents[3]
+    spec = importlib.util.spec_from_file_location("index_music", repo / "scripts" / "index-music.py")
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    fix = mod.demojibake
+    assert fix("Przekleñstwo Millhoven") == "Przekleństwo Millhoven"
+    assert fix("Kinga Preis & Mariusz Drê¿ka") == "Kinga Preis & Mariusz Drężka"
+    assert fix("Spalaj Siê") == "Spalaj Się"
+    assert fix("Go\x9ccie") == "Goście"
+    assert fix("Przekleństwo") == "Przekleństwo"  # already correct → untouched
+    assert fix("Boże, coś Polskę") == "Boże, coś Polskę"
+    assert fix("plain ascii") == "plain ascii"
+    # Artist fallback must NOT become the album name (an album-titled folder
+    # says nothing about who plays; live 2026-07-27 it turned album requests
+    # into shuffled artist requests).
+    src = Path("/lib")
+    d = mod.derive(src / "Ballady Morderców" / "01 Song.mp3", src, {})
+    assert d["album"] == "Ballady Morderców" and d["artist"] == ""
+    d = mod.derive(src / "kazik" / "01 Wewnetrzne sprawy.mp3", src,
+                   {"album": "Tata Kazika"})
+    assert d["artist"] == "kazik"  # band folder still stands in for a lost tag

@@ -268,21 +268,34 @@ The on-device library lives under `/var/lib/blazen/music/` and is indexed into
 `scripts/index-music.py`; `BLAZEN_MUSIC_INDEX` overrides the index path.
 Matching is accent-folded and lightly stemmed, so messy ID3 tags and Polish
 inflection both resolve ("ballady morderców" hits `ballady mordercow` and
-mojibake tag variants alike). What a request plays (2026-07-21):
+mojibake tag variants alike; the indexer also repairs cp1250 tags mis-decoded
+as latin-1/cp1252 — "Przekleñstwo" → "Przekleństwo" — so spoken announcements
+stay clean). What a request plays (decision 2026-07-27: album and artist
+requests play **everything until "stop"**, not one surprise track):
 
-- **Artist or title** — "zagraj Kazika" plays a **random** track of that
-  artist; "następny/zagraj inny" draws another from the same pool.
-- **Album** — a query that names an album (ID3 tag or album folder) and *not*
-  an artist queues the **whole album in track order**: "zagraj ballady
-  morderców" → "Gram album ballady morderców — 11 utworów.", then each track
-  auto-advances on the previous one's natural end and "Koniec albumu." closes
-  the set. The library may hold several rips of one album; the most complete
-  single rip wins (never a mix), ordered by the numbered filenames. While an
-  album plays, "następny/poprzedni" steps the queue (bounds are spoken: "To
-  ostatni utwór albumu."), "stop" halts it, "kontynuj" resumes at the current
-  track, and — unlike audiobooks — there is **no** "Czy jeszcze słuchasz?"
-  attention check and no speech compression (music DSP only).
-- **Neither** — falls through to semantic search ("coś spokojnego").
+- **Album** — a query that names an album (ID3 tag or album folder; "album/
+  płytę" filler words are stripped) queues the **whole album in track order**
+  (ID3 disc/track numbers, falling back to numbered filenames): "zagraj
+  ballady morderców" → "Gram album ballady morderców — 10 utworów.", each
+  track auto-advances on the previous one's natural end, "Koniec albumu."
+  closes the set. The library may hold several rips of one album; the most
+  complete single rip wins, tie-broken toward the better-tagged one (never a
+  mix).
+- **Artist** — "zagraj Kazika" queues the artist's **whole catalogue,
+  shuffled**, deduped across duplicate rips; "zagraj całego Kazika" /
+  "zagraj wszystko" / "zagraj coś" likewise queue (the last two over the whole
+  library). Queues cap at 500 tracks.
+- **Title** — a single track, as before. Anything else falls through to
+  semantic search ("coś spokojnego").
+
+While a queue plays: "następny/poprzedni" steps it (whisper's trailing
+punctuation — "Jessica, następny." — is tolerated; bounds are spoken: "To
+ostatni utwór albumu."), "tasuj/przetasuj" reshuffles the remaining queue and
+names what comes next, "co teraz gra?" answers with track/album/position,
+"stop" halts, "kontynuj" resumes at the current track. Spoken answers during
+playback pause the stream at its offset and resume it right after (one Jabra
+PCM). Unlike audiobooks there is **no** "Czy jeszcze słuchasz?" attention
+check and no speech compression (music DSP only).
 
 ## Personal memory + semantic recall (`embeddings.yaml`)
 
