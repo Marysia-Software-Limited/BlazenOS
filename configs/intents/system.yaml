@@ -680,12 +680,30 @@ intents:
     action: tool_call
     tool: context.set_name
 
+  # BEFORE remember_note: "zapisz notatkę głosową" must start a dictation
+  # capture, not store the literal words "notatkę głosową" as a note. The
+  # orchestrator answers this intent itself (speaks the prompt, frees the
+  # speaker, touches the ASR's memo-capture marker) — no dispatcher tool.
+  - name: voice_memo_record
+    triggers:
+      # Anchored: the memo noun ends the utterance ("nagraj notatkę (głosową)"),
+      # so "zapisz notatkę o zakupach" (content given inline) still falls
+      # through to remember_note below.
+      pl:
+        - "\\b(nagraj|zostaw|zapisz)\\b.*\\b(notatk\\w*|nagranie|wiadomo(ś|s)(ć|c))( g(ł|l)osow\\w*)?[\\s.?!…]*$"
+      en:
+        - "\\b(record|leave|save)\\b.*\\b(voice\\s+)?(note|memo|message)[\\s.?!…]*$"
+    action: tool_call
+    tool: context.record_memo
+
   - name: remember_note
     triggers:
+      # [\s,:]+ — whisper writes "zapamiętaj, że …"; the bare \s+ never crossed
+      # the comma, so the fast path missed and the memory took the slow brain hop.
       pl:
-        - "(?:zapami(ę|e)taj|zapisz)\\s+(?:(?:że|ze|to|:|,)\\s+)?(?P<text>.+)"
+        - "(?:zapami(ę|e)taj|zapisz)[\\s,:]+(?:(?:że|ze|to|:|,)\\s+)?(?P<text>.+)"
       en:
-        - "remember\\s+(?:that\\s+)?(?P<text>.+)"
+        - "remember[\\s,:]+(?:that\\s+)?(?P<text>.+)"
     action: tool_call
     tool: context.remember
 
@@ -771,6 +789,28 @@ intents:
   # track nav, but a real short command still does. See test_intent_triggers.
   # The wake prefix tolerates the punctuation whisper writes after the name
   # ("Jessica? Następny." / "Jessica, następny.") and the tail eats trailing
+  # Voice memos — BEFORE the music/radio block: "odtwórz/puść notatki" must
+  # queue the user's own recordings, not resolve as a music query. Playback
+  # rides the album engine (auto-advance, następny/poprzedni, stop).
+  - name: voice_memo_play
+    triggers:
+      pl:
+        - "\\b(odtw(ó|o)rz|ods(ł|l)uchaj|pu(ś|s)(ć|c))\\b.*\\b(moje\\s+)?(notatki|nagrania)( g(ł|l)osowe)?[\\s.?!…]*$"
+      en:
+        - "\\bplay\\b.*\\b(my\\s+)?(voice\\s+)?(notes|memos|recordings)[\\s.?!…]*$"
+    action: tool_call
+    tool: context.play_memos
+
+  # "Odtwórz (to) nagranie" — replay what the last memory search found.
+  - name: voice_memo_play_last
+    triggers:
+      pl:
+        - "\\b(odtw(ó|o)rz|ods(ł|l)uchaj|pu(ś|s)(ć|c))\\b\\s+(to\\s+)?nagranie[\\s.?!…]*$"
+      en:
+        - "\\bplay\\b\\s+(the\\s+|that\\s+)?recording[\\s.?!…]*$"
+    action: tool_call
+    tool: context.play_found
+
   # ".?!" — live 2026-07-27: 'Jessica, następny.' matched nothing and fell
   # through to LLM chat while the album kept playing.
   - name: music_prev
@@ -850,6 +890,20 @@ intents:
         - "(turn on|put on) (the )?radio(?:\\s+(?P<query>[a-z0-9 ]+))?"
     action: tool_call
     tool: radio.play
+
+  # SEMANTIC memory search — BEFORE library_search ("znajdź <q>" collides):
+  # "co zapisałem o filtrze?" searches the unified memory vector store (text
+  # notes + voice-memo transcripts); a voice hit offers to replay the wav.
+  - name: memory_search
+    triggers:
+      pl:
+        - "co\\s+(zapisa(ł|l)(em|am)|zanotowa(ł|l)(em|am)|nagra(ł|l)(em|am)|zapami(ę|e)ta(ł|l)(em|am))\\s+(?:o|na temat)\\s+(?P<query>.+)"
+        - "\\bznajd(ź|z)\\b\\s+w\\s+(notatkach|nagraniach|pami(ę|e)ci)\\s+(?P<query>.+)"
+      en:
+        - "what did i (save|note|record|remember) about\\s+(?P<query>.+)"
+        - "\\bsearch (my )?(notes|memos|memory) for\\s+(?P<query>.+)"
+    action: tool_call
+    tool: context.search_memory
 
   # SEMANTIC library search (music + audiobooks BY MEANING) — after the specific
   # play intents, so "poszukaj/znajdź <coś>" that isn't a station/książka/zagraj

@@ -42,6 +42,17 @@ class _FakeMemory:
     def set_profile(self, key: str, value: str, *, now: Any) -> None:
         self.profile[key] = value
 
+    def claim_last_clip(self, utterance_text: str, *, max_age_s: float = 15.0) -> None:
+        return None  # no ASR clip in unit tests → plain text-note path
+
+    def memory_items(self) -> list[Any]:
+        from blazend.domains.context.adapters.rpi5.memory import MemoryItem
+        return [MemoryItem(id=n.id, kind="note", text=n.text, title=n.title)
+                for n in self._notes]
+
+    def voice_notes(self) -> list[Any]:
+        return []
+
 
 class _Station:
     def __init__(self, sid: str, name: str, url: str) -> None:

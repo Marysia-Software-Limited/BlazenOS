@@ -1,10 +1,16 @@
 id: 11-en-voice-notes
 language: en
-description: Record a voice note and play stored notes back.
-tags: [voice-notes, en]
+description: |
+  EN parity for 11-pl-voice-notes (asset retained; runtime ships PL-only —
+  see docs/13-LANGUAGES.md). "Record a voice note" opens a dictation capture
+  (ends after ~1.5 s of silence, 60 s cap); the memo is stored as SOUND +
+  recognized TEXT (wav + transcript + e5 vector). "Play my voice notes"
+  plays the recordings as a queue on the album engine.
+tags: [voice-notes, memory, semantic, en]
 synth_voice: en_US-lessac-medium
 preconditions:
   audio.volume: 50
+  languages.enabled_includes: en
 turns:
   - user: "hey Jessica"
     expect:
@@ -13,12 +19,22 @@ turns:
 
   - user: "record a voice note"
     expect:
-      assistant_says_any: ["press", "button", "Go ahead"]
+      assistant_says_any: ["recording", "speak", "pause"]
       assistant_language: en
 
-  - user: "play my voice notes"
+  - inject: "dictation: buy a water filter on saturday"
     expect:
-      assistant_language: en
+      assistant_says_any: ["recorded your note", "water filter"]
+      memory_voice_note_saved: true
+
+  - user: "jessica, play my voice notes"
+    expect:
+      player_state: playing
+      player_queue_length_gt: 0
+
+  - user: "jessica stop"
+    expect:
+      player_state: stopped
 
 postconditions:
   no_unit_restarts: true

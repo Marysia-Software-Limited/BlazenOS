@@ -1,0 +1,43 @@
+id: 18-pl-memory-search
+language: pl
+description: |
+  Semantyczna baza wspomnień: "zapamiętaj, że …" zapisuje fakt jako TEKST i
+  jego własne NAGRANIE (klip rozpoznanej wypowiedzi z ASR); "co zapisałem o X"
+  przeszukuje zunifikowany indeks wektorowy (notatki + transkrypty nagrań,
+  e5 na CPU) i przy trafieniu głosowym proponuje odtworzenie oryginału;
+  "odtwórz nagranie" gra je. Pytania swobodne do LLM dostają trafione
+  wspomnienia w kontekście system-prompta — także dla modeli chmurowych.
+tags: [memory, semantic, rag, voice-notes, pl]
+synth_voice: pl_PL-gosia-medium
+preconditions:
+  audio.volume: 50
+turns:
+  - user: "hej Jessico"
+    expect:
+      wake_acknowledged: true
+      detected_language: pl
+
+  - user: "zapamiętaj, że filtr do wody wymieniłem w lipcu"
+    expect:
+      assistant_says_contains: "zapamiętałam"
+      memory_voice_note_saved: true   # the utterance clip was claimed
+
+  - user: "dżesika, co zapisałem o filtrze do wody?"
+    expect:
+      assistant_says_any: ["znalazłam", "filtr do wody", "lipcu"]
+      assistant_says_contains: "nagranie"   # replay offer for the voice hit
+
+  - user: "dżesika, odtwórz nagranie"
+    expect:
+      player_state: playing
+
+  - user: "dżesika stop"
+    expect:
+      player_state: stopped
+
+  - user: "dżesika, kiedy wymieniałem filtr do wody?"   # free-form → LLM + RAG
+    expect:
+      assistant_says_contains: "lipcu"
+
+postconditions:
+  no_unit_restarts: true

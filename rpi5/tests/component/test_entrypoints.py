@@ -137,7 +137,8 @@ class _FakeTranscriber:
 
 
 class _OneShotSub:
-    """Async-iterable subscriber that yields the given envelopes, then stops."""
+    """Subscriber fake: yields the given envelopes, then EOF. Mirrors the real
+    `Subscriber` protocol — async iteration AND `next()` (None = clean EOF)."""
 
     def __init__(self, envs: list[Envelope]) -> None:
         self._envs = iter(envs)
@@ -151,6 +152,12 @@ class _OneShotSub:
         except StopIteration:
             raise StopAsyncIteration from None
 
+    async def next(self) -> Envelope | None:
+        try:
+            return next(self._envs)
+        except StopIteration:
+            return None
+
 
 @pytest.mark.asyncio
 async def test_asr_real_loop_transcribes_and_publishes(monkeypatch, tmp_path):
@@ -159,6 +166,7 @@ async def test_asr_real_loop_transcribes_and_publishes(monkeypatch, tmp_path):
 
     monkeypatch.setattr(engine, "Transcriber", _FakeTranscriber)
     monkeypatch.setattr(asr_main, "runtime_dir", lambda: tmp_path)
+    monkeypatch.setenv("BLAZEN_DATA_DIR", str(tmp_path))  # clips land here
 
     async def fake_open_ring(_path, timeout=30.0):  # noqa: ANN001
         return _FakeRing()

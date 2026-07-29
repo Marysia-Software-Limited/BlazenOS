@@ -310,6 +310,7 @@ class Assistant:
         notes_min_score: float = 0.82,
         notes_rel_margin: float = 0.06,
         notes_max_chars: int = 1200,
+        notes_include_voice: bool = True,
     ):
         self.memory = memory or MemoryStore()
         self.gemini = gemini or GeminiClient()
@@ -337,6 +338,7 @@ class Assistant:
         self._notes_min_score = notes_min_score
         self._notes_rel_margin = notes_rel_margin
         self._notes_max_chars = notes_max_chars
+        self._notes_include_voice = notes_include_voice
         self.persona = persona
         self.awake = always_awake
         self._always_awake = always_awake
@@ -360,11 +362,22 @@ class Assistant:
                 self._recommender = None
         return self._recommender
 
-    # -- semantic note embeddings --------------------------------------
+    # -- semantic memory embeddings (text notes + voice-memo transcripts) --
     def _backfill_embeddings(self) -> None:
-        """Embed any pre-existing notes that lack a stored vector (one-time)."""
-        for note in self.memory.notes_missing_embeddings(model=self._embedder_model):
-            self._embed_note(note)
+        """Embed memories that lack a stored vector. Cheap when nothing is
+        missing, so callers may re-run it any time — the store revalidates
+        against the file's mtime, which makes memos recorded by OTHER
+        processes (ASR/orchestrator) searchable here without a restart."""
+        if not (self._embedder and self._embedder.available):
+            return
+        for item in self.memory.items_missing_embeddings(model=self._embedder_model):
+            blob = f"{item.title}. {item.text}" if item.title else item.text
+            try:
+                vector = self._embedder.embed([blob], kind="passage")[0]
+            except EmbedderError as e:
+                log.warning("memory embedding failed (%s); semantic recall degraded", e)
+                return
+            self.memory.set_note_embedding(item.id, vector, model=self._embedder_model)
 
     def _embed_note(self, note: Note) -> None:
         if not (self._embedder and self._embedder.available):
@@ -377,15 +390,22 @@ class Assistant:
             return
         self.memory.set_note_embedding(note.id, vector, model=self._embedder_model)
 
+    # A single voice-memo transcript can be a minute of speech — cap what one
+    # hit may spend of the prompt budget so it can't crowd out the others.
+    _VOICE_HIT_CHARS = 200
+
     def _notes_context(self, text: str, lang: str) -> str:
-        """Retrieve the user's notes relevant to ``text`` for the LLM prompt."""
+        """Retrieve the user's memories (notes + voice memos) relevant to
+        ``text`` for the LLM prompt — the local search whose results become
+        context for EVERY backend, external models included."""
         if not (self._embedder and self._embedder.available):
             return ""
+        self._backfill_embeddings()  # memos written by other processes join here
         try:
             qvec = self._embedder.embed([text], kind="query")[0]
         except EmbedderError:
             return ""
-        hits = self.memory.search_notes_semantic(
+        hits = self.memory.search_memory_semantic(
             qvec,
             limit=self._notes_top_k,
             min_score=self._notes_min_score,
@@ -398,10 +418,19 @@ class Assistant:
             " Zapisane notatki użytkownika (wykorzystaj, jeśli pomocne):",
             " The user's saved notes (use them if relevant):",
         )
+        voice_tag = _t(lang, "[nagranie głosowe]", "[voice memo]")
         budget = self._notes_max_chars
         parts: list[str] = []
-        for n in hits:
-            piece = f" [{n.title}] {n.text}" if n.title else f" {n.text}"
+        for h in hits:
+            if h.kind == "voice":
+                if not self._notes_include_voice:
+                    continue
+                body = h.text[: self._VOICE_HIT_CHARS].rstrip()
+                if len(h.text) > self._VOICE_HIT_CHARS:
+                    body += "…"
+                piece = f" {voice_tag} {body}"
+            else:
+                piece = f" [{h.title}] {h.text}" if h.title else f" {h.text}"
             if len(piece) > budget:
                 break
             parts.append(piece)
@@ -607,6 +636,17 @@ class Assistant:
         body = _REMEMBER_TAIL.sub("", body).strip()
         if not body:
             return Reply(_t(lang, "Co mam zapamiętać?", "What should I remember?"), lang, "wake")
+        # The ASR keeps a claimable clip of this very utterance — a claimed
+        # memory is stored as sound + text (VoiceNote), else a plain text note.
+        claimed = self.memory.claim_last_clip(body)
+        if claimed is not None:
+            vn = self.memory.add_voice_note(
+                claimed[0], now=now, duration_s=claimed[1], transcript=body)
+            self._backfill_embeddings()  # make it searchable immediately
+            return Reply(
+                _t(lang, f"Zapamiętałam: {body}.", f"Got it, I'll remember: {body}."),
+                lang, "note", {"id": vn.id, "text": body, "audio_path": vn.audio_path},
+            )
         title, content = _split_title_content(body)
         if title:
             note = self.memory.add_note(content, now=now, title=title)

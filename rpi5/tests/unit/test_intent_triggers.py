@@ -198,3 +198,70 @@ def test_english_shuffle_matches(cmd):
 @pytest.mark.parametrize("cmd", ["what's playing", "what song is this"])
 def test_english_now_playing_matches(cmd):
     assert _matches("music_now_playing", cmd, lang="en")
+
+
+# -- voice memos (2026-07-29) --------------------------------------------------
+@pytest.mark.parametrize("cmd", [
+    "Jessica, nagraj notatkę.", "nagraj notatkę głosową", "zostaw wiadomość",
+    "zapisz notatkę",
+])
+def test_voice_memo_record_matches(cmd):
+    assert _matches("voice_memo_record", cmd)
+
+
+def test_inline_note_content_still_goes_to_remember(cmd="zapisz notatkę o zakupach"):
+    # Content given inline is a TEXT note, not a dictation session.
+    assert not _matches("voice_memo_record", cmd)
+    assert _matches("remember_note", cmd)
+
+
+def test_zapamietaj_stays_remember():
+    assert not _matches("voice_memo_record", "zapamiętaj, że kod do bramy to cztery")
+    assert _matches("remember_note", "zapamiętaj, że kod do bramy to cztery")
+
+
+@pytest.mark.parametrize("cmd", ["record a voice note", "leave a message"])
+def test_english_voice_memo_record_matches(cmd):
+    assert _matches("voice_memo_record", cmd, lang="en")
+
+
+@pytest.mark.parametrize("cmd", [
+    "odtwórz notatki", "Jessica, odtwórz moje nagrania.", "puść notatki głosowe",
+])
+def test_voice_memo_play_matches(cmd):
+    assert _matches("voice_memo_play", cmd)
+
+
+def test_memo_play_does_not_hijack_music():
+    # "puść muzykę / trójkę" must stay music/radio.
+    assert not _matches("voice_memo_play", "puść muzykę")
+    assert not _matches("voice_memo_play", "puść trójkę")
+
+
+def test_play_found_recording_matches():
+    assert _matches("voice_memo_play_last", "odtwórz nagranie")
+    assert _matches("voice_memo_play_last", "Jessica, odtwórz to nagranie.")
+
+
+@pytest.mark.parametrize("cmd,query", [
+    ("co zapisałem o filtrze do wody", "filtrze do wody"),
+    ("co nagrałam o zakupach?", "zakupach?"),
+    ("znajdź w notatkach kod do bramy", "kod do bramy"),
+])
+def test_memory_search_matches_and_captures(cmd, query):
+    assert _matches("memory_search", cmd)
+    got = _named("memory_search", cmd, "query")
+    assert got is not None and got.rstrip(".?!") == query.rstrip(".?!")
+
+
+def test_memory_search_does_not_steal_library_search():
+    # bare "znajdź coś spokojnego" stays a library search
+    assert not _matches("memory_search", "znajdź coś spokojnego")
+    assert _matches("library_search", "znajdź coś spokojnego")
+
+
+@pytest.mark.parametrize("cmd", ["play my voice notes", "what did i save about the gate code",
+                                 "search my notes for wifi"])
+def test_english_memory_ux_matches(cmd):
+    assert (_matches("voice_memo_play", cmd, lang="en")
+            or _matches("memory_search", cmd, lang="en"))

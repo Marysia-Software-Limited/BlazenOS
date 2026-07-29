@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import wave
 from datetime import UTC, datetime
@@ -19,6 +20,7 @@ from pathlib import Path
 import numpy as np
 
 from blazend.config import load
+from blazend.domains.context.adapters.rpi5.memory import data_dir
 from blazend.domains.voice_input.adapters.rpi5.audio import RingReader
 from blazend.events import Envelope, system_event
 from blazend.ipc import Publisher, Subscriber, runtime_dir
@@ -34,6 +36,22 @@ log = logging.getLogger("blazend.domains.voice_input.adapters.rpi5.asr")
 _HARVEST_DIR = Path("/var/lib/blazen/wake-negatives")
 _HARVEST_KEEP = 200  # newest clips kept; ~160 KB each → ~32 MB cap
 
+# Rolling utterance clips: every SUCCESSFULLY transcribed post-wake window is
+# kept briefly (audio + its text in last.json) so a memory command spoken in the
+# same breath — "zapamiętaj, że …" — can claim its own recording and store the
+# memory as sound + text. Unclaimed clips just age out of the ring; nothing
+# leaves the device.
+_CLIPS_KEEP = 50
+
+
+def _write_wav(pcm: np.typing.ArrayLike, sample_rate: int, path: Path) -> None:
+    """Write mono 16-bit PCM as a wav file."""
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sample_rate)
+        w.writeframes(np.asarray(pcm, dtype=np.int16).tobytes())
+
 
 def _save_false_wake(pcm: np.typing.ArrayLike, sample_rate: int, kind: str,
                      root: Path = _HARVEST_DIR) -> Path | None:
@@ -46,17 +64,40 @@ def _save_false_wake(pcm: np.typing.ArrayLike, sample_rate: int, kind: str,
         root.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         path = root / f"{stamp}_{kind}.wav"
-        with wave.open(str(path), "wb") as w:
-            w.setnchannels(1)
-            w.setsampwidth(2)
-            w.setframerate(sample_rate)
-            w.writeframes(np.asarray(pcm, dtype=np.int16).tobytes())
+        _write_wav(pcm, sample_rate, path)
         for stale in sorted(root.glob("*.wav"))[:-_HARVEST_KEEP]:
             stale.unlink(missing_ok=True)
     except OSError as exc:
         log.debug("false-wake harvest failed: %s", exc)
         return None
     return path
+
+
+def _save_clip(pcm: np.typing.ArrayLike, sample_rate: int, text: str,
+               root: Path) -> None:
+    """Keep the just-transcribed utterance audio in the rolling clips dir and
+    point ``last.json`` at it. The remember tools claim the clip by matching
+    ``text`` against the utterance they're storing (a file handshake instead of
+    widening the closed asr.final schema). Best-effort — the voice path never
+    breaks over a failed clip save."""
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S%f")
+        path = root / f"clip-{stamp}.wav"
+        _write_wav(pcm, sample_rate, path)
+        marker = {
+            "path": str(path),
+            "text": text,
+            "duration_s": round(len(np.asarray(pcm)) / sample_rate, 1),
+            "ts": datetime.now(UTC).isoformat(),
+        }
+        tmp = root / "last.json.tmp"
+        tmp.write_text(json.dumps(marker, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(root / "last.json")
+        for stale in sorted(root.glob("clip-*.wav"))[:-_CLIPS_KEEP]:
+            stale.unlink(missing_ok=True)
+    except OSError as exc:
+        log.debug("clip save failed: %s", exc)
 
 
 MOCK_UTTERANCES = [
@@ -110,6 +151,84 @@ async def _connect(sock: Path) -> Subscriber:
         await asyncio.sleep(0.2)
 
 
+async def _capture_memo(
+    pub: Publisher,
+    ring: RingReader,
+    transcriber: object,
+    *,
+    speech_rms: float,
+    max_s: float = 60.0,
+    silence_s: float = 1.5,
+    lead_in_s: float = 8.0,
+) -> None:
+    """Dictation capture for a voice memo: record from NOW until ``silence_s``
+    of quiet after speech was heard (hard cap ``max_s``; abort if nothing is
+    said within ``lead_in_s``), transcribe the SAME pcm, persist the wav next
+    to memory.json and publish ``system.event kind=memo_recorded``.
+
+    The ring holds only a few seconds, so audio is accumulated incrementally —
+    reading the whole minute at the end would find it overwritten."""
+    sr = ring.sample_rate
+    tick_s = 0.2
+    chunks: list[np.ndarray] = []
+    last = ring.write_pos
+    heard = False
+    quiet_s = 0.0
+    total_s = 0.0
+    while True:
+        await asyncio.sleep(tick_s)
+        end = ring.write_pos
+        if end > last:
+            chunk = np.asarray(ring.read_range(last, end), dtype=np.int16)
+            last = end
+            chunks.append(chunk)
+            total_s += len(chunk) / sr
+            arr = chunk.astype(np.float64)
+            rms = float(np.sqrt((arr**2).mean())) if len(arr) else 0.0
+            if rms >= speech_rms:
+                heard = True
+                quiet_s = 0.0
+            elif heard:
+                quiet_s += len(chunk) / sr
+        if heard and quiet_s >= silence_s:
+            break
+        if total_s >= max_s:
+            break
+        if not heard and total_s >= lead_in_s:
+            break
+    if not heard or not chunks:
+        log.info("memo capture: no speech within %.0fs — aborting", lead_in_s)
+        await pub.publish(Envelope(
+            topic="error", source="blazend-asr",
+            data={"code": "asr.no_speech", "message": "memo capture empty"}))
+        return
+    pcm = np.concatenate(chunks)
+    duration_s = len(pcm) / sr
+    result = await asyncio.to_thread(transcriber.transcribe, pcm, sr)  # type: ignore[attr-defined]
+    try:
+        memos = data_dir() / "voice_notes"
+        memos.mkdir(parents=True, exist_ok=True)
+        path = memos / f"memo-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.wav"
+        _write_wav(pcm, sr, path)
+    except OSError as exc:
+        log.warning("memo wav save failed: %s", exc)
+        await pub.publish(Envelope(
+            topic="error", source="blazend-asr",
+            data={"code": "asr.memo_save_failed", "message": str(exc)}))
+        return
+    await pub.publish(Envelope(
+        topic="system.event", source="blazend-asr",
+        data={
+            "kind": "memo_recorded",
+            "audio_path": str(path),
+            "transcript": result.text,
+            "language": result.language or "pl",
+            "duration_s": round(duration_s, 1),
+            "confidence": round(result.confidence, 3),
+        }))
+    log.info("memo recorded %.1fs → %s (%r)", duration_s, path.name, result.text[:60])
+
+
 async def _real_loop(pub: Publisher) -> None:
     from blazend.domains.voice_input.adapters.rpi5.asr.engine import Transcriber
 
@@ -125,8 +244,12 @@ async def _real_loop(pub: Publisher) -> None:
     _cfg = load("asr")
     min_rms = float(_cfg.get("min_capture_rms", 200.0))
     min_rms_playing = float(_cfg.get("min_capture_rms_playing", 40.0))
+    memo_cfg = _cfg.get("memo_capture", {}) or {}
     harvest = bool(load("wake-word").get("harvest_false_wakes", True))
     speaker_busy = rt / "speaker-busy"
+    memo_marker = rt / "memo-capture"
+    memo_marker.unlink(missing_ok=True)  # stale marker from a crash mid-memo
+    clips_dir = data_dir() / "clips"
     transcriber = Transcriber()
     log.info("asr real path: model=%s ring=%dHz fixed-window=%.1fs",
              transcriber.model, ring.sample_rate, cap_s)
@@ -141,7 +264,33 @@ async def _real_loop(pub: Publisher) -> None:
     # spoken command follows it. Wait for the window to fill, then transcribe
     # [wake_pos, wake_pos + capture_window]. Documented design: wake-word.yaml
     # `capture_window_s` + voice/runner.py. (Ring must hold >= capture_window_s.)
-    async for env in sub:
+    #
+    # The wake wait is raced against the orchestrator's `memo-capture` marker:
+    # touching it switches this loop into one dictation capture (a voice memo,
+    # up to memo_capture.max_s, silence-terminated) and back.
+    while True:
+        env: Envelope | None = None
+        got_frame = True
+        try:
+            env = await asyncio.wait_for(sub.next(), timeout=0.2)
+        except TimeoutError:
+            got_frame = False  # just a poll tick
+        if memo_marker.exists():
+            memo_marker.unlink(missing_ok=True)
+            await _capture_memo(
+                pub, ring, transcriber,
+                # The user dictates deliberately (close mic, ducked speaker) —
+                # the idle command floor is the right speech threshold.
+                speech_rms=min_rms,
+                max_s=float(memo_cfg.get("max_s", 60.0)),
+                silence_s=float(memo_cfg.get("silence_s", 1.5)),
+                lead_in_s=float(memo_cfg.get("lead_in_s", 8.0)),
+            )
+            continue
+        if not got_frame:
+            continue
+        if env is None:  # publisher EOF — exit like the old async-for did
+            return
         if env.topic != "wake.detected":
             continue
         # Ignore wakes that fire while Jessica is speaking her own reply: the TTS
@@ -202,6 +351,9 @@ async def _real_loop(pub: Publisher) -> None:
             continue
         result = await asyncio.to_thread(transcriber.transcribe, pcm, ring.sample_rate)
         if result.text:
+            # Keep the utterance audio briefly claimable: "zapamiętaj, że …"
+            # stores the memory as sound + text by picking this clip up.
+            _save_clip(pcm, ring.sample_rate, result.text, clips_dir)
             await pub.publish(
                 Envelope(
                     topic="asr.final",

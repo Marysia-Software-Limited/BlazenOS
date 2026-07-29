@@ -16,6 +16,14 @@ active: small                          # 8 GB baked default (medium needs 16 GB 
 # command over the ducked radio lands at ~50-120, needing a much lower floor.
 min_capture_rms: 200
 min_capture_rms_playing: 40
+# Voice-memo dictation ("nagraj notatkę" — the orchestrator touches the
+# memo-capture marker): record until `silence_s` of quiet after speech was
+# heard, hard cap `max_s`; abort if nothing is said within `lead_in_s`. The
+# memo is stored as BOTH the wav and its transcript (semantic memory DB).
+memo_capture:
+  max_s: 60
+  silence_s: 1.5
+  lead_in_s: 8
 backend: faster-whisper
 compute_type: int8                     # int8 | int8_float32 | float16 (Hailo path overrides)
 beam_size: 5                           # push-to-talk → one short utterance at a time, so the

@@ -1,0 +1,38 @@
+id: 18-en-memory-search
+language: en
+description: |
+  EN parity for 18-pl-memory-search (asset retained; runtime ships PL-only —
+  see docs/13-LANGUAGES.md). "Remember that …" stores the fact as TEXT plus
+  its own RECORDING; "what did I save about X" searches the unified vector
+  memory and offers to replay a voice hit; free-form questions get the
+  matching memories injected into every model's system prompt.
+tags: [memory, semantic, rag, voice-notes, en]
+synth_voice: en_US-lessac-medium
+preconditions:
+  audio.volume: 50
+  languages.enabled_includes: en
+turns:
+  - user: "hey Jessica"
+    expect:
+      wake_acknowledged: true
+      detected_language: en
+
+  - user: "remember that I changed the water filter in July"
+    expect:
+      assistant_says_contains: "remember"
+      memory_voice_note_saved: true
+
+  - user: "jessica, what did I save about the water filter?"
+    expect:
+      assistant_says_any: ["found", "water filter", "july"]
+
+  - user: "jessica, play the recording"
+    expect:
+      player_state: playing
+
+  - user: "jessica stop"
+    expect:
+      player_state: stopped
+
+postconditions:
+  no_unit_restarts: true

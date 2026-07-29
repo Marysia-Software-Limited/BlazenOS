@@ -454,9 +454,11 @@ def build_runner(
     APA102 status LED is opened here (no-op when SPI is absent). `radio` is the
     caller's stream player (it owns the ALSA device); defaults to a no-op."""
     from blazend.config import load
+    from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.context_wiring import (
+        notes_context_wiring,
+    )
     from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.gemini import GeminiClient
     from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.openai import OpenAiClient
-    from blazend.domains.context.adapters.rpi5.embeddings import Embedder
     from blazend.domains.context.adapters.rpi5.memory import MemoryStore
     from blazend.domains.local_ai.adapters.rpi5.localllm import LocalLlm
     from blazend.domains.systems.adapters.rpi5.led_hw import open_status_led
@@ -464,20 +466,19 @@ def build_runner(
 
     data_dir = os.environ.get("BLAZEN_DATA_DIR")
     memory = MemoryStore(Path(data_dir) / "memory.json" if data_dir else None)
-    # On-device semantic note recall. Falls back to lexical (embedder=None) when
-    # disabled in config or when the model/deps are absent (Embedder.available).
-    emb_cfg = load("embeddings")
-    nc = emb_cfg.get("notes_context", {}) or {}
-    embedder = Embedder(config=emb_cfg) if nc.get("enabled", True) else None
+    # On-device semantic note recall — shared wiring with the live brain
+    # (context_wiring.py). Falls back to lexical when disabled/absent.
+    wiring = notes_context_wiring()
     # The Rust wake unit has already gated on "Hej Jessico", so a captured
     # utterance is by definition addressed to Jessica → always_awake.
     brain = Assistant(
         memory=memory, gemini=GeminiClient(), llm=LocalLlm(),
-        openai=OpenAiClient(), embedder=embedder, always_awake=True,
-        notes_top_k=int(nc.get("top_k", 4)),
-        notes_min_score=float(nc.get("min_score", 0.82)),
-        notes_rel_margin=float(nc.get("rel_margin", 0.06)),
-        notes_max_chars=int(nc.get("max_chars", 1200)),
+        openai=OpenAiClient(), embedder=wiring.embedder, always_awake=True,
+        notes_top_k=wiring.top_k,
+        notes_min_score=wiring.min_score,
+        notes_rel_margin=wiring.rel_margin,
+        notes_max_chars=wiring.max_chars,
+        notes_include_voice=wiring.include_voice,
     )
     if capture_s is None:
         capture_s = float(

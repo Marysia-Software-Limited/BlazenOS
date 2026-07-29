@@ -297,17 +297,40 @@ playback pause the stream at its offset and resume it right after (one Jabra
 PCM). Unlike audiobooks there is **no** "Czy jeszcze słuchasz?" attention
 check and no speech compression (music DSP only).
 
-## Personal memory + semantic recall (`embeddings.yaml`)
+## Personal memory + semantic recall (`embeddings.yaml`, `asr.yaml memo_capture`)
 
-Jessica remembers **titled, long-form notes** dictated by voice — say
-*"zapamiętaj: \<tytuł\>. \<treść…\>"* / *"remember: \<title\>. \<content…\>"*
-(hold the HAT button for a long body; the one-shot form works for short notes).
-Each note is stored in `memory.json` (text + `title`) on the SD card, and is
-**embedded once** so that later questions retrieve the relevant notes and inject
-them into the LLM's system prompt — the same `system=` seam covers the local
-LLM, OpenAI and Gemini. See `docs/12-ML-ACCELERATOR.md` for the model on the CPU
-path; a body with no sentence break stays a single untitled note (the original
-behaviour).
+Jessica keeps a **semantic database of memories** — every memory is stored as
+**recognized text** and, where it was spoken, as **its own audio recording**,
+in one on-device vector store (2026-07-29):
+
+- **Quick facts** — *"zapamiętaj, że filtr wymieniłem w lipcu"*: the fact is
+  stored as text AND the ASR's clip of that very utterance is claimed as its
+  recording (a rolling `<data>/clips/` handshake; unclaimed clips age out).
+  Titled long-form notes (*"zapamiętaj: \<tytuł\>. \<treść…\>"*) still work.
+- **Dictated voice memos** — *"nagraj notatkę (głosową)"*: the orchestrator
+  frees the speaker, prompts "Nagrywam — mów, skończę po chwili ciszy.", and
+  the ASR records until ~1.5 s of silence (cap 60 s; `asr.yaml memo_capture:
+  {max_s, silence_s, lead_in_s}`), transcribes the SAME audio, saves the wav
+  under `<data>/voice_notes/` and reports back over `system.event
+  kind=memo_recorded`; the confirmation reads the first words back.
+- **Recall** — *"co zapisałem o \<X\>?"* / *"znajdź w notatkach \<X\>"*
+  searches the unified index (numpy cosine over e5 vectors, milliseconds);
+  a voice-memo hit offers *"odtwórz nagranie"*, which replays the user's own
+  voice. *"Odtwórz notatki"* plays the newest memos as a queue on the album
+  engine (auto-advance, następny/poprzedni, stop). *"Co pamiętasz"* lists
+  notes and memo transcripts together.
+- **Context for every model** — questions retrieve the relevant memories and
+  inject them into the LLM's system prompt; the same `system=` seam covers the
+  local Bielik, Ollama, OpenAI, Gemini and mesh peers, so the **local search
+  result becomes context for external models** too. Voice hits are labelled
+  `[nagranie głosowe]` and capped ~200 chars each; disable them with
+  `notes_context.include_voice_memos: false`.
+
+Everything lives under `BLAZEN_DATA_DIR` (`/var/lib/blazen/data` in the
+units — the store must NOT default under `/run/blazen`, which is tmpfs and
+loses every memory on reboot). `memory.json` + the wavs sync across nodes via
+the context-sync snapshot; vectors are re-embedded lazily per node, and replay
+is offered only where the wav file actually exists.
 
 The embedder (`blazend.domains.context.adapters.rpi5.embeddings.Embedder`) loads the ONNX model
 named by `embeddings.yaml active_model` via `onnxruntime` + a `tokenizers` fast

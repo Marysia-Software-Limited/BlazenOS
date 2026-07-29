@@ -17,6 +17,8 @@ Group=blazen
 WorkingDirectory=/usr/lib/blazen
 Environment=PYTHONPATH=/usr/lib/blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
+# Persistent memory store (shared with brain — see blazend-brain.service).
+Environment=BLAZEN_DATA_DIR=/var/lib/blazen/data
 # Cloud opt-in keys (OpenAI for live news, etc.) — the fast-path tool dispatcher
 # runs here, so it needs the same secrets the brain gets. Missing file is fine (-).
 EnvironmentFile=-/etc/blazen/secrets.env

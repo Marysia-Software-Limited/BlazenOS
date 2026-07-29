@@ -21,6 +21,9 @@ from datetime import datetime
 from pathlib import Path
 
 from blazend.config import load
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.context_wiring import (
+    notes_context_wiring,
+)
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import Assistant, Reply
 from blazend.domains.ai_orchestrator.core.registry import build_model_router
 from blazend.events import Envelope, system_event
@@ -160,7 +163,17 @@ async def run(mock: bool) -> None:
     # backend selection + graceful fallback; the engine degrades to Gemini/canned
     # if the router (or every backend) is unavailable.
     router = build_model_router()
-    await serve(Assistant(always_awake=not require_wake, router=router))
+    # Semantic memory recall (shared wiring with the legacy runner): without
+    # this the live brain silently ran lexical-only recall — saved notes never
+    # reached the LLM prompts.
+    wiring = notes_context_wiring()
+    await serve(Assistant(
+        always_awake=not require_wake, router=router,
+        embedder=wiring.embedder,
+        notes_top_k=wiring.top_k, notes_min_score=wiring.min_score,
+        notes_rel_margin=wiring.rel_margin, notes_max_chars=wiring.max_chars,
+        notes_include_voice=wiring.include_voice,
+    ))
 
 
 def main() -> None:

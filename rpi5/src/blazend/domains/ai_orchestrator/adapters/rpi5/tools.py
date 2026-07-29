@@ -18,6 +18,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.audiobook_progress import (
@@ -44,6 +45,7 @@ from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.weather import (
     WeatherError,
     describe_code,
 )
+from blazend.domains.context.adapters.rpi5.embeddings import EmbedderError
 from blazend.domains.context.adapters.rpi5.memory import MemoryStore
 from blazend.domains.context.adapters.rpi5.timeparse import parse_when
 
@@ -72,6 +74,15 @@ def _pl_tracks(n: int) -> str:
     if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
         return f"{n} utwory"
     return f"{n} utworów"
+
+
+def _pl_memos(n: int) -> str:
+    """Polish plural for voice notes: 1 nagranie, 2-4 nagrania, 5+ nagrań."""
+    if n == 1:
+        return "1 nagranie"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return f"{n} nagrania"
+    return f"{n} nagrań"
 
 
 # Reminder parsing helpers (ported from the engine). The NLU strips the trigger
@@ -176,6 +187,12 @@ class Tools:
         """Route a ``tool`` name + ``args`` to its handler."""
         if tool == "context.recall":
             return self.recall_notes(lang)
+        if tool == "context.search_memory":
+            return self.search_memory(str(args.get("query", "")), lang)
+        if tool == "context.play_memos":
+            return self.play_memos(lang)
+        if tool == "context.play_found":
+            return self.play_found_memo(lang)
         if tool == "context.recall_reminders":
             return self.recall_reminders(lang)
         if tool == "context.remember":
@@ -212,11 +229,89 @@ class Tools:
 
     # -- context -----------------------------------------------------------
     def recall_notes(self, lang: str) -> ToolResult:
-        notes = self.memory.notes()
-        if not notes:
+        # One memory, whatever its form: text notes + transcribed voice memos.
+        items = self.memory.memory_items()
+        if not items:
             return ToolResult(True, _t(lang, "Nic jeszcze nie zapisałam.", "I haven't noted anything yet."), "recall")
-        lines = "; ".join(n.text for n in notes[-10:])
-        return ToolResult(True, _t(lang, f"Pamiętam: {lines}.", f"I remember: {lines}."), "recall", {"count": len(notes)})
+        lines = "; ".join(i.text for i in items[-10:])
+        return ToolResult(True, _t(lang, f"Pamiętam: {lines}.", f"I remember: {lines}."), "recall", {"count": len(items)})
+
+    def _memory_embedder(self) -> Any:
+        """Lazy on-device e5 embedder for explicit memory search (same wiring
+        as the brain's recall; the ONNX model loads on first embed only)."""
+        if not hasattr(self, "_embedder_cache"):
+            from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.context_wiring import (
+                notes_context_wiring,
+            )
+            self._wiring = notes_context_wiring()
+            self._embedder_cache = self._wiring.embedder
+        return self._embedder_cache
+
+    def search_memory(self, query: str, lang: str) -> ToolResult:
+        """"Co zapisałem o X?" — semantic search over the unified memory
+        (notes + voice-memo transcripts), lexical fallback when the embedder
+        is absent. A voice-memo hit stashes its wav so "odtwórz nagranie"
+        replays the user's own recording."""
+        q = query.strip(" ,.?!")
+        if not q:
+            return ToolResult(True, _t(lang, "O czym mam poszukać?", "Search for what?"), "recall")
+        hits = []
+        emb = self._memory_embedder()
+        if emb is not None and emb.available:
+            try:
+                qvec = emb.embed([q], kind="query")[0]
+                hits = self.memory.search_memory_semantic(
+                    qvec, limit=3,
+                    min_score=self._wiring.min_score,
+                    rel_margin=self._wiring.rel_margin,
+                )
+            except EmbedderError:
+                hits = []
+        if not hits:  # CPU-contract fallback: plain substring recall
+            folded = q.casefold()
+            hits = [i for i in self.memory.memory_items()
+                    if folded in i.text.casefold() or folded in i.title.casefold()][:3]
+        if not hits:
+            return ToolResult(
+                True, _t(lang, f"Nie znalazłam nic o: {q}.", f"I found nothing about {q}."),
+                "recall", {"query": q, "hits": 0})
+        lines = "; ".join(h.text for h in hits)
+        spoken = _t(lang, f"Znalazłam: {lines}.", f"I found: {lines}.")
+        voice_paths = [h.audio_path for h in hits
+                       if h.kind == "voice" and h.audio_path and Path(h.audio_path).exists()]
+        self._found_memo_paths = voice_paths
+        if voice_paths:
+            spoken += _t(lang, " Mam też nagranie — powiedz „odtwórz nagranie”.",
+                         " I also have the recording — say “play the recording”.")
+        return ToolResult(True, spoken, "recall",
+                          {"query": q, "hits": len(hits), "voice_hits": len(voice_paths)})
+
+    def _memo_queue(self, paths: list[str], lang: str) -> ToolResult:
+        n = len(paths)
+        return ToolResult(
+            True,
+            _t(lang, f"Odtwarzam {_pl_memos(n)}.", f"Playing {n} voice note{'s' if n != 1 else ''}."),
+            "music_play", {
+                "path": paths[0], "name": _t(lang, "notatki głosowe", "voice notes"),
+                "is_playlist": True, "chapters": paths, "chapter": 0,
+            })
+
+    def play_memos(self, lang: str) -> ToolResult:
+        """"Odtwórz notatki" — the newest voice memos as a playlist queue (the
+        album engine drives playback: auto-advance, next/prev, stop)."""
+        paths = [v.audio_path for v in self.memory.voice_notes()
+                 if v.audio_path and Path(v.audio_path).exists()][-5:]
+        if not paths:
+            return ToolResult(True, _t(lang, "Nie mam żadnych nagrań.", "I have no recordings."), "recall")
+        return self._memo_queue(paths, lang)
+
+    def play_found_memo(self, lang: str) -> ToolResult:
+        """"Odtwórz (to) nagranie" — replay what the last memory search found
+        (falling back to the newest memos when nothing was searched)."""
+        paths = [p for p in getattr(self, "_found_memo_paths", []) if Path(p).exists()]
+        if not paths:
+            return self.play_memos(lang)
+        return self._memo_queue(paths, lang)
 
     def recall_reminders(self, lang: str) -> ToolResult:
         pend = self.memory.pending()
@@ -231,18 +326,23 @@ class Tools:
 
     # -- memory writes -----------------------------------------------------
     def remember(self, text: str, lang: str) -> ToolResult:
-        """Store a note. The NLU already stripped the trigger verb, so `text`
-        is the note body. Mirrors the engine's `_remember` (sans title split /
-        embedding, which the semantic-recall path handles separately)."""
+        """Store a memory. The NLU already stripped the trigger verb, so `text`
+        is the body. When the ASR's clip of this very utterance is claimable,
+        the memory keeps its own RECORDING too (VoiceNote: sound + text —
+        decision 2026-07-27); otherwise it is a plain text note. Embedding is
+        handled lazily by the brain's semantic-recall backfill."""
         body = text.strip(" ,.:!")
         if not body:
             return ToolResult(True, _t(lang, "Co mam zapamiętać?", "What should I remember?"), "wake")
+        spoken_ok = _t(lang, f"Zapamiętałam: {body}.", f"Got it, I'll remember: {body}.")
+        claimed = self.memory.claim_last_clip(body)
+        if claimed is not None:
+            vn = self.memory.add_voice_note(
+                claimed[0], now=datetime.now(), duration_s=claimed[1], transcript=body)
+            return ToolResult(True, spoken_ok, "note",
+                              {"id": vn.id, "text": body, "audio_path": vn.audio_path})
         note = self.memory.add_note(body, now=datetime.now())
-        return ToolResult(
-            True,
-            _t(lang, f"Zapamiętałam: {note.text}.", f"Got it, I'll remember: {note.text}."),
-            "note", {"id": note.id, "text": note.text},
-        )
+        return ToolResult(True, spoken_ok, "note", {"id": note.id, "text": note.text})
 
     def set_name(self, name: str, lang: str) -> ToolResult:
         """Store the user's name (capitalised), mirroring the engine's `_set_name`."""

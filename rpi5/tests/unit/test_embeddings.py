@@ -317,3 +317,59 @@ def test_note_loads_without_title_field(tmp_path):
     )
     notes = MemoryStore(p).notes()
     assert len(notes) == 1 and notes[0].title == "" and notes[0].text == "stara notatka"
+
+
+# -- unified memory index: voice memos join the vector store (2026-07-29) ------
+def test_memory_items_include_transcribed_voice_notes_only(tmp_path):
+    mem = MemoryStore(tmp_path / "m.json")
+    n = mem.add_note("hasło do wifi", now=NOW)
+    v = mem.add_voice_note(tmp_path / "a.wav", now=NOW, duration_s=3.2,
+                           transcript="kupić filtr do wody")
+    mem.add_voice_note(tmp_path / "b.wav", now=NOW)  # no transcript → not searchable
+    items = mem.memory_items()
+    assert {(i.id, i.kind) for i in items} == {(n.id, "note"), (v.id, "voice")}
+    voice = next(i for i in items if i.kind == "voice")
+    assert voice.text == "kupić filtr do wody" and voice.audio_path.endswith("a.wav")
+
+
+def test_items_missing_embeddings_covers_both_kinds(tmp_path):
+    mem = MemoryStore(tmp_path / "m.json")
+    n = mem.add_note("notatka", now=NOW)
+    v = mem.add_voice_note(tmp_path / "a.wav", now=NOW, transcript="nagranie")
+    missing = {i.id for i in mem.items_missing_embeddings(model="m")}
+    assert missing == {n.id, v.id}
+    mem.set_note_embedding(v.id, [1.0, 0.0, 0.0], model="m")
+    assert {i.id for i in mem.items_missing_embeddings(model="m")} == {n.id}
+
+
+def test_search_memory_semantic_returns_mixed_scored_hits(tmp_path):
+    mem = MemoryStore(tmp_path / "m.json")
+    n = mem.add_note("góry i weekend", now=NOW)
+    v = mem.add_voice_note(tmp_path / "a.wav", now=NOW, transcript="wyjazd w góry")
+    mem.set_note_embedding(n.id, [1.0, 0.0, 0.0], model="m")
+    mem.set_note_embedding(v.id, [0.9, 0.1, 0.0], model="m")
+    hits = mem.search_memory_semantic([1.0, 0.0, 0.0], limit=4, min_score=0.5,
+                                      rel_margin=0.1)
+    assert [h.id for h in hits] == [n.id, v.id]  # both, best first
+    assert hits[0].score >= hits[1].score > 0.5
+    assert hits[1].kind == "voice" and hits[1].audio_path.endswith("a.wav")
+
+
+def test_search_notes_semantic_still_filters_to_text_notes(tmp_path):
+    mem = MemoryStore(tmp_path / "m.json")
+    v = mem.add_voice_note(tmp_path / "a.wav", now=NOW, transcript="nagranie o górach")
+    mem.set_note_embedding(v.id, [1.0, 0.0, 0.0], model="m")
+    assert mem.search_notes_semantic([1.0, 0.0, 0.0], min_score=0.5) == []
+
+
+def test_store_reloads_when_another_process_writes(tmp_path):
+    # Live layout: brain, orchestrator and ASR each hold their own MemoryStore
+    # over one file. A memo added through one instance must be visible to the
+    # others without a restart (mtime-based revalidation).
+    p = tmp_path / "m.json"
+    reader = MemoryStore(p)
+    assert reader.voice_notes() == []
+    writer = MemoryStore(p)
+    writer.add_voice_note(tmp_path / "a.wav", now=NOW, transcript="nowe nagranie")
+    got = reader.voice_notes()
+    assert len(got) == 1 and got[0].transcript == "nowe nagranie"

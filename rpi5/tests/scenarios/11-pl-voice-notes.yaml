@@ -1,7 +1,12 @@
 id: 11-pl-voice-notes
 language: pl
-description: Nagrywanie notatki głosowej i odtwarzanie zapisanych notatek.
-tags: [voice-notes, pl]
+description: |
+  Notatki głosowe w semantycznej pamięci: "nagraj notatkę" otwiera dyktowanie
+  (koniec po ~1,5 s ciszy, limit 60 s), zapis to DŹWIĘK + rozpoznany TEKST
+  (wav w voice_notes/ + transkrypt w memory.json + wektor e5 w sidecarze).
+  Potwierdzenie czyta pierwsze słowa. "Odtwórz notatki" gra nagrania jako
+  kolejkę (silnik albumowy: następny/poprzedni/stop). Wszystko lokalnie.
+tags: [voice-notes, memory, semantic, pl]
 synth_voice: pl_PL-gosia-medium
 preconditions:
   audio.volume: 50
@@ -13,12 +18,22 @@ turns:
 
   - user: "nagraj notatkę głosową"
     expect:
-      assistant_says_any: ["Słucham", "przycisk", "nagraj"]
+      assistant_says_any: ["nagrywam", "mów", "ciszy"]
       assistant_language: pl
 
-  - user: "odtwórz notatki"
+  - inject: "dictation: kupić filtr do wody w sobotę"   # memo body + silence
     expect:
-      assistant_language: pl
+      assistant_says_any: ["nagrałam notatkę", "kupić filtr"]
+      memory_voice_note_saved: true      # wav + transcript + vector
+
+  - user: "dżesika, odtwórz notatki"
+    expect:
+      player_state: playing
+      player_queue_length_gt: 0
+
+  - user: "dżesika stop"
+    expect:
+      player_state: stopped
 
 postconditions:
   no_unit_restarts: true

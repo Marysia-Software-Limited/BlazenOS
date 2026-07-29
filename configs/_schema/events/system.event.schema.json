@@ -18,10 +18,17 @@
           "enum": [
             "ready", "tick", "heartbeat", "observed",
             "sleep", "resume", "reboot_requested", "shutdown_requested",
-            "recovery_entered", "recovery_exited"
+            "recovery_entered", "recovery_exited",
+            "thinking",
+            "memo_recorded"
           ]
         },
-        "detail": { "type": ["string", "null"] }
+        "detail": { "type": ["string", "null"] },
+        "audio_path": { "type": "string" },
+        "transcript": { "type": "string" },
+        "language": { "type": "string", "enum": ["en", "pl"] },
+        "duration_s": { "type": "number", "minimum": 0 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
       },
       "additionalProperties": false
     }

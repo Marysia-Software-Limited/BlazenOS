@@ -11,16 +11,20 @@ version: 1
 active_model: multilingual-e5-small      # voice-mutable
 dim: 384
 
-# Retrieval + injection into the chat context (read by build_runner →
-# Assistant). All voice-mutable.
+# Retrieval + injection into the chat context (read by context_wiring →
+# Assistant, in BOTH the live brain and the legacy runner). All voice-mutable.
 notes_context:
   enabled: true
-  top_k: 4                               # max notes injected per question
+  top_k: 4                               # max memories injected per question
   # e5 cosines sit in a compressed high band (related ~0.84-0.90, unrelated
   # ~0.75-0.83), so filtering is floor + relative margin, not a flat threshold:
   min_score: 0.82                        # the BEST hit must clear this, else inject nothing
-  rel_margin: 0.06                       # keep only notes within this cosine of the top hit
+  rel_margin: 0.06                       # keep only memories within this cosine of the top hit
   max_chars: 1200                        # budget for the injected block (~300 tok)
+  # Voice-memo transcripts join the same semantic index and the same prompt
+  # context (each hit capped ~200 chars so a minute of dictation can't crowd
+  # the block). false → text notes only reach the models.
+  include_voice_memos: true
 
 # e5 models are asymmetric: the question is embedded as a "query", stored notes
 # as a "passage". These prefixes are part of the model contract.

@@ -10,6 +10,11 @@ Group=blazen
 WorkingDirectory=/usr/lib/blazen
 Environment=PYTHONPATH=/usr/lib/blazen
 Environment=BLAZEN_RUNTIME_DIR=/run/blazen
+# Persistent memory (notes / voice memos / reminders / profile + embedding
+# sidecar). Without this the store defaults under BLAZEN_RUNTIME_DIR —
+# tmpfs — and every memory would vanish on reboot. Same tree in the asr and
+# orchestrator units: all three processes share one memory.json.
+Environment=BLAZEN_DATA_DIR=/var/lib/blazen/data
 # Baked model tree. Without this, localllm.models_root() falls back to
 # <pkg>/../../../../models = /usr/models (nonexistent), so resolve_model_path
 # can't find the Bielik GGUF and the brain silently degrades to the canned

@@ -32,6 +32,7 @@ _TOOL_INTENTS: frozenset[str] = frozenset({
     "library.search",
     "context.recall", "context.recall_reminders", "context.remember", "context.set_name",
     "context.add_reminder",
+    "context.search_memory", "context.play_memos", "context.play_found",
 })
 
 # Sensible defaults for delta-based mutations when nothing is stored yet.

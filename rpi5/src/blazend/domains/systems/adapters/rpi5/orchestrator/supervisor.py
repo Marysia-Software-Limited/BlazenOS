@@ -523,6 +523,9 @@ class Orchestrator:
         # say "Chwileczkę." now so the wait is announced, not dead air.
         if env.topic == "system.event" and env.data.get("kind") == "thinking":
             await self._speak_working_cue()
+        # A finished voice-memo dictation from the ASR — store + confirm.
+        if env.topic == "system.event" and env.data.get("kind") == "memo_recorded":
+            await self._on_memo_recorded(env.data)
         if env.topic == "wake.detected":
             now = asyncio.get_running_loop().time()
             # Refractory: ignore wakes that arrive too soon after the last handled
@@ -581,16 +584,20 @@ class Orchestrator:
                 # acknowledge in state, but stay silent.
                 log.info("asleep — ignoring %s", env.data.get("intent"))
                 patch["awake"] = False
-            elif str(env.data.get("intent", "")) in ("music_now_playing", "music_shuffle"):
-                # Queue services the orchestrator answers ITSELF, asynchronously —
-                # they pause/resume the exclusive player mid-track, which a sync
-                # dispatcher reply cannot do. Conversation stays open.
+            elif str(env.data.get("intent", "")) in (
+                    "music_now_playing", "music_shuffle", "voice_memo_record"):
+                # Intents the orchestrator answers ITSELF, asynchronously — they
+                # pause/resume the exclusive player or open a capture window,
+                # which a sync dispatcher reply cannot do. Conversation stays open.
                 self._awake_until = asyncio.get_running_loop().time() + self._wake_window_s
                 lang = str(env.data.get("language", "") or "pl")
-                if env.data.get("intent") == "music_now_playing":
+                intent_name = str(env.data.get("intent"))
+                if intent_name == "music_now_playing":
                     await self._answer_now_playing(lang)
-                else:
+                elif intent_name == "music_shuffle":
                     await self._shuffle_queue(lang)
+                else:
+                    await self._start_memo_capture(lang)
                 patch["last_command"] = {
                     "intent": env.data.get("intent"), "result": env.data.get("intent")}
             else:
@@ -972,6 +979,49 @@ class Orchestrator:
     async def _answer_now_playing(self, lang: str) -> None:
         """"Co teraz gra?" — say what's on, then give the speaker back."""
         await self._speak_over_playback(self._describe_playback(lang), lang)
+
+    async def _start_memo_capture(self, lang: str) -> None:
+        """"Nagraj notatkę" — speak the prompt, then hand the mic to the ASR's
+        dictation capture (memo-capture marker). A playing stream is stopped
+        first: dictation needs both the speaker (for the prompt + confirmation)
+        and an un-ducked mic. The result comes back as ``system.event
+        kind=memo_recorded`` (see _on_memo_recorded)."""
+        if self._radio.playing:
+            await self._act_on_reply({"action": "music_stop"})
+        await self._speak(
+            "Nagrywam — mów, skończę po chwili ciszy." if lang != "en"
+            else "Recording — speak; I'll stop after a pause.", lang)
+        await self._wait_speech_done()
+        try:
+            (self._runtime_dir / "memo-capture").touch()
+        except OSError as exc:
+            log.warning("could not start memo capture: %s", exc)
+
+    async def _on_memo_recorded(self, data: dict[str, Any]) -> None:
+        """Store the ASR's finished dictation as a voice memo (audio +
+        transcript) and confirm audibly with the first words — the blind-first
+        proof that the right thing was recorded. Embedding into the semantic
+        index happens lazily in the brain (mtime-triggered backfill)."""
+        from blazend.domains.context.adapters.rpi5.memory import MemoryStore
+        path = str(data.get("audio_path", ""))
+        transcript = str(data.get("transcript", ""))
+        lang = str(data.get("language", "") or "pl")
+        try:
+            MemoryStore().add_voice_note(
+                path, now=datetime.now(),
+                duration_s=float(data.get("duration_s", 0.0) or 0.0),
+                transcript=transcript)
+        except OSError as exc:
+            log.warning("voice memo store failed: %s", exc)
+            return
+        lead = " ".join(transcript.split()[:6])
+        if lead:
+            msg = (f"Nagrałam notatkę: {lead}…" if lang != "en"
+                   else f"Recorded your note: {lead}…")
+        else:
+            msg = ("Nagrałam notatkę, ale nie rozpoznałam słów."
+                   if lang != "en" else "Recorded the note, but caught no words.")
+        await self._speak(msg, lang)
 
     async def _shuffle_queue(self, lang: str) -> None:
         """"Przetasuj" — reshuffle the REST of the playing queue; the current
