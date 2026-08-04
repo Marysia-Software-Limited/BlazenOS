@@ -345,6 +345,18 @@ class MemoryStore:
         self._maybe_reload()
         return [VoiceNote(**v) for v in self._db.voice_notes]
 
+    def voice_note_wav(self, note_id: str, audio_path: str = "") -> Path | None:
+        """The playable wav for a voice note: its own recording when present
+        (on the node that captured it), else the fabric-synced mirror
+        ``voice_notes/synced/<id>.wav`` pulled from a peer. None → no audio
+        here (transcript-only memory)."""
+        if audio_path:
+            p = Path(audio_path)
+            if p.exists():
+                return p
+        mirror = self.voice_notes_dir() / "synced" / f"{note_id}.wav"
+        return mirror if mirror.exists() else None
+
     def delete_last_memory(self) -> MemoryItem | None:
         """Remove the most recently created memory (note or voice memo) — the
         spoken "usuń ostatnią notatkę". The row and its vector go away; a
@@ -369,14 +381,17 @@ class MemoryStore:
             item = MemoryItem(id=str(row["id"]), kind="voice",
                               text=str(row.get("transcript", "")),
                               audio_path=str(row.get("audio_path", "")))
-            src = Path(item.audio_path)
-            if src.exists():
-                trash = self.path.parent / "trash"
-                try:
-                    trash.mkdir(parents=True, exist_ok=True)
-                    src.rename(trash / src.name)
-                except OSError:
-                    pass
+            # Trash whichever audio this node holds — the original recording
+            # and/or a fabric-synced mirror of it.
+            trash = self.path.parent / "trash"
+            for src in (Path(item.audio_path),
+                        self.voice_notes_dir() / "synced" / f"{item.id}.wav"):
+                if src.exists():
+                    try:
+                        trash.mkdir(parents=True, exist_ok=True)
+                        src.rename(trash / src.name)
+                    except OSError:
+                        pass
         self._save()
         emb = self._load_embeddings()
         if item.id in emb.get("vectors", {}):

@@ -218,3 +218,14 @@ def test_tools_memory_stats_and_delete(tmp_path):
     t2 = Tools(memory=MemoryStore(tmp_path / "empty.json"))
     assert "żadnych wspomnień" in t2.memory_stats("pl").text
     assert "Nie mam czego" in t2.delete_last_memory("pl").text
+
+
+def test_voice_note_wav_falls_back_to_synced_mirror(tmp_path):
+    mem = MemoryStore(tmp_path / "memory.json")
+    v = mem.add_voice_note("/on/another/node/memo.wav", now=datetime(2026, 8, 4, tzinfo=UTC),
+                           transcript="zdalne nagranie")
+    assert mem.voice_note_wav(v.id, v.audio_path) is None  # nothing local yet
+    mirror = tmp_path / "voice_notes" / "synced" / f"{v.id}.wav"
+    mirror.parent.mkdir(parents=True, exist_ok=True)
+    _write_wav(np.zeros(160, dtype=np.int16), SR, mirror)
+    assert mem.voice_note_wav(v.id, v.audio_path) == mirror  # fabric mirror plays

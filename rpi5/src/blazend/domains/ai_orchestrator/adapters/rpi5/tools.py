@@ -291,8 +291,9 @@ class Tools:
                 "recall", {"query": q, "hits": 0})
         lines = "; ".join(h.text for h in hits)
         spoken = _t(lang, f"Znalazłam: {lines}.", f"I found: {lines}.")
-        voice_paths = [h.audio_path for h in hits
-                       if h.kind == "voice" and h.audio_path and Path(h.audio_path).exists()]
+        resolved = (self.memory.voice_note_wav(h.id, h.audio_path)
+                    for h in hits if h.kind == "voice")
+        voice_paths = [str(w) for w in resolved if w is not None]
         self._found_memo_paths = voice_paths
         if voice_paths:
             spoken += _t(lang, " Mam też nagranie — powiedz „odtwórz nagranie”.",
@@ -312,9 +313,12 @@ class Tools:
 
     def play_memos(self, lang: str) -> ToolResult:
         """"Odtwórz notatki" — the newest voice memos as a playlist queue (the
-        album engine drives playback: auto-advance, next/prev, stop)."""
-        paths = [v.audio_path for v in self.memory.voice_notes()
-                 if v.audio_path and Path(v.audio_path).exists()][-5:]
+        album engine drives playback: auto-advance, next/prev, stop). Resolves
+        through `voice_note_wav`, so memos recorded on ANOTHER node play from
+        their fabric-synced mirror."""
+        resolved = (self.memory.voice_note_wav(v.id, v.audio_path)
+                    for v in self.memory.voice_notes())
+        paths = [str(w) for w in resolved if w is not None][-5:]
         if not paths:
             return ToolResult(True, _t(lang, "Nie mam żadnych nagrań.", "I have no recordings."), "recall")
         return self._memo_queue(paths, lang)
