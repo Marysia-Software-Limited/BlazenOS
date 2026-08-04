@@ -292,3 +292,17 @@ def test_ambient_usunalem_does_not_delete():
 def test_english_memory_management_matches(cmd):
     assert (_matches("memory_count", cmd, lang="en")
             or _matches("memory_delete_last", cmd, lang="en"))
+
+
+# -- bare "dżesika, nagraj" opens the memo dialog (2026-08-04) -----------------
+@pytest.mark.parametrize("cmd", [
+    "Jessica, nagraj.", "nagraj", "Jessica? Nagraj!", "dżesika nagraj",
+])
+def test_bare_nagraj_opens_memo_dialog(cmd):
+    assert _matches("voice_memo_record", cmd)
+
+
+def test_nagraj_with_content_words_does_not_collide():
+    # "nagraj" followed by anything that isn't the memo noun is NOT the bare
+    # command — it stays unmatched here (falls to the LLM, which can clarify).
+    assert not _matches("voice_memo_record", "nagraj mi przypomnienie na jutro")

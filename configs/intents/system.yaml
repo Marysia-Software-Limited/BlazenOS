@@ -688,11 +688,14 @@ intents:
     triggers:
       # Anchored: the memo noun ends the utterance ("nagraj notatkę (głosową)"),
       # so "zapisz notatkę o zakupach" (content given inline) still falls
-      # through to remember_note below.
+      # through to remember_note below. The bare "dżesika, nagraj" also opens
+      # the dialog (whole-utterance anchored — the verb IS the command).
       pl:
         - "\\b(nagraj|zostaw|zapisz)\\b.*\\b(notatk\\w*|nagranie|wiadomo(ś|s)(ć|c))( g(ł|l)osow\\w*)?[\\s.?!…]*$"
+        - "^\\s*(?:(?:hej\\s+|ok\\s+)?(?:d(ż|z)esi\\w*|jessi\\w*)[\\s,.?!]+)?nagr(aj|ywaj)[\\s.?!…]*$"
       en:
         - "\\b(record|leave|save)\\b.*\\b(voice\\s+)?(note|memo|message)[\\s.?!…]*$"
+        - "^\\s*(?:(?:hey\\s+)?jessi\\w*[\\s,.?!]+)?record[\\s.?!…]*$"
     action: tool_call
     tool: context.record_memo
 
