@@ -56,12 +56,11 @@ volume:
   voice_mutable: true                 # see voice-policy.yaml
 
 earcons:
-  # OFF until the wake model is retrained to stop over-firing on ambient sound
-  # (2026-07-10: ~3 false wakes/min → the chime would beep constantly, and its echo
-  # into the Jabra mic re-fires the wake). The strict flow (wake → beep → listen),
-  # refractory and echo-suppression are in place, so flip back to true once the wake
-  # model is strict. See docs/13… / supervisor _play_wake_beep.
-  wake_chime: false
+  # ON again (2026-08-04, user request "I want to know the state by sound"):
+  # the retrained wake model brought false wakes down to ~2/h, so the instant
+  # "speak now" chime no longer chirps at the television. Strict flow
+  # (wake → beep → listen), refractory and echo-suppression are all in place.
+  wake_chime: true
   error_tone: true
   shutdown_tone: true
   custom_voice_marker: false
@@ -69,6 +68,13 @@ earcons:
   # long reply's XTTS render) — announces the wait instead of dead air. One cue
   # per question (cooldown in the supervisor). Cue text: phrases.yaml cues.working.
   thinking: true
+  # Processing heartbeat: a soft low tick every `processing_tick_s` seconds
+  # while Jessica works in silence (post-wake capture + whisper, and again
+  # during LLM generation) — the blind-first "still with you" signal. Never
+  # ticks over playback or speech; "dżesika, stop" mid-wait cancels the turn
+  # (heartbeat stops, the late LLM answer is dropped, spoken "Anuluję.").
+  processing_tick: true
+  processing_tick_s: 5
 
 # Output dynamics in blazend-player (radio / music / audiobooks). The player
 # measures its OWN output level and auto-holds a constant loudness, so a quiet

@@ -19,12 +19,16 @@ turns:
 
   - user: "record a voice note"
     expect:
-      assistant_says_any: ["recording", "speak", "pause"]
+      assistant_says_contains: "what should the note be called"
       assistant_language: en
+
+  - inject: "dictation: saturday shopping"
+    expect:
+      assistant_says_contains: "dictate the content"
 
   - inject: "dictation: buy a water filter on saturday"
     expect:
-      assistant_says_any: ["recorded your note", "water filter"]
+      assistant_says_contains: "recorded your note: saturday shopping"
       memory_voice_note_saved: true
 
   - user: "jessica, play my voice notes"

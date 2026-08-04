@@ -229,3 +229,68 @@ def test_voice_note_wav_falls_back_to_synced_mirror(tmp_path):
     mirror.parent.mkdir(parents=True, exist_ok=True)
     _write_wav(np.zeros(160, dtype=np.int16), SR, mirror)
     assert mem.voice_note_wav(v.id, v.audio_path) == mirror  # fabric mirror plays
+
+
+# -- memo dictation dialog: title → content (2026-08-04) -----------------------
+class _DialogStub:
+    """Just enough Orchestrator surface for the unbound _on_memo_recorded."""
+
+    def __init__(self) -> None:
+        self.spoken: list[str] = []
+        self.windows = 0
+        self._memo_stage: str | None = None
+        self._memo_title = ""
+        self._memo_lang = "pl"
+
+    async def _speak(self, text: str, lang: str = "pl") -> None:
+        self.spoken.append(text)
+
+    async def _wait_speech_done(self) -> None:
+        pass
+
+    def _open_memo_window(self) -> None:
+        self.windows += 1
+
+
+def test_memo_dialog_title_then_content(tmp_path):
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import Orchestrator
+
+    stub = _DialogStub()
+    stub._memo_stage = "title"
+    title_wav = tmp_path / "voice_notes" / "memo-title.wav"
+    title_wav.parent.mkdir(parents=True, exist_ok=True)
+    _write_wav(np.zeros(160, dtype=np.int16), SR, title_wav)
+
+    # Step 1: the title capture — wav discarded, content prompt, window reopened.
+    asyncio.run(Orchestrator._on_memo_recorded(stub, {
+        "audio_path": str(title_wav), "transcript": "Zakupy na sobotę.",
+        "language": "pl", "duration_s": 1.0}))
+    assert stub._memo_stage == "content" and stub._memo_title == "Zakupy na sobotę"
+    assert not title_wav.exists()  # a title is text-only
+    assert stub.spoken == ["Podyktuj treść."] and stub.windows == 1
+
+    # Step 2: the content capture — memo stored under the title, confirmed.
+    content_wav = tmp_path / "voice_notes" / "memo-content.wav"
+    _write_wav(np.zeros(320, dtype=np.int16), SR, content_wav)
+    asyncio.run(Orchestrator._on_memo_recorded(stub, {
+        "audio_path": str(content_wav), "transcript": "kupić filtr do wody i mleko",
+        "language": "pl", "duration_s": 2.0}))
+    assert stub._memo_stage is None
+    assert stub.spoken[-1] == "Nagrałam notatkę: Zakupy na sobotę."
+    saved = MemoryStore(tmp_path / "memory.json").voice_notes()
+    assert len(saved) == 1
+    assert saved[0].title == "Zakupy na sobotę"
+    assert saved[0].transcript == "kupić filtr do wody i mleko"
+    assert saved[0].audio_path == str(content_wav) and content_wav.exists()
+
+
+def test_memo_dialog_untitled_when_title_capture_empty(tmp_path):
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import Orchestrator
+
+    stub = _DialogStub()
+    stub._memo_stage = "title"
+    asyncio.run(Orchestrator._on_memo_recorded(stub, {
+        "audio_path": str(tmp_path / "none.wav"), "transcript": "",
+        "language": "pl", "duration_s": 0.5}))
+    assert stub._memo_stage == "content" and stub._memo_title == ""
+    assert stub.spoken == ["Nie usłyszałam tytułu — podyktuj samą treść."]

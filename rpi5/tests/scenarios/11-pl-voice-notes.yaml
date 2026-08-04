@@ -18,13 +18,17 @@ turns:
 
   - user: "nagraj notatkę głosową"
     expect:
-      assistant_says_any: ["nagrywam", "mów", "ciszy"]
+      assistant_says_contains: "jak zatytułować"   # dialog: title first
       assistant_language: pl
+
+  - inject: "dictation: zakupy na sobotę"          # the spoken title
+    expect:
+      assistant_says_contains: "podyktuj treść"
 
   - inject: "dictation: kupić filtr do wody w sobotę"   # memo body + silence
     expect:
-      assistant_says_any: ["nagrałam notatkę", "kupić filtr"]
-      memory_voice_note_saved: true      # wav + transcript + vector
+      assistant_says_contains: "nagrałam notatkę: zakupy na sobotę"
+      memory_voice_note_saved: true      # wav + transcript + title + vector
 
   - user: "dżesika, odtwórz notatki"
     expect:

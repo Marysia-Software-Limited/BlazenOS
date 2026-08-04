@@ -87,8 +87,16 @@ Jessica's TTS voice + voice memos play through the separate `blazend-audio-out`
 Blind-first feedback about what Jessica is doing. Flags in `audio.yaml
 earcons:`; spoken cue text (PL/EN) in `phrases.yaml cues:`.
 
-- `wake_chime` — instant beep on "dżesika" (currently `false` pending a stricter
-  wake model).
+- `wake_chime` — instant rising chime on "dżesika": "speak now". Back to `true`
+  since 2026-08-04 (the retrained wake model brought false wakes to ~2/h).
+- `processing_tick` (+ `processing_tick_s`, default 5) — a soft low tick every
+  few seconds while Jessica works in silence: armed on wake (capture + whisper)
+  and again when the brain blocks on the LLM (`thinking`); cancelled by
+  whatever answers first (reply, cue, playback). Never ticks over playback or
+  speech. Saying "dżesika, stop" mid-wait cancels the turn: the ticking stops,
+  "Anuluję." is spoken, and the LLM's late answer is dropped — the full
+  know-the-state-by-sound loop: chime = listening, ticks = working,
+  voice/music = answered, silence after "stop" = cancelled.
 - `error_tone` — spoken "Nie zrozumiałam." (ASR heard sound but no words) and
   "Słucham?" (capture window closed empty). Both cooldown-limited so a
   false-wake burst can't chant.
@@ -307,12 +315,16 @@ in one on-device vector store (2026-07-29):
   stored as text AND the ASR's clip of that very utterance is claimed as its
   recording (a rolling `<data>/clips/` handshake; unclaimed clips age out).
   Titled long-form notes (*"zapamiętaj: \<tytuł\>. \<treść…\>"*) still work.
-- **Dictated voice memos** — *"nagraj notatkę (głosową)"*: the orchestrator
-  frees the speaker, prompts "Nagrywam — mów, skończę po chwili ciszy.", and
-  the ASR records until ~1.5 s of silence (cap 60 s; `asr.yaml memo_capture:
-  {max_s, silence_s, lead_in_s}`), transcribes the SAME audio, saves the wav
-  under `<data>/voice_notes/` and reports back over `system.event
-  kind=memo_recorded`; the confirmation reads the first words back.
+- **Dictated voice memos** — *"nagraj notatkę (głosową)"* opens a two-step
+  dialog: "Jak zatytułować notatkę?" → the spoken title, then "Podyktuj
+  treść." → the body. Each capture runs until ~1.5 s of silence (cap 60 s;
+  `asr.yaml memo_capture: {max_s, silence_s, lead_in_s}`); the ASR
+  transcribes the SAME audio it recorded, the body's wav lands under
+  `<data>/voice_notes/`, and the memo stores wav + transcript + title
+  (`system.event kind=memo_recorded` carries each capture back). The
+  confirmation reads the title: "Nagrałam notatkę: zakupy na sobotę." A
+  silent title just yields an untitled memo; a fully silent dictation gets a
+  spoken retry prompt.
 - **Recall** — *"co zapisałem o \<X\>?"* / *"znajdź w notatkach \<X\>"*
   searches the unified index (numpy cosine over e5 vectors, milliseconds);
   a voice-memo hit offers *"odtwórz nagranie"*, which replays the user's own

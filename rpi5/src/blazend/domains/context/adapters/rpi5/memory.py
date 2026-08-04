@@ -60,13 +60,17 @@ class Reminder:
 
 @dataclass
 class VoiceNote:
-    """A recorded audio memo (the wav lives next to memory.json)."""
+    """A recorded audio memo (the wav lives next to memory.json).
+
+    ``title`` is the short spoken label from the dictation dialog ("Jak
+    zatytułować notatkę?"); empty for one-shot memos and claimed clips."""
 
     id: str
     audio_path: str
     created: str  # ISO timestamp
     duration_s: float = 0.0
     transcript: str = ""
+    title: str = ""
     kind: str = "voice_note_created"
 
 
@@ -184,7 +188,8 @@ class MemoryStore:
             for n in self.notes()
         ]
         items += [
-            MemoryItem(id=v.id, kind="voice", text=v.transcript, audio_path=v.audio_path)
+            MemoryItem(id=v.id, kind="voice", text=v.transcript, title=v.title,
+                       audio_path=v.audio_path)
             for v in self.voice_notes()
             if v.transcript
         ]
@@ -327,7 +332,8 @@ class MemoryStore:
         return d
 
     def add_voice_note(
-        self, audio_path: Path | str, *, now: datetime, duration_s: float = 0.0, transcript: str = ""
+        self, audio_path: Path | str, *, now: datetime, duration_s: float = 0.0,
+        transcript: str = "", title: str = ""
     ) -> VoiceNote:
         self._maybe_reload()
         vn = VoiceNote(
@@ -336,6 +342,7 @@ class MemoryStore:
             created=now.isoformat(),
             duration_s=round(float(duration_s), 1),
             transcript=transcript.strip(),
+            title=title.strip(),
         )
         self._db.voice_notes.append(asdict(vn))
         self._save()

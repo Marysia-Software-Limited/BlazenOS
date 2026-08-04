@@ -105,6 +105,29 @@ def _track_label(path: str) -> str:
     return _TRACK_NO_PREFIX.sub("", Path(path).stem).replace("_", " ").strip()
 
 
+# Processing heartbeat: how long the ticker may run before giving up (a reply,
+# cue or error normally cancels it much earlier).
+_HB_MAX_S = 60.0
+
+
+def _make_processing_tick_wav(rate: int = _BEEP_RATE_HZ) -> bytes:
+    """A single soft low tick (~60 ms, 440 Hz) — quieter and lower than the
+    wake chime so "still working" never sounds like "speak now"."""
+    n = int(rate * 0.06)
+    fade = max(1, int(0.008 * rate))
+    frames = bytearray()
+    for i in range(n):
+        env = min(1.0, i / fade, (n - i) / fade)
+        frames += struct.pack("<h", int(0.22 * env * 32767 * math.sin(2 * math.pi * 440.0 * i / rate)))
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(bytes(frames))
+    return buf.getvalue()
+
+
 def _make_wake_beep_wav(rate: int = _BEEP_RATE_HZ) -> bytes:
     """A short, gentle rising two-note chime as WAV bytes (mono i16).
 
@@ -175,9 +198,21 @@ class Orchestrator:
         att = self._load_attention()
         self._attention_enabled, self._attention_interval_s, self._attention_window_s = att
         # Audible state cues for the blind-first UX (audio.yaml earcons + phrases.yaml).
+        self._hb_interval_s = 5.0  # default; _load_earcons may override
         self._earcons, self._cues = self._load_earcons()
         # Wake chime: pre-rendered once, played straight to the Jabra on wake.detected.
         self._beep_wav = _make_wake_beep_wav()
+        # Processing heartbeat ("still working" tick): armed on wake, cancelled
+        # by whatever answers first (reply / cue / playback / memo result).
+        self._tick_wav = _make_processing_tick_wav()
+        self._hb_task: asyncio.Task[None] | None = None
+        # Memo dictation dialog state: None | "title" | "content".
+        self._memo_stage: str | None = None
+        self._memo_title = ""
+        self._memo_lang = "pl"
+        # "dżesika stop" mid-processing: the brain may already be generating —
+        # drop its late reply instead of speaking a cancelled answer.
+        self._drop_next_reply = False
         self._beep_device = self._load_beep_device()
         self._listening_cue_at = 0.0  # loop time of the last "Słucham?" (cooldown)
         self._not_understood_cue_at = 0.0  # loop time of the last "Nie zrozumiałam" (cooldown)
@@ -228,9 +263,13 @@ class Orchestrator:
                 "wake_chime": bool(audio.get("earcons.wake_chime", True)),
                 "error_tone": bool(audio.get("earcons.error_tone", True)),
                 "thinking": bool(audio.get("earcons.thinking", True)),
+                "processing_tick": bool(audio.get("earcons.processing_tick", True)),
             }
+            self._hb_interval_s = float(audio.get("earcons.processing_tick_s", 5.0))
         except Exception:  # noqa: BLE001
-            earcons = {"wake_chime": True, "error_tone": True, "thinking": True}
+            earcons = {"wake_chime": True, "error_tone": True, "thinking": True,
+                       "processing_tick": True}
+            self._hb_interval_s = 5.0
         lang = self._default_lang or "pl"
         fallback = {"not_understood": "Nie zrozumiałam.", "listening": "Słucham?",
                     "working": "Chwileczkę."}
@@ -257,15 +296,15 @@ class Orchestrator:
         free (no radio/music stream holding the output device)."""
         return bool(self._earcons.get("wake_chime")) and not self._radio.playing
 
-    async def _play_wake_beep(self) -> None:
-        """Play the wake chime straight to the Jabra via ``aplay`` and wait for it.
+    async def _play_beep(self, wav: bytes, *, tail_s: float = 0.3) -> None:
+        """Play a pre-rendered cue straight to the Jabra via ``aplay`` and wait.
 
         Bypasses blazend-audio-out (down while idle, ~1-2 s to start) so the cue is
         instant. While it plays we set the ``speaking`` marker the ASR already honours
-        (+ a short tail) so the chime's echo into the Jabra mic can't be captured or
+        (+ a short tail) so the cue's echo into the Jabra mic can't be captured or
         re-fire the wake — the beep→mic→wake feedback that storms the pipeline. The
         marker is only ours to clear if a reply wasn't already speaking. A failure is
-        swallowed — a missing chime must never break wake."""
+        swallowed — a missing cue must never break the voice path."""
         marker = self._runtime_dir / "speaking"
         had_marker = marker.exists()
         try:
@@ -280,16 +319,54 @@ class Orchestrator:
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
             )
-            await proc.communicate(self._beep_wav)
+            await proc.communicate(wav)
         except (OSError, asyncio.CancelledError) as exc:
-            log.debug("wake beep skipped: %s", exc)
+            log.debug("beep skipped: %s", exc)
         finally:
             if not had_marker:
-                await asyncio.sleep(0.3)  # let the chime's tail decay before listening
+                await asyncio.sleep(tail_s)  # let the tail decay before listening
                 try:
                     marker.unlink(missing_ok=True)
                 except OSError:
                     pass
+
+    async def _play_wake_beep(self) -> None:
+        """The wake chime: "I heard „dżesika” — speak now"."""
+        await self._play_beep(self._beep_wav)
+
+    # -- processing heartbeat: a soft tick every N s while Jessica works ----
+    def _start_heartbeat(self) -> None:
+        """(Re)arm the working ticker after a wake. It stays silent for the
+        capture window, then ticks every `_hb_interval_s` until something
+        audible happens (reply/cue/playback) — the blind-first "still with
+        you" signal for slow ASR + LLM turns."""
+        if not self._earcons.get("processing_tick"):
+            return
+        self._cancel_heartbeat()
+        self._hb_task = asyncio.ensure_future(self._heartbeat_loop())
+
+    def _cancel_heartbeat(self) -> None:
+        if self._hb_task is not None and not self._hb_task.done():
+            self._hb_task.cancel()
+        self._hb_task = None
+
+    @property
+    def _processing(self) -> bool:
+        """True while the working ticker is armed (wake heard, no reply yet)."""
+        return self._hb_task is not None and not self._hb_task.done()
+
+    async def _heartbeat_loop(self) -> None:
+        try:
+            for _ in range(int(_HB_MAX_S / self._hb_interval_s)):
+                await asyncio.sleep(self._hb_interval_s)
+                # Never tick over content or speech — the sound means
+                # "working in silence", not "interrupting".
+                if self._radio.playing or (self._runtime_dir / "speaking").exists() \
+                        or self._speaker_busy.exists():
+                    continue
+                await self._play_beep(self._tick_wav, tail_s=0.15)
+        except asyncio.CancelledError:
+            return
 
     @staticmethod
     def _load_wake_gating() -> tuple[bool, float]:
@@ -529,6 +606,8 @@ class Orchestrator:
         # Dictation opened but nothing was said — tell the (blind) user how to
         # retry instead of leaving dead air after "Nagrywam…".
         if env.topic == "error" and env.data.get("code") == "asr.memo_empty":
+            self._memo_stage = None  # abandon the title/content dialog
+            self._memo_title = ""
             await self._speak("Nie nagrałam nic. Powiedz „nagraj notatkę”, "
                               "żeby spróbować jeszcze raz.")
         if env.topic == "wake.detected":
@@ -583,6 +662,33 @@ class Orchestrator:
                     self._speaker_busy.touch()
                 except OSError as exc:
                     log.warning("could not assert speaker-busy marker: %s", exc)
+            # Audible state: from here Jessica is WORKING (capture → whisper →
+            # route). Tick softly every few seconds until something answers.
+            self._start_heartbeat()
+        # The fast-path router answers promptly (or its playback IS the answer),
+        # and a miss hands over to the brain — which re-arms the ticker via its
+        # `thinking` cue only when it will actually engage. Either way this
+        # leg of the wait is over; without this a false wake would tick for a
+        # minute into an empty room.
+        if env.topic in ("nlu.intent", "nlu.miss"):
+            stop_like = env.topic == "nlu.intent" and str(env.data.get("intent", "")) in (
+                "radio_stop", "stop_talking")
+            if stop_like and self._processing and not self._radio.playing:
+                # "Dżesika, stop" while she works: kill the wait sounds and drop
+                # the answer the brain may still be generating.
+                self._cancel_heartbeat()
+                self._drop_next_reply = True
+                await self._speak("Anuluję.")
+                patch["last_command"] = {"intent": env.data.get("intent"),
+                                         "result": "cancelled"}
+                await self._state.update(patch)
+                await self._publisher.publish(system_event(
+                    source="blazend-orchestrator", kind="observed", detail=env.topic))
+                return
+            self._cancel_heartbeat()
+        if env.topic == "system.event" and env.data.get("kind") == "thinking":
+            # The brain is about to block on the LLM — the long wait starts NOW.
+            self._start_heartbeat()
         if env.topic == "nlu.intent" and self._dispatcher is not None:
             if not self._awake():
                 # Heard a command but not addressed ("Hej Jessico" not said) —
@@ -648,11 +754,21 @@ class Orchestrator:
         # (nlu.intent, above) calls the SAME _act_on_reply, since its reply is
         # published to TTS but never loops back here as an incoming brain.reply.
         if env.topic == "brain.reply":
-            await self._act_on_reply(env.data)
+            self._cancel_heartbeat()  # the answer arrived — the wait is over
+            if self._drop_next_reply:
+                # "Dżesika, stop" cancelled this turn while the LLM was still
+                # generating — swallow the late answer instead of speaking it.
+                self._drop_next_reply = False
+                log.info("dropping cancelled brain reply: %r",
+                         str(env.data.get("text", ""))[:60])
+            else:
+                await self._act_on_reply(env.data)
         # State cue: heard a sound after "dżesika" but no intelligible words. Tell
         # the (blind) user rather than going silent — but only when we were awake
         # (a wake fired, a command was expected) and nothing is playing over the
         # Jabra. Gated by audio.yaml earcons.error_tone.
+        if env.topic == "error" and str(env.data.get("code", "")).startswith("asr."):
+            self._cancel_heartbeat()  # the turn ended in an error cue, not a reply
         if (env.topic == "error" and env.data.get("code") == "asr.no_text"
                 and self._earcons.get("error_tone") and self._awake()
                 and not self._radio.playing):
@@ -986,43 +1102,74 @@ class Orchestrator:
         await self._speak_over_playback(self._describe_playback(lang), lang)
 
     async def _start_memo_capture(self, lang: str) -> None:
-        """"Nagraj notatkę" — speak the prompt, then hand the mic to the ASR's
-        dictation capture (memo-capture marker). A playing stream is stopped
-        first: dictation needs both the speaker (for the prompt + confirmation)
-        and an un-ducked mic. The result comes back as ``system.event
-        kind=memo_recorded`` (see _on_memo_recorded)."""
+        """"Nagraj notatkę" — a two-step Polish dialog (user request
+        2026-08-04): ask for the TITLE, capture it, ask for the CONTENT,
+        capture that; the memo stores the content wav + transcript under the
+        spoken title. A playing stream is stopped first: dictation needs both
+        the speaker (prompts + confirmation) and an un-ducked mic. Each capture
+        comes back as ``system.event kind=memo_recorded`` and
+        :meth:`_on_memo_recorded` advances the dialog."""
         if self._radio.playing:
             await self._act_on_reply({"action": "music_stop"})
+        self._memo_stage = "title"
+        self._memo_title = ""
+        self._memo_lang = lang
         await self._speak(
-            "Nagrywam — mów, skończę po chwili ciszy." if lang != "en"
-            else "Recording — speak; I'll stop after a pause.", lang)
+            "Jak zatytułować notatkę?" if lang != "en"
+            else "What should the note be called?", lang)
         await self._wait_speech_done()
+        self._open_memo_window()
+
+    def _open_memo_window(self) -> None:
         try:
             (self._runtime_dir / "memo-capture").touch()
         except OSError as exc:
             log.warning("could not start memo capture: %s", exc)
+            self._memo_stage = None
 
     async def _on_memo_recorded(self, data: dict[str, Any]) -> None:
-        """Store the ASR's finished dictation as a voice memo (audio +
-        transcript) and confirm audibly with the first words — the blind-first
-        proof that the right thing was recorded. Embedding into the semantic
-        index happens lazily in the brain (mtime-triggered backfill)."""
-        from blazend.domains.context.adapters.rpi5.memory import MemoryStore
+        """Advance the memo dialog: a TITLE capture asks for the content next;
+        a CONTENT capture stores the memo (audio + transcript + title) and
+        confirms audibly with the title — the blind-first proof the right
+        thing was recorded. Embedding into the semantic index happens lazily
+        in the brain (mtime-triggered backfill)."""
         path = str(data.get("audio_path", ""))
         transcript = str(data.get("transcript", ""))
-        lang = str(data.get("language", "") or "pl")
+        lang = str(data.get("language", "") or self._memo_lang or "pl")
+        if self._memo_stage == "title":
+            # The title is text-only — its wav was a means to an end.
+            try:
+                Path(path).unlink(missing_ok=True)
+            except OSError:
+                pass
+            self._memo_title = " ".join(transcript.split()[:8]).strip(" ,.?!")
+            self._memo_stage = "content"
+            prompt = ("Podyktuj treść." if self._memo_title
+                      else "Nie usłyszałam tytułu — podyktuj samą treść.")
+            if lang == "en":
+                prompt = ("Now dictate the content." if self._memo_title
+                          else "I didn't catch a title — dictate the content.")
+            await self._speak(prompt, lang)
+            await self._wait_speech_done()
+            self._open_memo_window()
+            return
+        # Content stage (or a stray memo event): store + confirm.
+        from blazend.domains.context.adapters.rpi5.memory import MemoryStore
+        title = self._memo_title
+        self._memo_stage = None
+        self._memo_title = ""
         try:
             MemoryStore().add_voice_note(
                 path, now=datetime.now(),
                 duration_s=float(data.get("duration_s", 0.0) or 0.0),
-                transcript=transcript)
+                transcript=transcript, title=title)
         except OSError as exc:
             log.warning("voice memo store failed: %s", exc)
             return
-        lead = " ".join(transcript.split()[:6])
-        if lead:
-            msg = (f"Nagrałam notatkę: {lead}…" if lang != "en"
-                   else f"Recorded your note: {lead}…")
+        spoken_label = title or " ".join(transcript.split()[:6])
+        if spoken_label:
+            msg = (f"Nagrałam notatkę: {spoken_label}." if lang != "en"
+                   else f"Recorded your note: {spoken_label}.")
         else:
             msg = ("Nagrałam notatkę, ale nie rozpoznałam słów."
                    if lang != "en" else "Recorded the note, but caught no words.")
