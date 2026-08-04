@@ -319,6 +319,12 @@ in one on-device vector store (2026-07-29):
   voice. *"Odtwórz notatki"* plays the newest memos as a queue on the album
   engine (auto-advance, następny/poprzedni, stop). *"Co pamiętasz"* lists
   notes and memo transcripts together.
+- **Management** — *"ile mam notatek/nagrań?"* answers with the inventory;
+  *"usuń ostatnią notatkę/nagranie"* removes the newest memory and reads back
+  what it removed — single-item only, and the wav moves to `<data>/trash/`
+  (recoverable by hand), so no confirmation dance is needed. An empty
+  dictation ("nagraj notatkę" then silence) gets its own retry prompt instead
+  of dead air.
 - **Context for every model** — questions retrieve the relevant memories and
   inject them into the LLM's system prompt; the same `system=` seam covers the
   local Bielik, Ollama, OpenAI, Gemini and mesh peers, so the **local search

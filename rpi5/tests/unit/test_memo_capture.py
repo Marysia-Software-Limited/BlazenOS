@@ -96,7 +96,8 @@ def test_memo_capture_aborts_when_nothing_said():
         speech_rms=200.0, max_s=60.0, silence_s=1.5, lead_in_s=2.0))
     assert len(pub.published) == 1
     env = pub.published[0]
-    assert env.topic == "error" and env.data["code"] == "asr.no_speech"
+    # Distinct code: the orchestrator speaks a memo-specific retry prompt.
+    assert env.topic == "error" and env.data["code"] == "asr.memo_empty"
 
 
 # -- the utterance-clip handshake ("zapamiętaj" keeps its audio) ---------------
@@ -182,3 +183,38 @@ def test_search_memory_finds_text_notes_without_replay_offer(tmp_path):
     t._embedder_cache = None
     r = t.search_memory("hasło do wifi", "pl")
     assert "piesek" in r.text and "nagranie" not in r.text
+
+
+# -- memory management by voice (2026-08-04) -----------------------------------
+def test_delete_last_memory_removes_newest_and_trashes_wav(tmp_path):
+    mem = _store_with_memos(tmp_path)  # 2 memos then 1 note (note is newest? all same ts)
+    # Make ordering explicit: add a newest voice memo.
+    wav = tmp_path / "voice_notes" / "newest.wav"
+    _write_wav(np.zeros(SR // 4, dtype=np.int16), SR, wav)
+    vn = mem.add_voice_note(wav, now=datetime(2026, 8, 4, tzinfo=UTC), transcript="najnowsze nagranie")
+    mem.set_note_embedding(vn.id, [1.0, 0.0, 0.0], model="m")
+    item = mem.delete_last_memory()
+    assert item is not None and item.id == vn.id and item.kind == "voice"
+    assert not wav.exists()  # moved away…
+    assert (tmp_path / "trash" / "newest.wav").exists()  # …into trash, not deleted
+    assert vn.id not in mem._load_embeddings()["vectors"]  # vector gone
+    assert all(v.id != vn.id for v in mem.voice_notes())
+
+
+def test_delete_last_memory_on_empty_store(tmp_path):
+    assert MemoryStore(tmp_path / "m.json").delete_last_memory() is None
+
+
+def test_tools_memory_stats_and_delete(tmp_path):
+    from blazend.domains.ai_orchestrator.adapters.rpi5.tools import Tools
+    t = Tools(memory=_store_with_memos(tmp_path))
+    r = t.memory_stats("pl")
+    assert "1 notatkę" in r.text and "2 nagrania" in r.text
+    d = t.delete_last_memory("pl")
+    assert d.text.startswith("Usunęłam: ")
+    r2 = t.memory_stats("pl")
+    assert r2.payload["notes"] + r2.payload["voice_notes"] == 2
+    # Empty store answers gracefully.
+    t2 = Tools(memory=MemoryStore(tmp_path / "empty.json"))
+    assert "żadnych wspomnień" in t2.memory_stats("pl").text
+    assert "Nie mam czego" in t2.delete_last_memory("pl").text

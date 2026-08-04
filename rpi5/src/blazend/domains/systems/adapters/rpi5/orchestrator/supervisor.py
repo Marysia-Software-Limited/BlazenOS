@@ -526,6 +526,11 @@ class Orchestrator:
         # A finished voice-memo dictation from the ASR — store + confirm.
         if env.topic == "system.event" and env.data.get("kind") == "memo_recorded":
             await self._on_memo_recorded(env.data)
+        # Dictation opened but nothing was said — tell the (blind) user how to
+        # retry instead of leaving dead air after "Nagrywam…".
+        if env.topic == "error" and env.data.get("code") == "asr.memo_empty":
+            await self._speak("Nie nagrałam nic. Powiedz „nagraj notatkę”, "
+                              "żeby spróbować jeszcze raz.")
         if env.topic == "wake.detected":
             now = asyncio.get_running_loop().time()
             # Refractory: ignore wakes that arrive too soon after the last handled

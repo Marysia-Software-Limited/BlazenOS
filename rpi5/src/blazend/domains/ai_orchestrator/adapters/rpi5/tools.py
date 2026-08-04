@@ -85,6 +85,16 @@ def _pl_memos(n: int) -> str:
     return f"{n} nagrań"
 
 
+def _pl_notes_count(n: int) -> str:
+    """Polish plural for notes after "mam" (accusative): 1 notatkę,
+    2-4 notatki, 5+ notatek."""
+    if n == 1:
+        return "1 notatkę"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return f"{n} notatki"
+    return f"{n} notatek"
+
+
 # Reminder parsing helpers (ported from the engine). The NLU strips the trigger
 # verb; the tool removes the time expression + leftover filler to get the task.
 _TIME_SPAN = re.compile(
@@ -193,6 +203,10 @@ class Tools:
             return self.play_memos(lang)
         if tool == "context.play_found":
             return self.play_found_memo(lang)
+        if tool == "context.memory_stats":
+            return self.memory_stats(lang)
+        if tool == "context.delete_last":
+            return self.delete_last_memory(lang)
         if tool == "context.recall_reminders":
             return self.recall_reminders(lang)
         if tool == "context.remember":
@@ -312,6 +326,41 @@ class Tools:
         if not paths:
             return self.play_memos(lang)
         return self._memo_queue(paths, lang)
+
+    def memory_stats(self, lang: str) -> ToolResult:
+        """"Ile mam notatek?" — spoken inventory of the memory store."""
+        notes = self.memory.notes()
+        memos = self.memory.voice_notes()
+        if not notes and not memos:
+            return ToolResult(
+                True, _t(lang, "Nie mam jeszcze żadnych wspomnień.", "I have no memories yet."),
+                "recall", {"notes": 0, "voice_notes": 0})
+        if lang == "pl":
+            parts = []
+            if notes:
+                parts.append(_pl_notes_count(len(notes)))
+            if memos:
+                parts.append(_pl_memos(len(memos)))
+            spoken = f"Mam {' i '.join(parts)}."
+        else:
+            spoken = (f"I have {len(notes)} note{'s' if len(notes) != 1 else ''}"
+                      f" and {len(memos)} recording{'s' if len(memos) != 1 else ''}.")
+        return ToolResult(True, spoken, "recall",
+                          {"notes": len(notes), "voice_notes": len(memos)})
+
+    def delete_last_memory(self, lang: str) -> ToolResult:
+        """"Usuń ostatnią notatkę" — remove the newest memory. Safe without a
+        confirmation dance: only ONE item goes, the confirmation reads back
+        exactly what was removed, and a memo's wav lands in <data>/trash/
+        (recoverable by hand), never straight to deletion."""
+        item = self.memory.delete_last_memory()
+        if item is None:
+            return ToolResult(True, _t(lang, "Nie mam czego usunąć.", "There is nothing to delete."),
+                              "recall", {"deleted": None})
+        label = item.text[:80] or _t(lang, "nagranie bez słów", "a recording with no words")
+        return ToolResult(
+            True, _t(lang, f"Usunęłam: {label}.", f"Deleted: {label}."),
+            "recall", {"deleted": item.id, "kind": item.kind})
 
     def recall_reminders(self, lang: str) -> ToolResult:
         pend = self.memory.pending()

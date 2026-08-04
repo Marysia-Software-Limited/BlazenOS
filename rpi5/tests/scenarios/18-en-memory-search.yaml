@@ -34,5 +34,14 @@ turns:
     expect:
       player_state: stopped
 
+  - user: "jessica, how many notes do i have?"
+    expect:
+      assistant_says_contains: "have"
+
+  - user: "jessica, delete the last note"
+    expect:
+      assistant_says_contains: "deleted"
+      memory_wav_in_trash: true
+
 postconditions:
   no_unit_restarts: true

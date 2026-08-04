@@ -81,15 +81,28 @@ def build_assistant(
     router: ModelRouter | None = None,
 ) -> Assistant:
     """The full Jessica agent for this node: portable engine + mesh-wired LLM,
-    always awake (a server has no wake gate)."""
+    always awake (a server has no wake gate). Semantic memory recall uses the
+    same wiring as the Pi's brain — memories synced over the fabric become
+    prompt context here too (degrades to lexical recall when the e5 model or
+    onnxruntime/tokenizers are absent)."""
     mesh = mesh or Mesh.load()
     router = router or build_router(mesh)
+    from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.context_wiring import (
+        notes_context_wiring,
+    )
     from blazend.domains.context.adapters.rpi5.memory import MemoryStore
 
+    wiring = notes_context_wiring()
     return Assistant(
         memory=MemoryStore(data),
         gemini=GeminiClient(),
         router=router,
         openai=OpenAiClient(),
         always_awake=True,
+        embedder=wiring.embedder,
+        notes_top_k=wiring.top_k,
+        notes_min_score=wiring.min_score,
+        notes_rel_margin=wiring.rel_margin,
+        notes_max_chars=wiring.max_chars,
+        notes_include_voice=wiring.include_voice,
     )

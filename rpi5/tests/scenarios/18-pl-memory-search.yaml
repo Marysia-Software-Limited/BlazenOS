@@ -39,5 +39,14 @@ turns:
     expect:
       assistant_says_contains: "lipcu"
 
+  - user: "dżesika, ile mam notatek?"
+    expect:
+      assistant_says_contains: "mam"
+
+  - user: "dżesika, usuń ostatnią notatkę"
+    expect:
+      assistant_says_contains: "usunęłam"    # reads back what was removed
+      memory_wav_in_trash: true              # wav recoverable, not deleted
+
 postconditions:
   no_unit_restarts: true

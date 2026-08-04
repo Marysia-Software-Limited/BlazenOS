@@ -345,6 +345,45 @@ class MemoryStore:
         self._maybe_reload()
         return [VoiceNote(**v) for v in self._db.voice_notes]
 
+    def delete_last_memory(self) -> MemoryItem | None:
+        """Remove the most recently created memory (note or voice memo) — the
+        spoken "usuń ostatnią notatkę". The row and its vector go away; a
+        voice memo's wav is MOVED to ``<data>/trash/`` rather than deleted, so
+        a slip of the tongue can be undone by hand. Returns what was removed
+        (spoken back as the confirmation), or None when the store is empty."""
+        self._maybe_reload()
+        candidates: list[tuple[str, str, dict[str, Any]]] = [
+            (str(n.get("created", "")), "note", n) for n in self._db.notes
+        ] + [
+            (str(v.get("created", "")), "voice", v) for v in self._db.voice_notes
+        ]
+        if not candidates:
+            return None
+        _, kind, row = max(candidates, key=lambda t: t[0])
+        if kind == "note":
+            self._db.notes.remove(row)
+            item = MemoryItem(id=str(row["id"]), kind="note",
+                              text=str(row.get("text", "")), title=str(row.get("title", "")))
+        else:
+            self._db.voice_notes.remove(row)
+            item = MemoryItem(id=str(row["id"]), kind="voice",
+                              text=str(row.get("transcript", "")),
+                              audio_path=str(row.get("audio_path", "")))
+            src = Path(item.audio_path)
+            if src.exists():
+                trash = self.path.parent / "trash"
+                try:
+                    trash.mkdir(parents=True, exist_ok=True)
+                    src.rename(trash / src.name)
+                except OSError:
+                    pass
+        self._save()
+        emb = self._load_embeddings()
+        if item.id in emb.get("vectors", {}):
+            emb["vectors"].pop(item.id, None)
+            self._save_embeddings()
+        return item
+
     def claim_last_clip(
         self, utterance_text: str, *, max_age_s: float = 15.0
     ) -> tuple[str, float] | None:

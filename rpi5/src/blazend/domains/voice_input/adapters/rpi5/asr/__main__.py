@@ -198,9 +198,11 @@ async def _capture_memo(
             break
     if not heard or not chunks:
         log.info("memo capture: no speech within %.0fs — aborting", lead_in_s)
+        # Distinct code: the orchestrator answers with a memo-specific retry
+        # prompt, not the generic empty-capture "Słucham?".
         await pub.publish(Envelope(
             topic="error", source="blazend-asr",
-            data={"code": "asr.no_speech", "message": "memo capture empty"}))
+            data={"code": "asr.memo_empty", "message": "memo capture empty"}))
         return
     pcm = np.concatenate(chunks)
     duration_s = len(pcm) / sr

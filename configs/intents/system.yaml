@@ -696,6 +696,27 @@ intents:
     action: tool_call
     tool: context.record_memo
 
+  # Memory management by voice — count + delete-last. Deletion is single-item,
+  # reads back what it removed, and the wav goes to <data>/trash/ (recoverable),
+  # so no confirmation dance is needed.
+  - name: memory_count
+    triggers:
+      pl:
+        - "\\bile mam (notatek|nagra(ń|n)|wspomnie(ń|n))\\b"
+      en:
+        - "\\bhow many (notes|memos|recordings|memories) do i have\\b"
+    action: tool_call
+    tool: context.memory_stats
+
+  - name: memory_delete_last
+    triggers:
+      pl:
+        - "\\b(usu(ń|n)|skasuj|wyma(ż|z))\\b\\s+(ostatni(ą|a|e)\\s+)?(notatk(ę|e)|nagranie|wspomnienie)[\\s.?!…]*$"
+      en:
+        - "\\b(delete|remove|erase)\\b\\s+(the\\s+)?(last\\s+)?(note|memo|recording|memory)[\\s.?!…]*$"
+    action: tool_call
+    tool: context.delete_last
+
   - name: remember_note
     triggers:
       # [\s,:]+ — whisper writes "zapamiętaj, że …"; the bare \s+ never crossed

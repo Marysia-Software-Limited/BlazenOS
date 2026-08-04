@@ -265,3 +265,30 @@ def test_memory_search_does_not_steal_library_search():
 def test_english_memory_ux_matches(cmd):
     assert (_matches("voice_memo_play", cmd, lang="en")
             or _matches("memory_search", cmd, lang="en"))
+
+
+# -- memory management (2026-08-04) --------------------------------------------
+@pytest.mark.parametrize("cmd", [
+    "ile mam notatek", "Jessica, ile mam nagrań?", "ile mam wspomnień",
+])
+def test_memory_count_matches(cmd):
+    assert _matches("memory_count", cmd)
+
+
+@pytest.mark.parametrize("cmd", [
+    "usuń ostatnią notatkę", "Jessica, usuń ostatnie nagranie.", "skasuj notatkę",
+])
+def test_memory_delete_last_matches(cmd):
+    assert _matches("memory_delete_last", cmd)
+
+
+def test_ambient_usunalem_does_not_delete():
+    # Past-tense narration must not fire deletion; nor content after the noun.
+    assert not _matches("memory_delete_last", "usunąłem notatkę z lodówki wczoraj")
+    assert not _matches("memory_delete_last", "usuń notatkę o zakupach z listy")
+
+
+@pytest.mark.parametrize("cmd", ["how many notes do i have", "delete the last recording"])
+def test_english_memory_management_matches(cmd):
+    assert (_matches("memory_count", cmd, lang="en")
+            or _matches("memory_delete_last", cmd, lang="en"))
