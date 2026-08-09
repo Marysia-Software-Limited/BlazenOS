@@ -189,6 +189,13 @@ fi
 printf 'beret ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/011-beret
 chmod 0440 /etc/sudoers.d/011-beret
 systemctl enable ssh
+# Raspberry Pi OS's first-boot "create a user" wizard must NOT run: it blocks
+# the whole boot transaction waiting on a console this appliance doesn't have
+# (found on the first real-hardware boot 2026-08-09 — blazend.target sat
+# queued behind it forever), and its sshd drop-in prints a misleading "SSH may
+# not work" banner. Our users are created right here in the chroot instead.
+systemctl disable userconfig.service 2>/dev/null || true
+rm -f /etc/ssh/sshd_config.d/rename_user.conf
 
 if [ -f "$STAGE/DEV_IMAGE" ]; then
   echo "=== blazend chroot: DEV image (login blazen + beret + ssh on + dev creds) ==="
