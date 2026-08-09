@@ -294,3 +294,37 @@ def test_memo_dialog_untitled_when_title_capture_empty(tmp_path):
         "language": "pl", "duration_s": 0.5}))
     assert stub._memo_stage == "content" and stub._memo_title == ""
     assert stub.spoken == ["Nie usłyszałam tytułu — podyktuj samą treść."]
+
+
+def test_memo_queue_envelope_reaches_the_player():
+    """First live "odtwórz notatki" (2026-08-09): tools built a correct queue,
+    but the reply-envelope builder accepted only music.*/audiobook.* tool
+    names — a context.play_memos payload was DROPPED, so Jessica announced
+    "Odtwarzam 2 nagrania" and then played nothing. Third payload-drop at
+    this seam (2026-07-27 lesson: test the dispatcher→envelope seam)."""
+    from types import SimpleNamespace
+
+    from blazend.domains.ai_orchestrator.adapters.rpi5.dispatch import DispatchResult
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import Orchestrator
+    from blazend.events import Envelope
+
+    wavs = ["/data/voice_notes/memo-a.wav", "/data/voice_notes/memo-b.wav"]
+
+    class _Disp:
+        def dispatch(self, intent: str, params: dict, lang: str) -> DispatchResult:
+            payload = {"path": wavs[0], "name": "notatki głosowe",
+                       "is_playlist": True, "chapters": list(wavs), "chapter": 0,
+                       "labels": ["Informacje ogóliste", "Bandera Power"]}
+            return DispatchResult("Odtwarzam 2 nagrania.", lang, "tool",
+                                  data={"tool": "context.play_memos", "ok": True, **payload})
+
+    stub = SimpleNamespace(_dispatcher=_Disp(), _radio=SimpleNamespace(playing=False),
+                           _music_enabled=True, _book=None, _last_book=None,
+                           _last_source="", _last_source_name="")
+    env = Envelope(topic="nlu.intent", source="test",
+                   data={"intent": "voice_memo_play", "params": {}, "language": "pl"})
+    reply = Orchestrator._dispatch_intent(stub, env)
+    assert reply is not None and reply.data["action"] == "music_play"
+    payload = reply.data["payload"]
+    assert payload["is_playlist"] is True and payload["chapters"] == wavs
+    assert payload["labels"] == ["Informacje ogóliste", "Bandera Power"]

@@ -1379,7 +1379,13 @@ class Orchestrator:
                 "url": str(result.data["url"]),
                 "name": str(result.data.get("name", "")),
             }
-        elif tool in ("music.play", "music.next", "music.prev", "audiobook.play") and result.data.get("path"):
+        # context.play_memos / context.play_found are the voice-memo queues —
+        # they ride the same music_play action (is_playlist payload). Omitting
+        # them here silently dropped the queue: "Odtwarzam 2 nagrania" spoke,
+        # nothing played (first live memo playback, 2026-08-09 — the third
+        # payload-drop at this exact seam; see the 2026-07-27 note below).
+        elif tool in ("music.play", "music.next", "music.prev", "audiobook.play",
+                      "context.play_memos", "context.play_found") and result.data.get("path"):
             if not self._music_enabled:
                 # Local music/audiobook playback is temporarily disabled (its
                 # in-play controls — stop / next / volume — are being fixed). Speak
