@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -83,6 +84,24 @@ def _pl_memos(n: int) -> str:
     if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
         return f"{n} nagrania"
     return f"{n} nagrań"
+
+
+def _queue_labels(tracks: Sequence[Any]) -> list[str]:
+    """Spoken per-track names for a queue payload: the index's (repaired) title,
+    prefixed with the artist when the queue mixes artists ("zagraj wszystko").
+    An empty label ⇒ the orchestrator falls back to the filename stem."""
+    multi = len({t.artist for t in tracks if t.artist}) > 1
+    return [(f"{t.artist} — {t.title}" if multi and t.artist and t.title
+             else t.title).strip() for t in tracks]
+
+
+def _memo_label(title: str, text: str) -> str:
+    """Spoken name of a memo in a queue: its title, else the first words of the
+    transcript — never the wav filename ("vn-3" says nothing to a blind user)."""
+    label = title.strip()
+    if label:
+        return label
+    return " ".join(text.split()[:6])
 
 
 def _pl_notes_count(n: int) -> str:
@@ -291,17 +310,20 @@ class Tools:
                 "recall", {"query": q, "hits": 0})
         lines = "; ".join(h.text for h in hits)
         spoken = _t(lang, f"Znalazłam: {lines}.", f"I found: {lines}.")
-        resolved = (self.memory.voice_note_wav(h.id, h.audio_path)
+        resolved = ((self.memory.voice_note_wav(h.id, h.audio_path), _memo_label(h.title, h.text))
                     for h in hits if h.kind == "voice")
-        voice_paths = [str(w) for w in resolved if w is not None]
+        found = [(str(w), label) for w, label in resolved if w is not None]
+        voice_paths = [p for p, _ in found]
         self._found_memo_paths = voice_paths
+        self._found_memo_labels = dict(found)
         if voice_paths:
             spoken += _t(lang, " Mam też nagranie — powiedz „odtwórz nagranie”.",
                          " I also have the recording — say “play the recording”.")
         return ToolResult(True, spoken, "recall",
                           {"query": q, "hits": len(hits), "voice_hits": len(voice_paths)})
 
-    def _memo_queue(self, paths: list[str], lang: str) -> ToolResult:
+    def _memo_queue(self, paths: list[str], lang: str,
+                    labels: list[str] | None = None) -> ToolResult:
         n = len(paths)
         return ToolResult(
             True,
@@ -309,6 +331,7 @@ class Tools:
             "music_play", {
                 "path": paths[0], "name": _t(lang, "notatki głosowe", "voice notes"),
                 "is_playlist": True, "chapters": paths, "chapter": 0,
+                "labels": list(labels or []),
             })
 
     def play_memos(self, lang: str) -> ToolResult:
@@ -316,12 +339,14 @@ class Tools:
         album engine drives playback: auto-advance, next/prev, stop). Resolves
         through `voice_note_wav`, so memos recorded on ANOTHER node play from
         their fabric-synced mirror."""
-        resolved = (self.memory.voice_note_wav(v.id, v.audio_path)
-                    for v in self.memory.voice_notes())
-        paths = [str(w) for w in resolved if w is not None][-5:]
-        if not paths:
+        pairs = [(str(w), _memo_label(v.title, v.transcript))
+                 for v, w in ((v, self.memory.voice_note_wav(v.id, v.audio_path))
+                              for v in self.memory.voice_notes())
+                 if w is not None][-5:]
+        if not pairs:
             return ToolResult(True, _t(lang, "Nie mam żadnych nagrań.", "I have no recordings."), "recall")
-        return self._memo_queue(paths, lang)
+        return self._memo_queue([p for p, _ in pairs], lang,
+                                labels=[label for _, label in pairs])
 
     def play_found_memo(self, lang: str) -> ToolResult:
         """"Odtwórz (to) nagranie" — replay what the last memory search found
@@ -329,7 +354,8 @@ class Tools:
         paths = [p for p in getattr(self, "_found_memo_paths", []) if Path(p).exists()]
         if not paths:
             return self.play_memos(lang)
-        return self._memo_queue(paths, lang)
+        found = getattr(self, "_found_memo_labels", {})
+        return self._memo_queue(paths, lang, labels=[found.get(p, "") for p in paths])
 
     def memory_stats(self, lang: str) -> ToolResult:
         """"Ile mam notatek?" — spoken inventory of the memory store."""
@@ -721,6 +747,9 @@ class Tools:
                 "music_play", {
                     "path": album[0].path, "name": name, "is_playlist": True,
                     "chapters": [t.path for t in album], "chapter": 0,
+                    # Spoken per-track names: the index's repaired titles, so
+                    # now-playing/shuffle never read a mojibake filename aloud.
+                    "labels": _queue_labels(album),
                 })
         queue = queue or self.music.resolve_artist(query)
         if queue is not None:
@@ -734,6 +763,7 @@ class Tools:
                 "music_play", {
                     "path": queue[0].path, "name": name, "is_playlist": True,
                     "chapters": [t.path for t in queue], "chapter": 0,
+                    "labels": _queue_labels(queue),
                 })
         track = self.music.resolve(query)
         if track is None:

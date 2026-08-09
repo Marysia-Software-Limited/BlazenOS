@@ -105,6 +105,17 @@ def _track_label(path: str) -> str:
     return _TRACK_NO_PREFIX.sub("", Path(path).stem).replace("_", " ").strip()
 
 
+def _queue_label(book: dict[str, Any], i: int) -> str:
+    """Spoken name of queue position ``i``: the payload's label (the music
+    index's repaired title / a memo's title) when present, else the filename
+    stem — so mojibake rips and "vn-3.wav" are never read aloud when the
+    index knows better."""
+    labels = book.get("labels") or []
+    if 0 <= i < len(labels) and str(labels[i]).strip():
+        return str(labels[i]).strip()
+    return _track_label(str(book["chapters"][i]))
+
+
 # Processing heartbeat: how long the ticker may run before giving up (a reply,
 # cue or error normally cancels it much earlier).
 _HB_MAX_S = 60.0
@@ -883,6 +894,7 @@ class Orchestrator:
                 self._book = {
                     "slug": str(payload.get("slug", "")),
                     "chapters": list(payload.get("chapters", [])),
+                    "labels": list(payload.get("labels", [])),
                     "index": int(payload.get("chapter", 0)),
                     "name": self._last_source_name,
                     "kind": "album" if payload.get("is_playlist") else "book",
@@ -1058,7 +1070,7 @@ class Orchestrator:
         if book is not None:
             idx, n = int(book["index"]) + 1, len(book["chapters"])
             if book.get("kind") == "album":
-                track = _track_label(str(book["chapters"][int(book["index"])]))
+                track = _queue_label(book, int(book["index"]))
                 return t(f"Gram „{track}” z albumu {book['name']} — utwór {idx} z {n}.",
                          f"Playing “{track}” from the album {book['name']} — track {idx} of {n}.")
             return t(f"Czytam „{book['name']}” — rozdział {idx} z {n}.",
@@ -1193,12 +1205,17 @@ class Orchestrator:
             return
         chapters = list(book["chapters"])
         idx = int(book["index"])
-        rest = chapters[:idx] + chapters[idx + 1:]
-        random.shuffle(rest)
-        book["chapters"] = [chapters[idx], *rest]
+        # Labels ride along: shuffle (path, label) PAIRS so position i keeps
+        # naming the file at position i after the reorder.
+        labels = list(book.get("labels") or [])
+        labels += [""] * (len(chapters) - len(labels))
+        pairs = [pl for i, pl in enumerate(zip(chapters, labels, strict=True)) if i != idx]
+        random.shuffle(pairs)
+        book["chapters"] = [chapters[idx], *[p for p, _ in pairs]]
+        book["labels"] = [labels[idx], *[label for _, label in pairs]]
         book["index"] = 0
-        if rest:
-            nxt = _track_label(str(rest[0]))
+        if pairs:
+            nxt = _queue_label(book, 1)
             msg = t(f"Przetasowałam. Następny będzie „{nxt}”.",
                     f"Shuffled. Next up: “{nxt}”.")
         else:
@@ -1224,7 +1241,8 @@ class Orchestrator:
         return Envelope(topic="brain.reply", source="blazend-orchestrator",
                         data={"action": "music_play", "payload": {
                             "path": chapters[idx], "name": str(book["name"]),
-                            "is_playlist": True, "chapters": chapters, "chapter": idx}})
+                            "is_playlist": True, "chapters": chapters, "chapter": idx,
+                            "labels": list(book.get("labels") or [])}})
 
     def _chapter_nav(self, delta: int) -> Envelope:
         """Jump ±1 chapter in the now-playing book (or say why we can't)."""
@@ -1274,6 +1292,7 @@ class Orchestrator:
                             "is_audiobook": not is_album, "is_playlist": is_album,
                             "slug": str(book.get("slug", "")),
                             "chapters": chapters, "chapter": idx,
+                            "labels": list(book.get("labels") or []),
                             "start_seconds": float(prog.get("offset_s", 0.0))}},
                     )
             if self._last_source:
@@ -1393,6 +1412,7 @@ class Orchestrator:
                         "is_playlist": True,
                         "chapters": list(result.data.get("chapters", [])),
                         "chapter": int(result.data.get("chapter", 0)),
+                        "labels": list(result.data.get("labels", [])),
                     })
         elif tool == "radio.stop":
             data["action"] = "radio_stop"

@@ -300,7 +300,10 @@ While a queue plays: "następny/poprzedni" steps it (whisper's trailing
 punctuation — "Jessica, następny." — is tolerated; bounds are spoken: "To
 ostatni utwór albumu."), "tasuj/przetasuj" reshuffles the remaining queue and
 names what comes next, "co teraz gra?" answers with track/album/position,
-"stop" halts, "kontynuj" resumes at the current track. Spoken answers during
+"stop" halts, "kontynuj" resumes at the current track. Spoken track names come
+from the music index's **repaired titles** (queue payloads carry a `labels`
+list; a memo queue uses the memo's title / transcript head) — the raw filename
+stem is only the fallback, so mojibake rips are never read aloud. Spoken answers during
 playback pause the stream at its offset and resume it right after (one Jabra
 PCM). Unlike audiobooks there is **no** "Czy jeszcze słuchasz?" attention
 check and no speech compression (music DSP only).

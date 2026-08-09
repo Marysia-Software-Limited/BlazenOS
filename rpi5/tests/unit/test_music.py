@@ -172,6 +172,104 @@ def test_fast_path_reply_envelope_carries_the_queue(music):
     assert len(payload["chapters"]) == 3
 
 
+def test_tools_album_payload_carries_spoken_labels(music):
+    # The queue payload ships the index's repaired titles so now-playing /
+    # shuffle announcements never read a mojibake filename aloud. A various-
+    # artists album names the artist per track.
+    r = Tools(music=music).music_play("ballady morderców", "pl")
+    assert r.payload["labels"] == [
+        "Kinga Preis — Piesn o radosci",
+        "Maciej Maleńczuk — Stagger Lee",
+        "Kazik Staszewski — Henry Lee",
+    ]
+
+
+def test_tools_artist_queue_labels_follow_the_shuffle(music):
+    # The pool spans two artist strings (Kazik / Kazik Staszewski) → prefixed.
+    # Whatever the shuffle order, label i must name the file at chapter i.
+    r = Tools(music=music).music_play("kazika", "pl")
+    assert len(r.payload["labels"]) == len(r.payload["chapters"]) == 3
+    by_file = {
+        "01 Wewnetrzne sprawy.mp3": "Kazik — Wewnetrzne sprawy",
+        "02 Piosenka mlodych wioslarzy.mp3": "Kazik — Piosenka mlodych wioslarzy",
+        "Henry Lee.mp3": "Kazik Staszewski — Henry Lee",
+    }
+    assert [by_file[Path(p).name] for p in r.payload["chapters"]] == r.payload["labels"]
+
+
+def test_queue_label_prefers_payload_label_over_filename():
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import _queue_label
+    book = {"chapters": ["/m/03 Pie�� o mi�o�ci.mp3", "/m/04 druga.mp3"],
+            "labels": ["Pieśń o miłości", ""]}
+    assert _queue_label(book, 0) == "Pieśń o miłości"
+    assert _queue_label(book, 1) == "druga"  # empty label → filename stem
+
+
+@pytest.mark.asyncio
+async def test_shuffle_keeps_labels_aligned_with_paths():
+    from types import SimpleNamespace
+
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import Orchestrator
+    paths = [f"/m/{i:02d} plik{i}.mp3" for i in range(6)]
+    labels = [f"Tytuł {i}" for i in range(6)]
+    book = {"chapters": list(paths), "labels": list(labels), "index": 2,
+            "kind": "album", "name": "x"}
+    spoken: list[str] = []
+
+    async def _sp(text: str, lang: str = "pl") -> None:
+        spoken.append(text)
+
+    stub = SimpleNamespace(_book=book, _radio=SimpleNamespace(playing=True),
+                           _speak_over_playback=_sp)
+    await Orchestrator._shuffle_queue(stub, "pl")
+    # Current track stays first; every position still names its own file.
+    assert book["chapters"][0] == paths[2] and book["labels"][0] == labels[2]
+    original = dict(zip(paths, labels, strict=True))
+    assert [original[p] for p in book["chapters"]] == book["labels"]
+    assert spoken and book["labels"][1] in spoken[0]  # announce uses the label
+
+
+def test_album_nav_forwards_labels():
+    from types import SimpleNamespace
+
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import Orchestrator
+    stub = SimpleNamespace(_book={"chapters": ["/a.mp3", "/b.mp3"],
+                                  "labels": ["Utwór A", "Utwór B"],
+                                  "index": 0, "kind": "album", "name": "x"})
+    env = Orchestrator._album_nav(stub, +1)
+    assert env.data["payload"]["labels"] == ["Utwór A", "Utwór B"]
+    assert env.data["payload"]["chapter"] == 1
+
+
+def test_fast_path_envelope_forwards_labels(music):
+    # Same seam as test_fast_path_reply_envelope_carries_the_queue — labels
+    # must survive the payload rebuild too, or every queue speaks filenames.
+    from types import SimpleNamespace
+
+    from blazend.domains.ai_orchestrator.adapters.rpi5.dispatch import DispatchResult
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import Orchestrator
+    from blazend.events import Envelope
+
+    belt = Tools(music=music)
+
+    class _Disp:
+        def dispatch(self, intent: str, params: dict, lang: str) -> DispatchResult:
+            res = belt.music_play(str(params.get("query", "")), lang)
+            return DispatchResult(res.text, lang, "tool",
+                                  data={"tool": "music.play", "ok": res.ok, **res.payload})
+
+    stub = SimpleNamespace(_dispatcher=_Disp(), _radio=SimpleNamespace(playing=False),
+                           _music_enabled=True, _book=None, _last_book=None,
+                           _last_source="", _last_source_name="")
+    env = Envelope(topic="nlu.intent", source="test", data={
+        "intent": "music_play", "params": {"query": "ballady morderców"}, "language": "pl"})
+    reply = Orchestrator._dispatch_intent(stub, env)
+    assert reply is not None
+    payload = reply.data["payload"]
+    assert len(payload["labels"]) == len(payload["chapters"]) == 3
+    assert payload["labels"][0] == "Kinga Preis — Piesn o radosci"
+
+
 def test_indexer_demojibake_repairs_cp1250_tags():
     # The indexer un-mangles cp1250 tags mis-decoded as latin-1/cp1252 by old
     # rippers, and leaves clean/foreign text alone.
