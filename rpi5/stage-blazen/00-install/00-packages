@@ -3,10 +3,7 @@ python3-venv
 python3-pip
 libasound2
 libssl3
-pipewire
-wireplumber
 alsa-utils
-i2c-tools
 spi-tools
 openssh-server
 ufw

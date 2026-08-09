@@ -55,9 +55,15 @@ starts.
 
 ## M1 — Bootable image (VM only) **(image built ✓ — awaiting QEMU boot test)**
 
-- ✓ `rpi5/stage-blazen/` overlay for pi-gen exists (9 systemd unit files,
-  `00-packages`, `00-debconf`, `00-run-chroot.sh`,
-  `files/etc/systemd/system/blazend.target` + 8 services).
+- ✓ `rpi5/stage-blazen/` overlay for pi-gen exists (16 systemd unit files:
+  `blazend.target` + 14 services + pull-catalog timer; `00-packages`,
+  `00-debconf`, `00-run.sh`, `01-run-chroot.sh`). Refreshed 2026-08-09 to
+  match the live appliance: /etc/blazen site configs (incl. the generated
+  ollama-stripped `mesh.yaml`), local domain wheels (`jessica` console
+  script), the full `/var/lib/blazen` tree via tmpfiles.d, Jabra-only
+  (button unit shipped but not enabled, Jabra `asound.state`,
+  `BLAZEN_LED_COUNT=1`), model bake allowlist (Bielik **1.5B only** —
+  Decision 2026-08-09; no asr-remote). Build: `make pi-image-jessica`.
 - ✓ `scripts/build-image.sh` wires the Python sources + cross-compiled
   Rust binaries + YAML configs into the stage payload at build time.
 - ✓ **Cross-compile to aarch64 works** via `cross` + `Cross.toml` with a

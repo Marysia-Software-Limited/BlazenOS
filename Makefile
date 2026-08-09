@@ -191,6 +191,10 @@ pi-image: venv rust-aarch64 ## Build the RELEASE .img for `dd` to SD (blazen nol
 pi-image-dev: venv rust-aarch64 ## Build a DEV .img for SD (login blazen + ssh on) — for on-hardware bring-up before the voice path exists.
 	./scripts/build-image.sh --format raw --out $(PI_IMAGE) --dev
 
+.PHONY: pi-image-jessica
+pi-image-jessica: venv rust-aarch64 ## Full-fat DEV .img for the jessica appliance: Bielik 1.5B + all on-device models + ML wheelhouse baked, Jabra-only, hostname jessica.
+	BLAZEN_BAKE_MODELS=1 BLAZEN_HOSTNAME=jessica ./scripts/build-image.sh --format raw --out $(PI_IMAGE) --dev
+
 .PHONY: flash
 flash: ## Flash the .img to DEVICE=/dev/diskN (guarded, prompts for confirm)
 	@if [ -z "$(DEVICE)" ]; then echo "Usage: make flash DEVICE=/dev/diskN"; exit 1; fi

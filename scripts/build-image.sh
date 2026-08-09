@@ -15,6 +15,7 @@ PI_GEN_REPO="https://github.com/RPi-Distro/pi-gen.git"
 FORMAT=raw
 OUT=""
 DEV_IMAGE="${BLAZEN_DEV_IMAGE:-0}"
+STAGE_ONLY=0
 
 usage() {
   cat <<USAGE
@@ -30,12 +31,19 @@ Options:
                  password so the M1 boot test can SSH in. Release images
                  (the default) are SSH-on but pubkey-only/fail-closed — no
                  key or password ships. See docs/06-SSH-BOOTSTRAP.md §6.
+  --stage-only   stop after stage_payload (no Docker): ~1-minute dry-run to
+                 inspect build/pi-gen/stage-blazen/.../blazen-staging/
   --pi-gen-sha   override BLAZEN_PI_GEN_SHA env (defaults to the pinned tag)
 
 Env:
   BLAZEN_DEV_IMAGE=1        same as --dev
   BLAZEN_DEV_SSH_PUBKEY     path to a public key to bake into the dev image
                             (default: build/dev-ssh/id_ed25519.pub, generated)
+  BLAZEN_BAKE_MODELS=1      bake models/ + wheelhouse/ (full offline stack)
+  BLAZEN_BAKE_MODEL_DIRS    space-separated models/ subdirs to bake
+                            (default: "asr embeddings llm tts wake" —
+                            asr-remote, paul's 2.9 GB large-v3, is excluded)
+  BLAZEN_HOSTNAME           target hostname (default: blazen)
 USAGE
 }
 
@@ -44,6 +52,7 @@ while [ $# -gt 0 ]; do
     --format) FORMAT="$2"; shift 2 ;;
     --out)    OUT="$2";    shift 2 ;;
     --dev)    DEV_IMAGE=1; shift 1 ;;
+    --stage-only) STAGE_ONLY=1; shift 1 ;;
     --pi-gen-sha) PI_GEN_SHA="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) usage; exit 1 ;;
@@ -175,11 +184,41 @@ stage_payload() {
          "$stage_root/files" \
          "$out"
   mkdir -p "$out/blazen-src" "$out/blazen-rust" "$out/blazen-configs/intents" \
-           "$out/blazen-configs/vm"
+           "$out/blazen-configs/vm" "$out/blazen-configs/ontology" \
+           "$out/blazen-configs/prompts" "$out/blazen-configs/site"
   cp -R "$REPO_ROOT/rpi5/src/blazend"       "$out/blazen-src/"
   cp -R "$REPO_ROOT/configs/"*.yaml         "$out/blazen-configs/"
   cp -R "$REPO_ROOT/configs/intents/"*.yaml "$out/blazen-configs/intents/"
   cp -R "$REPO_ROOT/configs/vm/"*.yaml      "$out/blazen-configs/vm/"
+  cp -R "$REPO_ROOT/configs/ontology/"*.json "$out/blazen-configs/ontology/"
+  cp -R "$REPO_ROOT/configs/prompts/"*.json  "$out/blazen-configs/prompts/"
+  # Site-DIVERGENT mesh.yaml for the appliance: strip paul's llm resource
+  # (Decision 2026-08-09 — the Pi never routes to paul's Ollama). The chroot
+  # installs this to /etc/blazen/mesh.yaml; canonical source stays configs/.
+  "$REPO_ROOT/.venv/bin/python" - "$REPO_ROOT/configs/mesh.yaml" \
+      "$out/blazen-configs/site/mesh.yaml" <<'PY'
+import sys
+import yaml
+src, dst = sys.argv[1], sys.argv[2]
+with open(src) as f:
+    mesh = yaml.safe_load(f)
+mesh["nodes"]["paul"]["resources"].pop("llm", None)
+with open(dst, "w") as f:
+    f.write("# GENERATED site variant of configs/mesh.yaml for the Pi appliance.\n"
+            "# Decision 2026-08-09: paul's llm resource removed — Jessica never\n"
+            "# routes commands off-node. Canonical source: configs/mesh.yaml.\n")
+    yaml.safe_dump(mesh, f, sort_keys=False, allow_unicode=True)
+PY
+  # Local pure-python domain wheels — ALWAYS staged (tiny, arch-independent).
+  # jessica-linux carries the `jessica` console script the fabric-snapshot and
+  # pull-catalog units ExecStart; the rest are its domain deps.
+  rm -rf "$out/blazen-local-wheels"
+  "$REPO_ROOT/.venv/bin/pip" wheel --no-deps -q -w "$out/blazen-local-wheels" \
+    "$REPO_ROOT/linux/agent" \
+    "$REPO_ROOT/domains/audiobook-catalog" \
+    "$REPO_ROOT/domains/mesh-registry" \
+    "$REPO_ROOT/domains/mesh-llm" \
+    "$REPO_ROOT/domains/context-sync"
   # Rust binaries: prefer the cross-compiled aarch64 release artefacts.
   # Appliance units build in the rpi5/ project workspace; the shared-core
   # blazend-fabric builds in the repo-root domains/ workspace.
@@ -200,13 +239,19 @@ stage_payload() {
   # host repo: models/ (via `make models`) and wheelhouse/ (built on a native
   # aarch64 host with `pip wheel "rpi5[runtime]" -w wheelhouse`).
   if [ "${BLAZEN_BAKE_MODELS:-0}" = "1" ]; then
-    if [ -d "$REPO_ROOT/models" ]; then
-      log "baking model weights into image (BLAZEN_BAKE_MODELS=1): $(du -sh "$REPO_ROOT/models" | cut -f1)"
-      mkdir -p "$out/blazen-models"
-      cp -R "$REPO_ROOT/models/"* "$out/blazen-models/"
-    else
-      warn "BLAZEN_BAKE_MODELS=1 but $REPO_ROOT/models missing — run 'make models' first"
-    fi
+    # Allowlist, not `cp -R models/*`: the host models/ tree also carries
+    # paul-only weights (asr-remote = 2.9 GB large-v3) that must never ship.
+    local model_dirs="${BLAZEN_BAKE_MODEL_DIRS:-asr embeddings llm tts wake}"
+    local d
+    mkdir -p "$out/blazen-models"
+    for d in $model_dirs; do
+      if [ ! -d "$REPO_ROOT/models/$d" ]; then
+        warn "model dir missing: models/$d — run 'make models' first"
+        return 1
+      fi
+      cp -R "$REPO_ROOT/models/$d" "$out/blazen-models/$d"
+    done
+    log "baking model weights into image ($model_dirs): $(du -sh "$out/blazen-models" | cut -f1)"
     if [ -d "$REPO_ROOT/wheelhouse" ] && [ -n "$(ls -A "$REPO_ROOT/wheelhouse" 2>/dev/null)" ]; then
       log "baking ML wheelhouse into image: $(du -sh "$REPO_ROOT/wheelhouse" | cut -f1)"
       mkdir -p "$out/blazen-wheels"
@@ -233,6 +278,10 @@ main() {
   ensure_pi_gen
   inject_stage
   stage_payload "$BUILD_DIR/pi-gen/stage-blazen"
+  if [ "$STAGE_ONLY" = "1" ]; then
+    log "stage-only: payload at $BUILD_DIR/pi-gen/stage-blazen/00-install/files/var/lib/blazen-staging (no image built)"
+    exit 0
+  fi
   run_pi_gen
   post_convert
 }

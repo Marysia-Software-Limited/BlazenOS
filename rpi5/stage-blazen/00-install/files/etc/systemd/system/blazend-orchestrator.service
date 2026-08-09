@@ -1,10 +1,10 @@
 [Unit]
 Description=blazen_os pipeline orchestrator (Python)
 PartOf=blazend.target
-# NOTE: blazend-wake intentionally omitted — the orchestrator's `Wants=` is what
-# actually starts the pipeline, so listing wake here would pull it up even though
-# it's not enabled. Wake is disabled until a real wake model exists (always-listen
-# mode, require_wake=false); see the enable list in 00-install/01-run-chroot.sh.
+# NOTE: blazend-wake is not listed in `Wants=` here — it is enabled in its own
+# right (see the enable list in 00-install/01-run-chroot.sh) with a trained
+# "dżesika" model (models/wake/jessica.onnx, threshold 0.8) and joins via
+# blazend.target; duplicating it here would only double the dependency edges.
 After=blazend-health.service blazend-audio-in.service
 Wants=blazend-health.service blazend-audio-in.service \
       blazend-asr.service blazend-brain.service blazend-tts.service \
@@ -27,7 +27,9 @@ EnvironmentFile=-/etc/blazen/secrets.env
 # soft — no LED wired or SPI off → led.json stays the only status surface.
 # Override BLAZEN_LED_TYPE=apa102 for the legacy HAT chain, or =none to disable.
 Environment=BLAZEN_LED_TYPE=ws2812
-Environment=BLAZEN_LED_COUNT=3
+# Single WS2812 on the Jabra appliance (docs/02-HARDWARE.md); the legacy
+# ReSpeaker HAT chain had 3 APA102s — set 3 + BLAZEN_LED_TYPE=apa102 for that.
+Environment=BLAZEN_LED_COUNT=1
 ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.domains.systems.adapters.rpi5.orchestrator
 Restart=on-failure
 RestartSec=2

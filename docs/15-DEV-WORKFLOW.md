@@ -105,6 +105,9 @@ make rust-aarch64       # produces aarch64 ELF binaries via cross + Docker
 make vm-image           # full pi-gen pipeline → vm-images/*.qcow2  (15-30 min)
 make run-vm             # boots that image in QEMU
 make pi-image           # raw .img for `dd` onto an SD card
+make pi-image-jessica   # full-fat DEV .img for the appliance: Bielik 1.5B +
+                        # asr/tts/wake/e5 models + aarch64 ML wheelhouse baked,
+                        # Jabra-only (no HAT), hostname jessica (2026-08-09)
 
 # Android
 cd android/
