@@ -145,7 +145,10 @@ post_convert() {
   # this run's artefact. So prefer the freshest archive: drop stale raw
   # images, then extract the newest archive. Fall back to a raw .img only
   # when no archive exists at all.
-  archive=$(ls -t "$deploy"/*.zip "$deploy"/*.img.xz 2>/dev/null | head -n1)
+  # `|| true`: with no .img.xz (pi-gen's default is .zip) the unmatched glob
+  # makes ls exit 2, and pipefail+set -e killed the whole script HERE with no
+  # message (bug found 2026-08-09 — the build succeeded, conversion never ran).
+  archive=$(ls -t "$deploy"/*.zip "$deploy"/*.img.xz 2>/dev/null | head -n1 || true)
   if [ -n "$archive" ]; then
     log "Extracting freshest archive: $archive"
     rm -f "$deploy"/*.img
@@ -154,7 +157,7 @@ post_convert() {
       *.img.xz) xz -d -k -f "$archive" ;;
     esac
   fi
-  img=$(ls -t "$deploy"/*.img 2>/dev/null | grep -v '\.xz$' | head -n1)
+  img=$(ls -t "$deploy"/*.img 2>/dev/null | grep -v '\.xz$' | head -n1 || true)
   [ -z "$img" ] && { echo "No image artefact (.img/.zip/.img.xz) in $deploy"; exit 1; }
   mkdir -p "$(dirname "$OUT")"
   case "$FORMAT" in
