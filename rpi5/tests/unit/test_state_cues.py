@@ -84,3 +84,60 @@ async def test_no_text_still_prompts_not_understood(tmp_path):
     orch, spoken = _orch(tmp_path)
     await orch._on_envelope("asr", _err("asr.no_text"))
     assert spoken == [orch._cues["not_understood"]]
+
+
+def _fake_aplay(monkeypatch, observed: dict):
+    """Replace the aplay subprocess; record marker state at 'playback' time."""
+
+    async def _spawn(*_args, **_kwargs):
+        class _Proc:
+            async def communicate(self, _wav):
+                observed["during"] = sorted(
+                    p.name for p in observed["rt"].iterdir() if p.is_file())
+                return b"", b""
+
+        return _Proc()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", _spawn)
+
+
+@pytest.mark.asyncio
+async def test_beep_never_touches_the_speaking_marker(tmp_path, monkeypatch):
+    """Regression (2026-08-09, deaf pipeline): the wake chime marked itself as
+    `speaking`, and the ASR — which drops any wake fired while that marker
+    exists (TTS-echo guard) — saw it a millisecond after wake.detected and
+    ignored EVERY wake. Beeps must use their own `cue` marker."""
+    orch, _ = _orch(tmp_path)
+    observed: dict = {"rt": tmp_path}
+    _fake_aplay(monkeypatch, observed)
+    await orch._play_beep(orch._beep_wav, tail_s=0)
+    assert "cue" in observed["during"]
+    assert "speaking" not in observed["during"]
+    assert not (tmp_path / "cue").exists()  # cleaned up after the tail
+
+
+@pytest.mark.asyncio
+async def test_wake_with_chime_leaves_asr_able_to_listen(tmp_path, monkeypatch):
+    """Flow-level guard: after handling wake.detected (chime armed), the
+    `speaking` marker must be gone and the `activate` window open — otherwise
+    the ASR treats the wake as self-speech and the command is never captured."""
+    orch, _ = _orch(tmp_path)
+    observed: dict = {"rt": tmp_path}
+    _fake_aplay(monkeypatch, observed)
+
+    async def _noop(*_a, **_k):
+        return None
+
+    orch._publisher = types.SimpleNamespace(publish=_noop)  # type: ignore[assignment]
+    orch._state = types.SimpleNamespace(update=_noop)  # type: ignore[assignment]
+    env = Envelope(topic="wake.detected", source="blazend-wake",
+                   data={"score": 0.99, "model": "dżesika", "language": "pl"})
+    try:
+        await orch._on_envelope("wake", env)
+    finally:
+        orch._cancel_heartbeat()
+    assert observed.get("during") is not None  # the chime actually played
+    # The instant the chime plays is when the ASR's self-speech check runs.
+    assert "speaking" not in observed["during"]
+    assert not (tmp_path / "speaking").exists()
+    assert (tmp_path / "activate").exists()

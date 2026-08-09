@@ -300,12 +300,15 @@ class Orchestrator:
         """Play a pre-rendered cue straight to the Jabra via ``aplay`` and wait.
 
         Bypasses blazend-audio-out (down while idle, ~1-2 s to start) so the cue is
-        instant. While it plays we set the ``speaking`` marker the ASR already honours
-        (+ a short tail) so the cue's echo into the Jabra mic can't be captured or
-        re-fire the wake — the beep→mic→wake feedback that storms the pipeline. The
-        marker is only ours to clear if a reply wasn't already speaking. A failure is
-        swallowed — a missing cue must never break the voice path."""
-        marker = self._runtime_dir / "speaking"
+        instant. While it plays we hold a ``cue`` marker (+ a short tail) so
+        overlapping beeps can coordinate. It must NOT be the ``speaking`` marker: the
+        ASR drops any wake fired while ``speaking`` exists, and the wake chime plays
+        in reaction to the very wake the ASR is about to serve — marking it as
+        self-speech made the ASR ignore every wake (deaf pipeline, 2026-08-09).
+        ``speaking`` stays reserved for real TTS replies, whose echo genuinely
+        re-fires the wake. A failure is swallowed — a missing cue must never break
+        the voice path."""
+        marker = self._runtime_dir / "cue"
         had_marker = marker.exists()
         try:
             if not had_marker:
@@ -537,6 +540,7 @@ class Orchestrator:
         # Clear a stale self-speech marker (a crash mid-reply would otherwise leave
         # the ASR ignoring every wake — deaf until the file is removed).
         (self._runtime_dir / "speaking").unlink(missing_ok=True)
+        (self._runtime_dir / "cue").unlink(missing_ok=True)
 
         # Own audio-out for half-duplex (keeps the Jabra mic un-ducked while idle).
         asyncio.create_task(self._speaker_manager())
