@@ -25,6 +25,11 @@ notes_context:
   # context (each hit capped ~200 chars so a minute of dictation can't crowd
   # the block). false → text notes only reach the models.
   include_voice_memos: true
+  # Privacy: whether the injected memory block may reach CLOUD backends
+  # (gpt-5.5, the Gemini chat fallback). false (default) → memories go only to
+  # on-device / LAN-mesh models; cloud models get the persona without them.
+  # Flip to true to let cloud answers use your notes too.
+  share_with_cloud: false
 
 # e5 models are asymmetric: the question is embedded as a "query", stored notes
 # as a "passage". These prefixes are part of the model contract.

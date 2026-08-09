@@ -56,6 +56,11 @@ PERSONA = (
     "uczciwa; jeśli czegoś nie wiesz, powiedz to wprost."
 )
 
+# Router backend names that leave the LAN. The memory context is withheld from
+# these unless embeddings.yaml `notes_context.share_with_cloud: true` — Bieliks
+# and mesh peers (mlx-*) are the user's own machines and always get it.
+_CLOUD_ENGINES = frozenset({"gpt-5.5", "openai", "gemini"})
+
 _PL_HINT = re.compile(r"[ąćęłńóśźż]|\b(jest|czy|co|jak|mi|że|nie|tak|godzina|przypomnij|zapamiętaj|wiadomości)\b", re.IGNORECASE)
 _EN_HINT = re.compile(r"\b(the|what|is|remind|remember|news|please|time|tomorrow|at)\b", re.IGNORECASE)
 
@@ -311,6 +316,7 @@ class Assistant:
         notes_rel_margin: float = 0.06,
         notes_max_chars: int = 1200,
         notes_include_voice: bool = True,
+        notes_share_with_cloud: bool = False,
     ):
         self.memory = memory or MemoryStore()
         self.gemini = gemini or GeminiClient()
@@ -339,6 +345,7 @@ class Assistant:
         self._notes_rel_margin = notes_rel_margin
         self._notes_max_chars = notes_max_chars
         self._notes_include_voice = notes_include_voice
+        self._notes_share_with_cloud = notes_share_with_cloud
         self.persona = persona
         self.awake = always_awake
         self._always_awake = always_awake
@@ -926,13 +933,18 @@ class Assistant:
         if name:
             system += _t(lang, f" Użytkownik ma na imię {name}.", f" The user's name is {name}.")
         # Retrieve the user's relevant stored notes and inject them. Shared
-        # `system=` kwarg → this covers every backend uniformly.
-        system += self._notes_context(text, lang)
+        # `system=` kwarg → this covers every backend uniformly. PRIVACY GATE:
+        # the memory block reaches CLOUD engines only when embeddings.yaml
+        # `notes_context.share_with_cloud` allows it (default: it does not);
+        # on-device and LAN-mesh backends always get it.
+        system_local = system + self._notes_context(text, lang)
+        system_cloud = system_local if self._notes_share_with_cloud else system
         # Router path (production): try each available backend for this task in the
         # configured order — COMMAND→1.5B, RECOMMEND→4.5B, OPEN_QA→gpt-5.5, all
         # preferring the 11B-Ollama when reachable. Falls through to Gemini/canned.
         if self.router is not None:
-            reply = self._route_chat(text, system, lang, task, on_sentence, on_token)
+            reply = self._route_chat(text, system_local, system_cloud, lang, task,
+                                     on_sentence, on_token)
             if reply is not None:
                 return reply
         else:
@@ -941,19 +953,19 @@ class Assistant:
             # policy reserves the cloud for OPEN_QA, which the router handles.
             if self.llm is not None and self.llm.available:
                 if on_sentence is not None:
-                    return self._chat_stream_backend(self.llm, "local", text, system, lang, on_sentence, on_token)
+                    return self._chat_stream_backend(self.llm, "local", text, system_local, lang, on_sentence, on_token)
                 try:
-                    return Reply(self.llm.chat(text, system=system), lang, "chat", {"engine": "local"})
+                    return Reply(self.llm.chat(text, system=system_local), lang, "chat", {"engine": "local"})
                 except LlmError as e:
                     log.warning("local model failed (%s) — trying OpenAI/Gemini", e)
             if self.openai is not None and self.openai.available:
                 try:
-                    return Reply(self.openai.chat(text, system=system), lang, "chat", {"engine": "openai"})
+                    return Reply(self.openai.chat(text, system=system_cloud), lang, "chat", {"engine": "openai"})
                 except OpenAiError as e:
                     log.warning("OpenAI fallback failed (%s)", e)
         if self.gemini.available:
             try:
-                answer = self.gemini.chat(text, system=system)
+                answer = self.gemini.chat(text, system=system_cloud)
             except GeminiError as e:
                 return Reply(_t(lang, f"Coś poszło nie tak: {e}", f"Something went wrong: {e}"), lang, "error")
             return Reply(answer, lang, "chat", {"engine": "gemini"})
@@ -968,6 +980,7 @@ class Assistant:
         self,
         text: str,
         system: str,
+        system_cloud: str,
         lang: str,
         task: Task,
         on_sentence: OnSentence | None,
@@ -975,13 +988,16 @@ class Assistant:
     ) -> Reply | None:
         """Try each available backend for ``task`` in order; return the first
         success, or ``None`` so ``_chat`` falls through to Gemini/canned. A
-        backend that fails BEFORE emitting anything is skipped for the next."""
+        backend that fails BEFORE emitting anything is skipped for the next.
+        Cloud engines get ``system_cloud`` (the memory block withheld unless
+        `share_with_cloud`); everything on-device/LAN gets ``system``."""
         for name, backend in self.router.route(task):  # type: ignore[union-attr]
+            sys_for = system_cloud if name in _CLOUD_ENGINES else system
             try:
                 if on_sentence is not None:
                     return self._chat_stream_backend(
-                        backend, name, text, system, lang, on_sentence, on_token, task=task)
-                answer = backend.chat(text, system=system)
+                        backend, name, text, sys_for, lang, on_sentence, on_token, task=task)
+                answer = backend.chat(text, system=sys_for)
                 return Reply(answer, lang, "chat", {"engine": name, "task": task.value})
             except (LlmError, OpenAiError) as e:
                 log.warning("backend %s failed for %s (%s) — trying next", name, task.value, e)

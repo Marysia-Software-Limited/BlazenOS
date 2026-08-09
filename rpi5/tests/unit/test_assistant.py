@@ -745,3 +745,74 @@ def test_engages_probe_is_pure_and_matches_route_gating(tmp_path):
     a.awake = True
     assert a.engages("opowiedz mi o Krakowie")
     assert not a.engages("")  # empty transcript never engages
+
+
+# --- memory privacy: cloud backends don't see notes (share_with_cloud) -----
+class _CapBackend:
+    """Fake router backend that records the system prompt it was given."""
+
+    def __init__(self) -> None:
+        self.seen: str | None = None
+        self.available = True
+
+    def chat(self, text: str, system: str = "") -> str:
+        self.seen = system
+        return "ok"
+
+
+class _OneBackendRouter:
+    def __init__(self, name: str, backend: _CapBackend) -> None:
+        self._route = [(name, backend)]
+
+    def route(self, task):  # noqa: ANN001, ANN201 — mirrors ModelRouter.route
+        return list(self._route)
+
+
+def _with_memories(a: Assistant) -> Assistant:
+    a._notes_context = lambda text, lang: " PAMIĘĆ: sekretna notatka."  # type: ignore[method-assign]
+    return a
+
+
+def test_local_backend_receives_the_memory_block(tmp_path):
+    backend = _CapBackend()
+    a = _with_memories(Assistant(
+        memory=MemoryStore(tmp_path / "m.json"), gemini=GeminiClient(api_key=""),
+        router=_OneBackendRouter("bielik-1.5b", backend)))
+    a._chat("jak działa filtr?", "pl")
+    assert backend.seen is not None and "sekretna notatka" in backend.seen
+
+
+def test_cloud_backend_is_denied_the_memory_block_by_default(tmp_path):
+    backend = _CapBackend()
+    a = _with_memories(Assistant(
+        memory=MemoryStore(tmp_path / "m.json"), gemini=GeminiClient(api_key=""),
+        router=_OneBackendRouter("gpt-5.5", backend)))
+    a._chat("jak działa filtr?", "pl")
+    assert backend.seen is not None and "sekretna notatka" not in backend.seen
+    assert "Dżesika" in backend.seen or "Jessica" in backend.seen  # persona intact
+
+
+def test_share_with_cloud_knob_opts_in(tmp_path):
+    backend = _CapBackend()
+    a = _with_memories(Assistant(
+        memory=MemoryStore(tmp_path / "m.json"), gemini=GeminiClient(api_key=""),
+        router=_OneBackendRouter("gpt-5.5", backend),
+        notes_share_with_cloud=True))
+    a._chat("jak działa filtr?", "pl")
+    assert backend.seen is not None and "sekretna notatka" in backend.seen
+
+
+def test_gemini_chat_fallback_is_denied_memories_by_default(tmp_path):
+    import json as _json
+    seen: dict = {}
+
+    def transport(url, body):  # noqa: ANN001, ANN202
+        seen["body"] = body
+        return {"candidates": [{"content": {"parts": [{"text": "ok"}]}}]}
+
+    gem = GeminiClient(api_key="test-key", transport=transport)
+    a = _with_memories(Assistant(
+        memory=MemoryStore(tmp_path / "m.json"), gemini=gem,
+        news=NewsClient(transport=lambda _url: "")))
+    a._chat("opowiedz coś ciekawego", "pl")
+    assert seen and "sekretna notatka" not in _json.dumps(seen["body"], ensure_ascii=False)

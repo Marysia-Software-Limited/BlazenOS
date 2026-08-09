@@ -479,6 +479,7 @@ def build_runner(
         notes_rel_margin=wiring.rel_margin,
         notes_max_chars=wiring.max_chars,
         notes_include_voice=wiring.include_voice,
+        notes_share_with_cloud=wiring.share_with_cloud,
     )
     if capture_s is None:
         capture_s = float(

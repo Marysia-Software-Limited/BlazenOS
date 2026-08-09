@@ -26,6 +26,7 @@ class NotesWiring:
     rel_margin: float = 0.06
     max_chars: int = 1200
     include_voice: bool = True  # voice-memo transcripts join the prompt context
+    share_with_cloud: bool = False  # memories may reach cloud backends (privacy knob)
 
 
 def notes_context_wiring() -> NotesWiring:
@@ -46,6 +47,7 @@ def notes_context_wiring() -> NotesWiring:
         rel_margin=float(nc.get("rel_margin", 0.06)),
         max_chars=int(nc.get("max_chars", 1200)),
         include_voice=bool(nc.get("include_voice_memos", True)),
+        share_with_cloud=bool(nc.get("share_with_cloud", False)),
     )
 
 

@@ -173,6 +173,7 @@ async def run(mock: bool) -> None:
         notes_top_k=wiring.top_k, notes_min_score=wiring.min_score,
         notes_rel_margin=wiring.rel_margin, notes_max_chars=wiring.max_chars,
         notes_include_voice=wiring.include_voice,
+        notes_share_with_cloud=wiring.share_with_cloud,
     ))
 
 

@@ -346,6 +346,11 @@ in one on-device vector store (2026-07-29):
   result becomes context for external models** too. Voice hits are labelled
   `[nagranie głosowe]` and capped ~200 chars each; disable them with
   `notes_context.include_voice_memos: false`.
+- **Cloud privacy** — `notes_context.share_with_cloud` (default **false**)
+  gates whether that memory block may reach **cloud** engines (`gpt-5.5`, the
+  Gemini chat fallback). Off, cloud models get the persona but never your
+  notes/memos; on-device Bieliks and LAN-mesh peers (paul/rachel) always get
+  them. Flip to `true` to let cloud answers use your memories too.
 
 Everything lives under `BLAZEN_DATA_DIR` (`/var/lib/blazen/data` in the
 units — the store must NOT default under `/run/blazen`, which is tmpfs and
