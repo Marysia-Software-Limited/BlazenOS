@@ -137,6 +137,12 @@ cheapest capable backend and falls back gracefully:
   `/etc/blazen/mesh.yaml` resources — the Pi can never route to paul's LLM.
   Paul's own agent still resolves its local Ollama via the repo `mesh.yaml`
   entry (see the note there).
+- **Decision 2026-08-09 (user request): Jessica runs Bielik 1.5B ONLY.** The
+  4.5B (2.2 tok/s — too slow for a voice loop) is stashed out of the model dir
+  (`llm-unused/` on the Pi, `_unbaked-llm-stash/` on paul), removed from the
+  backends catalogue + downshift chain, and not baked into images. "Użyj
+  większego mózgu" from 1.5B has nowhere to go and says so. Re-enable by
+  moving the gguf back and restoring the two `llm.yaml` entries.
 - On the 8 GB Pi only **one** local Bielik is resident at a time
   (`single_local_model: true` → the router calls `LocalLlm.close()` to evict the
   other). The 16 GB reference Pi fits both.

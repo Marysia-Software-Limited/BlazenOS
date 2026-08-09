@@ -9,8 +9,11 @@ version: 1
 active_engine: auto                      # auto | cpu | hailo
 # Decision 2026-07-13 (node-local processing): the Pi's default LLM is Bielik
 # 1.5B — snappy on-device command replies (9.6 tok/s measured on the Pi 5 8 GB).
-# 4.5B (richer Polish, 2.2 tok/s, fits with ~3 GB headroom, mmap/no-mlock) stays
-# installed; "use the bigger brain" still switches per-session.
+# Decision 2026-08-09 (user request): Jessica uses Bielik **1.5B ONLY** — the
+# 4.5B (2.2 tok/s, too slow for voice) is stashed off the model dir
+# (/var/lib/blazen/models/llm-unused on the Pi, _unbaked-llm-stash on paul),
+# dropped from the backends catalogue and the downshift chain, and NOT baked
+# into images. Re-enabling = move the gguf back + restore those entries.
 active_model: bielik-1.5b-v3-instruct-q4_k_m  # voice-mutable; Bielik (PL-first)
 
 # Sampling.
@@ -63,7 +66,9 @@ routing:
   # cap lives here.
   backends:
     bielik-1.5b:    { model: bielik-1.5b-v3-instruct-q4_k_m, max_tokens: 192 }
-    bielik-4.5b:    { model: bielik-4.5b-v3-instruct-q6_k,   max_tokens: 320 }
+    # bielik-4.5b removed 2026-08-09 (1.5B-only decision) — restore as
+    # { model: bielik-4.5b-v3-instruct-q6_k, max_tokens: 320 } after
+    # moving the gguf back into models/llm.
     mlx-bielik-11b: { max_tokens: 512 }
     mlx-qwen72b:    { max_tokens: 512 }
     gpt-5.5:        { max_tokens: 512 }
@@ -300,7 +305,8 @@ auto_engine_rules:
 # Auto-downshift rules. Applied at boot if the requested model wouldn't
 # fit. Keep the chain short so behaviour is predictable.
 auto_downshift_chain:
-  - bielik-4.5b-v3-instruct-q4_k_m
+  # 1.5B is the TOP of the chain (Decision 2026-08-09: Jessica runs Bielik
+  # 1.5B only) — "użyj większego mózgu" from here has nowhere to go and says so.
   - bielik-1.5b-v3-instruct-q4_k_m
   - qwen2.5-1.5b-instruct-q4_k_m
   - tinyllama-1.1b-q4_k_m
