@@ -124,19 +124,25 @@ cheapest capable backend and falls back gracefully:
 
 | Task | Order (first *available* wins) |
 |------|--------------------------------|
-| `command`  (quick replies) | Ollama 11B → **Bielik 1.5B** |
-| `recommend` (book/music RAG reasoning) | Ollama 11B → **Bielik 4.5B** |
-| `open_qa` (advanced science / open questions) | **GPT-5.5** → Ollama 11B → Bielik 4.5B |
+| `command`  (quick replies) | **Bielik 1.5B** (on-device) |
+| `recommend` (book/music RAG reasoning) | **Bielik 1.5B** (on-device) |
+| `open_qa` (advanced science / open questions) | **Bielik 1.5B** (on-device) |
 
-- **Ollama 11B** is the LAN-GPU box on paul (`BLAZEN_LLM_OLLAMA_URL`); preferred
-  for everything when reachable (0 local RAM, GPU-fast). Its `/api/version`
-  probe is cached (`ollama_probe_ttl_s`).
+- **Decision 2026-07-13 (node-local processing):** every task runs on the Pi
+  itself — no mesh hop, no cloud in the command path. The backend catalogue in
+  `llm.yaml` retains the mesh/cloud entries (rachel's `mlx-*`, `gpt-5.5`) so
+  re-enabling is a one-line task-list edit.
+- **Decision 2026-08-09 (user request):** `ollama-11b` (paul's GPU Bielik) is
+  **removed** from the Pi's `llm.yaml` backend catalogue and from the Pi's
+  `/etc/blazen/mesh.yaml` resources — the Pi can never route to paul's LLM.
+  Paul's own agent still resolves its local Ollama via the repo `mesh.yaml`
+  entry (see the note there).
 - On the 8 GB Pi only **one** local Bielik is resident at a time
   (`single_local_model: true` → the router calls `LocalLlm.close()` to evict the
   other). The 16 GB reference Pi fits both.
-- **GPT-5.5** (OpenAI) is used **only** for `open_qa` and only when a key is in
-  `/etc/blazen/secrets.env` — commands and recommendations never leave the box.
-  News stays on Gemini search-grounding (real web research, not a chat guess).
+- **GPT-5.5** (OpenAI) is in the catalogue but routed to no task; when routed,
+  it requires a key in `/etc/blazen/secrets.env`. News stays on Gemini
+  search-grounding (real web research, not a chat guess).
 
 ### Book/music recommendations — multi-layer RAG
 

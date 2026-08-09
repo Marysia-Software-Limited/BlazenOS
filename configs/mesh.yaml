@@ -36,6 +36,11 @@ nodes:
     resources:
       # `unit:` = the systemd unit paul manages this service with (P4 fleet).
       llm:
+        # Decision 2026-08-09 (user request): the Pi deployment REMOVES this
+        # resource from its /etc/blazen/mesh.yaml — Jessica on the Pi must never
+        # route to paul's LLM (llm.yaml also dropped the ollama-11b backend).
+        # It stays here because paul's own agent resolves its local Ollama
+        # through this entry (jessica_linux node.py).
         ollama-11b: { kind: openai, url: "http://192.168.50.102:11434", model: bielik-11b, unit: ollama.service }
       asr:
         whisper-remote: { kind: faster-whisper, url: "http://192.168.50.102:8090/transcribe", model: large-v3, unit: blazen-whisper.service }

@@ -28,11 +28,11 @@ keep_last_turns: 8
 
 # Task-based model routing (the brain's ModelRouter). Each task lists the
 # backends to try IN ORDER; the first *available* one answers, the rest are
-# graceful fallbacks. Backend names: `ollama-11b` (remote GPU on paul, preferred
-# when reachable), `bielik-1.5b` / `bielik-4.5b` (on-device, one resident at a
-# time on the 8 GB Pi), `gpt-5.5` (OpenAI, only when a key is present), and any
-# mesh peer advertised as an `llm` resource with `kind: openai` — e.g. rachel's
-# MLX `mlx-bielik-11b` / `mlx-qwen72b` (resolved via mesh.yaml, off ⇒ skipped).
+# graceful fallbacks. Backend names: `bielik-1.5b` / `bielik-4.5b` (on-device,
+# one resident at a time on the 8 GB Pi), `gpt-5.5` (OpenAI, only when a key is
+# present), and any mesh peer advertised as an `llm` resource with
+# `kind: openai` — e.g. rachel's MLX `mlx-bielik-11b` / `mlx-qwen72b`
+# (resolved via mesh.yaml, off ⇒ skipped).
 #   - command : quick brain replies / simple command-like chat  → small + fast
 #   - recommend: book & music recommendations, metadata/ontology/semantic
 #                reasoning (the multi-layer RAG)                 → richer Bielik
@@ -41,17 +41,20 @@ keep_last_turns: 8
 # `active_model` above stays the default for anything unrouted.
 routing:
   single_local_model: true               # 8 GB: evict one local Bielik before loading another
-  ollama_probe_ttl_s: 30                 # cache the Ollama /api/version probe this long
   tasks:
     # Decision 2026-07-13 (node-local processing): ALL command processing happens
     # on the Pi itself — every task routes to the on-device Bielik 1.5B only. No
-    # off-node hop (paul's ollama-11b, rachel's mlx-*) and no cloud (gpt-5.5) in
-    # the command path. The `backends:` catalogue below is kept intact so
-    # re-enabling mesh/cloud routing is a one-line list edit per task, e.g. the
-    # previous locality-aware order was:
-    #   command:   [ollama-11b, mlx-bielik-11b, bielik-1.5b]
-    #   recommend: [mlx-qwen72b, ollama-11b, mlx-bielik-11b, bielik-4.5b]
-    #   open_qa:   [gpt-5.5, mlx-qwen72b, ollama-11b, bielik-4.5b]
+    # off-node hop (rachel's mlx-*) and no cloud (gpt-5.5) in the command path.
+    # Decision 2026-08-09 (user request): `ollama-11b` (paul's GPU Bielik) is
+    # REMOVED from this catalogue and from the Pi's mesh.yaml resources — the Pi
+    # must never route to paul's LLM. Paul's own agent still resolves its local
+    # Ollama via the repo mesh.yaml. Re-enabling would need the backend entry
+    # here (ollama-11b: { max_tokens: 512 } + ollama_probe_ttl_s) AND the mesh
+    # resource back on the Pi. The remaining catalogue keeps mesh/cloud
+    # re-enabling a one-line list edit per task, e.g. a locality-aware order:
+    #   command:   [mlx-bielik-11b, bielik-1.5b]
+    #   recommend: [mlx-qwen72b, mlx-bielik-11b, bielik-4.5b]
+    #   open_qa:   [gpt-5.5, mlx-qwen72b, bielik-4.5b]
     command:   [bielik-1.5b]
     recommend: [bielik-1.5b]
     open_qa:   [bielik-1.5b]
@@ -61,7 +64,6 @@ routing:
   backends:
     bielik-1.5b:    { model: bielik-1.5b-v3-instruct-q4_k_m, max_tokens: 192 }
     bielik-4.5b:    { model: bielik-4.5b-v3-instruct-q6_k,   max_tokens: 320 }
-    ollama-11b:     { max_tokens: 512 }
     mlx-bielik-11b: { max_tokens: 512 }
     mlx-qwen72b:    { max_tokens: 512 }
     gpt-5.5:        { max_tokens: 512 }
