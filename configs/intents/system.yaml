@@ -816,12 +816,16 @@ intents:
   # Voice memos — BEFORE the music/radio block: "odtwórz/puść notatki" must
   # queue the user's own recordings, not resolve as a music query. Playback
   # rides the album engine (auto-advance, następny/poprzedni, stop).
+  # Tolerates whisper-small near-misses (live 2026-08-10, node-local ASR):
+  # "otwórz notatki" (odtwórz→otwórz) and "odtwórz nadatki" (notatki→nadatki)
+  # both fell through to LLM chat. The fuzzy noun still requires the memo
+  # object, so "otwórz"/"puść" alone can't hijack music or radio.
   - name: voice_memo_play
     triggers:
       pl:
-        - "\\b(odtw(ó|o)rz|ods(ł|l)uchaj|pu(ś|s)(ć|c))\\b.*\\b(moje\\s+)?(notatki|nagrania)( g(ł|l)osowe)?[\\s.?!…]*$"
+        - "\\b(odtw(ó|o)rz|otw(ó|o)rz|ods(ł|l)uchaj|pu(ś|s)(ć|c))\\b.*\\b(moje\\s+)?(n(o|a)(t|d)a(t|d)ki|nagrania)( g(ł|l)osowe)?[\\s.?!…]*$"
       en:
-        - "\\bplay\\b.*\\b(my\\s+)?(voice\\s+)?(notes|memos|recordings)[\\s.?!…]*$"
+        - "\\b(play|open)\\b.*\\b(my\\s+)?(voice\\s+)?(notes|memos|recordings)[\\s.?!…]*$"
     action: tool_call
     tool: context.play_memos
 
@@ -829,9 +833,9 @@ intents:
   - name: voice_memo_play_last
     triggers:
       pl:
-        - "\\b(odtw(ó|o)rz|ods(ł|l)uchaj|pu(ś|s)(ć|c))\\b\\s+(to\\s+)?nagranie[\\s.?!…]*$"
+        - "\\b(odtw(ó|o)rz|otw(ó|o)rz|ods(ł|l)uchaj|pu(ś|s)(ć|c))\\b\\s+(to\\s+)?nagranie[\\s.?!…]*$"
       en:
-        - "\\bplay\\b\\s+(the\\s+|that\\s+)?recording[\\s.?!…]*$"
+        - "\\b(play|open)\\b\\s+(the\\s+|that\\s+)?recording[\\s.?!…]*$"
     action: tool_call
     tool: context.play_found
 

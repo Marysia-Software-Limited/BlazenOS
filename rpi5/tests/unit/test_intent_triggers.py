@@ -227,6 +227,8 @@ def test_english_voice_memo_record_matches(cmd):
 
 @pytest.mark.parametrize("cmd", [
     "odtwórz notatki", "Jessica, odtwórz moje nagrania.", "puść notatki głosowe",
+    # whisper-small near-misses observed live 2026-08-10 (node-local ASR):
+    "Jessica, otwórz notatki.", "Jessica, odtwórz nadatki.",
 ])
 def test_voice_memo_play_matches(cmd):
     assert _matches("voice_memo_play", cmd)
@@ -236,6 +238,8 @@ def test_memo_play_does_not_hijack_music():
     # "puść muzykę / trójkę" must stay music/radio.
     assert not _matches("voice_memo_play", "puść muzykę")
     assert not _matches("voice_memo_play", "puść trójkę")
+    # the fuzzy verb/noun must not turn bare "otwórz …" into memo playback
+    assert not _matches("voice_memo_play", "otwórz okno")
 
 
 def test_play_found_recording_matches():
