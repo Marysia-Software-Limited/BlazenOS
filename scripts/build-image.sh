@@ -195,9 +195,13 @@ stage_payload() {
   cp -R "$REPO_ROOT/configs/vm/"*.yaml      "$out/blazen-configs/vm/"
   cp -R "$REPO_ROOT/configs/ontology/"*.json "$out/blazen-configs/ontology/"
   cp -R "$REPO_ROOT/configs/prompts/"*.json  "$out/blazen-configs/prompts/"
-  # Site-DIVERGENT mesh.yaml for the appliance: strip paul's llm resource
-  # (Decision 2026-08-09 — the Pi never routes to paul's Ollama). The chroot
-  # installs this to /etc/blazen/mesh.yaml; canonical source stays configs/.
+  # Site-DIVERGENT mesh.yaml for the appliance: keep ONLY the self node
+  # (Decision 2026-08-10 — the appliance uses no LAN peers at all; every
+  # service is on-device or public internet. Merely stripping paul's llm
+  # was not enough: the ASR engine auto-discovers `asr.whisper-remote`
+  # from the mesh and had silently resumed offloading transcription to
+  # paul's GPU). The chroot installs this to /etc/blazen/mesh.yaml;
+  # canonical source stays configs/.
   "$REPO_ROOT/.venv/bin/python" - "$REPO_ROOT/configs/mesh.yaml" \
       "$out/blazen-configs/site/mesh.yaml" <<'PY'
 import sys
@@ -205,11 +209,14 @@ import yaml
 src, dst = sys.argv[1], sys.argv[2]
 with open(src) as f:
     mesh = yaml.safe_load(f)
-mesh["nodes"]["paul"]["resources"].pop("llm", None)
+self_node = mesh["self"]
+mesh["nodes"] = {self_node: mesh["nodes"][self_node]}
 with open(dst, "w") as f:
     f.write("# GENERATED site variant of configs/mesh.yaml for the Pi appliance.\n"
-            "# Decision 2026-08-09: paul's llm resource removed — Jessica never\n"
-            "# routes commands off-node. Canonical source: configs/mesh.yaml.\n")
+            "# Decision 2026-08-10: only the self node ships — the appliance\n"
+            "# never uses LAN peers (no paul GPU whisper/XTTS/Ollama, no rachel\n"
+            "# MLX); services are on-device or public internet only.\n"
+            "# Canonical source: configs/mesh.yaml.\n")
     yaml.safe_dump(mesh, f, sort_keys=False, allow_unicode=True)
 PY
   # Local pure-python domain wheels — ALWAYS staged (tiny, arch-independent).
