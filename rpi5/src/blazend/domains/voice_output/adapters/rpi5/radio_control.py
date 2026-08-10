@@ -21,8 +21,12 @@ from blazend.config import load as load_config
 log = logging.getLogger("blazend.domains.systems.adapters.rpi5.orchestrator.radio")
 
 _PLAYER = "/usr/lib/blazen/bin/blazend-player"
-# Jabra SPEAK 410 USB out (48 kHz stereo native; blazend-player resamples to it).
-_DEVICE = "plughw:CARD=USB,DEV=0"
+# Forced-48 kHz playback PCM from /etc/asound.conf, NOT raw plughw: the Jabra
+# SPEAK 410 advertises 8/16/48 kHz playback but its DAC clock never leaves
+# 48 kHz, so a 16 kHz source (voice memos are recorded at the ASR rate) sent
+# through plughw plays 3x fast — plug trusts the advertised rate and skips
+# resampling. jabra_out pins the slave rate to 48 kHz so plug always resamples.
+_DEVICE = "jabra_out"
 
 
 def _level_flags() -> list[str]:
