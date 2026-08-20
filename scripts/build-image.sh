@@ -271,6 +271,20 @@ PY
     fi
   fi
 
+  # Hotspot PSK (never in git): local/hotspot.psk or $BLAZEN_HOTSPOT_PSK.
+  # Without one, the chroot script strips the jessica-ap profile — the image
+  # simply ships without a hotspot.
+  local psk="${BLAZEN_HOTSPOT_PSK:-}"
+  [ -z "$psk" ] && [ -f "$REPO_ROOT/local/hotspot.psk" ] && psk="$(cat "$REPO_ROOT/local/hotspot.psk")"
+  if [ -n "$psk" ]; then
+    if [ "${#psk}" -lt 8 ] || [ "${#psk}" -gt 63 ]; then
+      warn "hotspot PSK must be 8-63 chars — ignoring; image will ship without a hotspot"
+    else
+      printf '%s' "$psk" > "$out/hotspot.psk"
+      log "hotspot PSK staged (SSID 'jessica')"
+    fi
+  fi
+
   # Dev flavour: drop the marker + SSH key that 01-run-chroot.sh keys off.
   # These live only in the staging payload and are deleted by the chroot
   # script (rm -rf $STAGE), so they never ship in the rootfs.

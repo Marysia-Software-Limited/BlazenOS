@@ -138,6 +138,26 @@ A small set of admin scripts live in `/usr/lib/blazen/admin/`:
 
 All scripts are idempotent and safe to re-run.
 
+### 4.1 Network topology & access paths (Decision 2026-08-20)
+
+The appliance's **internet is GSM-only**: a USB cellular stick (cdc_ether,
+`eth1`) carries the sole default route. The wired LAN (`eth0`) is
+**deploy-only** — its NM profile (`lan-eth0.nmconnection`, shipped in the
+image) sets `never-default` + `ignore-auto-dns`, so SSH/scp from the dev rig
+work but no appliance traffic ever egresses via the home LAN. Unplugging the
+LAN cable changes nothing at runtime; measured GSM throughput (2026-08-20):
+~3.7 Mbit/s down / ~12 Mbit/s up / ~38 ms RTT — ample for the internet-radio
+and API paths.
+
+Four independent SSH paths, in order of preference:
+
+| Path | Address | Notes |
+|------|---------|-------|
+| LAN (deploys) | `eth0` DHCP addr | Only while the cable is in. |
+| Tailscale | hostname `jessica-ts` | Works from anywhere; CGNAT-proof (the GSM carrier NATs inbound away, so an overlay is the only remote path). Not baked into the image — `tailscale up --ssh` needs an interactive login per device. |
+| Wi-Fi hotspot | `10.42.0.1` | The appliance broadcasts SSID `jessica` (WPA2, `jessica-ap.nmconnection`) sharing the GSM uplink via NAT; any client can also SSH to the gateway. The PSK is injected at image build from `local/hotspot.psk` (gitignored) or `$BLAZEN_HOTSPOT_PSK` — never committed; with neither set the image ships without a hotspot. `proto=rsn` is mandatory: NM's AP default beacons WPA1, which modern phones refuse. |
+| USB gadget | `10.55.0.1` | Cable into the USB-C port; no radio needed. |
+
 ## 5. Why pubkey-only and no shipped credential
 
 SSH is on by default because a voice-first device still needs a hatch for

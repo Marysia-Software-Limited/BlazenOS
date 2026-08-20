@@ -1,0 +1,36 @@
+# Blazen: Wi-Fi hotspot — jessica shares her GSM internet (2026-08-20, user).
+# SSID "jessica", WPA2-PSK. The PSK is NOT in git: __BLAZEN_HOTSPOT_PSK__ is
+# replaced at image build from local/hotspot.psk (gitignored) or
+# $BLAZEN_HOTSPOT_PSK; with neither set, 01-run-chroot.sh deletes this profile
+# and the image ships without a hotspot. PSK must be 8-63 chars (WPA2 minimum).
+# proto=rsn is REQUIRED: NM's AP default beacons WPA1, which modern phones
+# refuse to join. ipv4.method=shared gives clients 10.42.0.x with dnsmasq DHCP
+# and NAT out whatever the default route is (the GSM stick). Clients can reach
+# jessica herself at 10.42.0.1 (third SSH path besides LAN and tailnet).
+# NM requires this file to be 0600 root:root — enforced in 01-run-chroot.sh.
+[connection]
+id=jessica-ap
+uuid=44aa219b-a6a4-4599-af53-d0ad8283e89c
+type=wifi
+interface-name=wlan0
+
+[wifi]
+band=bg
+mode=ap
+ssid=jessica
+
+[wifi-security]
+group=ccmp;
+key-mgmt=wpa-psk
+pairwise=ccmp;
+proto=rsn;
+psk=__BLAZEN_HOTSPOT_PSK__
+
+[ipv4]
+method=shared
+
+[ipv6]
+addr-gen-mode=default
+method=disabled
+
+[proxy]

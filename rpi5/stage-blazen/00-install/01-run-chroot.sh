@@ -268,6 +268,27 @@ fi
 systemctl enable alsa-restore.service 2>/dev/null || true
 systemctl enable blazen-usb-gadget.service 2>/dev/null || true
 
+# --- Network profiles (GSM-only internet + hotspot) ----------------------
+# The rsynced NM keyfiles arrive with checkout perms (644); NM silently
+# refuses any system-connection that is not 0600 root:root. The Wi-Fi AP
+# additionally needs a regulatory domain or the radio stays soft-blocked.
+AP_PROFILE=/etc/NetworkManager/system-connections/jessica-ap.nmconnection
+if [ -f "$STAGE/hotspot.psk" ]; then
+  # PSK comes from the build host (local/hotspot.psk or $BLAZEN_HOTSPOT_PSK),
+  # never from git. The staging tree is rm -rf'd below, so it doesn't ship.
+  sed -i "s|__BLAZEN_HOTSPOT_PSK__|$(cat "$STAGE/hotspot.psk")|" "$AP_PROFILE"
+  echo "=== blazend chroot: hotspot PSK injected into jessica-ap ==="
+elif grep -q '__BLAZEN_HOTSPOT_PSK__' "$AP_PROFILE" 2>/dev/null; then
+  rm -f "$AP_PROFILE"
+  echo "=== blazend chroot: no hotspot PSK staged — jessica-ap profile removed ==="
+fi
+if compgen -G '/etc/NetworkManager/system-connections/*.nmconnection' >/dev/null; then
+  chown root:root /etc/NetworkManager/system-connections/*.nmconnection
+  chmod 600 /etc/NetworkManager/system-connections/*.nmconnection
+  echo "=== blazend chroot: NM profiles locked to 0600 (lan-eth0 never-default, jessica-ap hotspot) ==="
+fi
+raspi-config nonint do_wifi_country PL 2>/dev/null || true
+
 # --- No swap (RAM-only appliance) ----------------------------------------
 # The voice stack is sized to fit physical RAM; swapping would only add SD
 # wear + latency. Disable the zram-generator swap and mask swap.target so

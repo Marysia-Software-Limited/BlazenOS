@@ -104,3 +104,6 @@ wheelhouse/
 _unbaked-llm-stash/
 claude_resume.txt
 .venv-rachel/
+
+# Build-host-local secrets injected at image build (never committed)
+local/

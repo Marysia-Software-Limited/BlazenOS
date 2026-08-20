@@ -1,0 +1,28 @@
+# Blazen: LAN is deploy-only — never a default route, never DNS.
+# Decision 2026-08-20 (user): jessica's internet comes from the GSM USB stick
+# (cdc_ether, enumerates as eth1 and gets NM's auto DHCP profile with the only
+# default route). eth0 keeps just its subnet route so SSH/scp deploys from the
+# dev rig work, but no appliance traffic can ever leak out via the home LAN.
+# Unplugging the LAN cable therefore changes nothing at runtime.
+# NM requires this file to be 0600 root:root — enforced in 01-run-chroot.sh.
+[connection]
+id=lan-eth0
+uuid=87055ae4-03e0-3da2-8091-4f50041fa4a5
+type=ethernet
+autoconnect-priority=-999
+interface-name=eth0
+
+[ethernet]
+
+[ipv4]
+ignore-auto-dns=true
+method=auto
+never-default=true
+
+[ipv6]
+addr-gen-mode=default
+ignore-auto-dns=true
+method=auto
+never-default=true
+
+[proxy]
