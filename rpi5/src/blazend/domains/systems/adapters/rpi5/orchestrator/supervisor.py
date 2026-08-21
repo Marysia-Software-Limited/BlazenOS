@@ -559,7 +559,6 @@ class Orchestrator:
         # Own audio-out for half-duplex (keeps the Jabra mic un-ducked while idle).
         asyncio.create_task(self._speaker_manager())
         asyncio.create_task(self._book_watcher())  # auto-advance audiobook chapters
-        asyncio.create_task(self._reminder_watcher())  # ring alarms/reminders at due time
 
         # Connect to every peer (idempotent; missing peers are retried lazily).
         for name in self._peers:
@@ -802,6 +801,19 @@ class Orchestrator:
                 self._drop_next_reply = False
                 log.info("dropping cancelled brain reply: %r",
                          str(env.data.get("text", ""))[:60])
+            elif (str(env.data.get("action", "")) == "reminder"
+                  and (env.data.get("payload") or {}).get("fired")
+                  and self._radio.playing):
+                # An alarm/reminder fired while a stream owns the Jabra: tts's
+                # direct copy raced the player and was lost (audio-out can't
+                # start while the player holds the PCM). Alarms outrank
+                # playback — stop the stream and re-speak through the managed
+                # path so the budzik is actually HEARD (alarms 2026-08-21).
+                await asyncio.to_thread(self._radio.stop)
+                await asyncio.sleep(0.5)
+                await self._speak(str(env.data.get("text", "")),
+                                  str(env.data.get("language", "pl")))
+                log.info("reminder fired over playback — stream stopped, re-spoken")
             else:
                 await self._act_on_reply(env.data)
         # State cue: heard a sound after "dżesika" but no intelligible words. Tell
@@ -993,50 +1005,6 @@ class Orchestrator:
             return
         self._working_cue_at = now
         await self._speak(self._cues["working"])
-
-    async def _reminder_watcher(self) -> None:
-        """Ring stored alarms/reminders at their due time (alarms function,
-        user 2026-08-21) — the missing half of context.add_reminder, which
-        stored them but nothing ever fired. MemoryStore.due() marks a reminder
-        fired atomically as it returns it, so a restart can't double-ring; a
-        Pi that was off past the due time rings once on the next tick (late
-        beats never for a budzik). Time-critical by definition, so a playing
-        stream is stopped first; the alarm text repeats the call twice."""
-        from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.plnum import time_words
-        from blazend.domains.context.adapters.rpi5.memory import MemoryStore
-        store = MemoryStore()
-        while True:
-            await asyncio.sleep(20)
-            try:
-                fired = await asyncio.to_thread(store.due, datetime.now())
-            except Exception:  # noqa: BLE001 — a bad store read must not kill the loop
-                continue
-            for rem in fired:
-                try:
-                    due = datetime.fromisoformat(rem.due)
-                    lang = self._default_lang or "pl"
-                    if self._radio.playing:
-                        await asyncio.to_thread(self._radio.stop)
-                        await asyncio.sleep(0.5)
-                    task = rem.text.strip()
-                    if rem.category == "alarm":
-                        extra = "" if task in ("", "budzik", "alarm") else f" {task}."
-                        text = (
-                            f"Pobudka! Jest godzina {time_words(due.hour, due.minute)}.{extra} "
-                            "Pobudka, wstawaj!"
-                            if lang == "pl"
-                            else f"Wake up! It's {due:%H:%M}.{extra} Wake up!"
-                        )
-                    elif rem.category == "event":
-                        text = (f"Przypominam o wydarzeniu: {task}." if lang == "pl"
-                                else f"Event reminder: {task}.")
-                    else:
-                        text = (f"Przypomnienie: {task}." if lang == "pl"
-                                else f"Reminder: {task}.")
-                    await self._speak(text, lang)
-                    log.info("reminder fired (%s, due %s): %s", rem.category, rem.due, task)
-                except Exception:  # noqa: BLE001
-                    log.exception("reminder firing failed")
 
     async def _speak(self, text: str, lang: str = "pl") -> None:
         """Say something proactively (attention prompt / 'finished the book')."""

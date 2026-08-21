@@ -1049,13 +1049,27 @@ class Assistant:
 
     # -- reminders due -------------------------------------------------
     def due_reminders(self, now: datetime) -> list[Reply]:
-        """Fire any due reminders as spoken replies (call on a timer tick)."""
+        """Fire any due reminders as spoken replies (call on a timer tick).
+
+        Verbose-state phrasing (user 2026-08-21): an alarm is a wake-up call —
+        say the time in Polish words and repeat the call — not a bare label."""
+        from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.plnum import time_words
+
         out: list[Reply] = []
         for r in self.memory.due(now):
             cat = getattr(r, "category", "reminder")
-            lead = {"alarm": "Budzik", "event": "Wydarzenie"}.get(cat, "Przypominam")
+            task = r.text.strip()
+            if cat == "alarm":
+                due_dt = datetime.fromisoformat(r.due)
+                extra = "" if task in ("", "budzik", "alarm") else f" {task}."
+                text = (f"Pobudka! Jest godzina {time_words(due_dt.hour, due_dt.minute)}."
+                        f"{extra} Pobudka, wstawaj!")
+            elif cat == "event":
+                text = f"Przypominam o wydarzeniu: {task}."
+            else:
+                text = f"Przypominam: {task}."
             out.append(
-                Reply(f"{lead}: {r.text}.", "pl", "reminder",
+                Reply(text, "pl", "reminder",
                       {"id": r.id, "fired": True, "category": cat}),
             )
         return out
