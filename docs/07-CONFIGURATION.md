@@ -122,6 +122,16 @@ short utterances), transcribes Polish-first/English-fallback, routes through the
 assistant engine, and speaks the reply; due reminders fire on a 1 s ticker. The
 HAT button delimits its own held window as a push-to-talk fallback.
 
+**Alarms (2026-08-21):** the full voice surface is "przypomnij mi [kiedy] o
+[czym]", **"obudź mnie o 6:30"** (stored as category `alarm`; rings verbosely —
+"Pobudka! Jest godzina szósta trzydzieści. Pobudka, wstawaj!" with the hour in
+Polish words), "jakie alarmy/budziki/przypomnienia" to list, and "skasuj/usuń/
+odwołaj/wyłącz alarm [o 6:30]" to cancel by time or the next upcoming one
+(`context.delete_reminder` → `MemoryStore.cancel_reminders`). Firing is atomic
+(a restart can't double-ring; a Pi off past the due time rings once, late). A
+reminder due while a stream owns the Jabra stops the stream first — a budzik
+outranks the radio.
+
 - `wake-word.yaml capture_window_s` (default `4.5`) — the post-wake capture
   length in seconds. Env override: `BLAZEN_CAPTURE_S`.
 - `wake-word.yaml require_wake` / `conversation_window_s` — wake gating: each
@@ -219,15 +229,25 @@ Two explicit, user-initiated web lookups (Polish-first):
   returns **no rain data**, Jessica says *"Nie mam dostępu do prognozy opadów."*
   rather than guessing. Keyless, on-device. (`weather.py rain()` +
   `tools.rain_forecast`.)
-- **News (`news.yaml`)** — the "co w wiadomościach" / "what's in the news"
-  intent, a **news-of-the-day brief in three tiers**: Kraków → kraj → świat.
-  The **data is always keyless RSS** from `news.yaml`'s `tiers:` — real feeds,
-  no LLM, the on-device floor:
+- **News (`news.yaml`)** — "jakie wieści" / "co w wiadomościach", a
+  **news-of-the-day brief in three tiers**: Kraków → kraj → świat, and its
+  sibling **"jak sport"** (`sport_brief` → `news.sport`, football first, same
+  tier order). **Preferred path (2026-08-21, key present): live web research**
+  — `OpenAiClient.research()` calls the OpenAI Responses API with the hosted
+  `web_search` tool (model from `OPENAI_MODEL`, currently `gpt-5.6-luna`) and
+  the model composes the detailed spoken brief (4-5 items per section with
+  specifics) straight from today's internet; the wait is narrated
+  (`phrases.yaml cues.searching` / `still_searching`). On any failure the
+  ladder walks down: RSS + cloud compose → Gemini grounded → the keyless RSS
+  floor, which then SAYS the web search failed. The **RSS floor data** comes
+  from `news.yaml`'s `tiers:` — real feeds, no LLM, on-device:
   - `local` — Kraków (Radio Kraków, Onet Kraków, Gazeta Wyborcza Kraków);
   - `national` — Poland (PAP, Onet, TVN24, Polsat);
   - `world` — international agencies (**Guardian, BBC, CNN, AP**) — English;
   - `world_pl` — Polish-language world coverage (the keyless floor for the
-    world tier, so the brief stays fully Polish offline).
+    world tier, so the brief stays fully Polish offline);
+  - `sport` — Polish sport feeds (Weszło, Gazeta Sport) + BBC Sport, the
+    keyless floor for "jak sport".
 
   Each tier merges all its feeds, de-duplicates, and caps at `max_per_tier`. A
   dead feed is skipped, never fatal (PAP / Wyborcza-national public RSS are
