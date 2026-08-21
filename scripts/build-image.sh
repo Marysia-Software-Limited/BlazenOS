@@ -108,6 +108,12 @@ inject_stage() {
 IMG_NAME=${BLAZEN_IMAGE_NAME:-blazen_os}
 TARGET_HOSTNAME=${BLAZEN_HOSTNAME:-blazen}
 ENABLE_SSH=${enable_ssh}
+# Polish appliance: without this pi-gen defaults to Europe/London and Jessica
+# answers "która godzina" an hour off (caught live 2026-08-21).
+TIMEZONE_DEFAULT='Europe/Warsaw'
+LOCALE_DEFAULT='pl_PL.UTF-8'
+KEYBOARD_KEYMAP='pl'
+KEYBOARD_LAYOUT='Polish'
 RELEASE=trixie
 PI_GEN_RELEASE='trixie'
 STAGE_LIST='stage0 stage1 stage2 stage-blazen'

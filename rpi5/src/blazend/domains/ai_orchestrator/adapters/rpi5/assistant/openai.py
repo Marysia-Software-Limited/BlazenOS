@@ -89,7 +89,16 @@ class OpenAiClient:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",
         }
-        resp = self._transport(_ENDPOINT, headers, body)
+        try:
+            resp = self._transport(_ENDPOINT, headers, body)
+        except OpenAiError as e:
+            # Reasoning-family models (gpt-5.6-sol etc.) accept only the default
+            # temperature and 400 on any other value. Drop the param and retry
+            # once so the model choice isn't coupled to sampling params.
+            if "temperature" not in body or "'temperature'" not in str(e):
+                raise
+            del body["temperature"]
+            resp = self._transport(_ENDPOINT, headers, body)
         return _extract_text(resp)
 
     def chat_stream(self, user: str, *, system: str | None = None) -> Iterator[str]:

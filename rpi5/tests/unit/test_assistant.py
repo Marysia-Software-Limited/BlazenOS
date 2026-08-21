@@ -816,3 +816,38 @@ def test_gemini_chat_fallback_is_denied_memories_by_default(tmp_path):
         news=NewsClient(transport=lambda _url: "")))
     a._chat("opowiedz coś ciekawego", "pl")
     assert seen and "sekretna notatka" not in _json.dumps(seen["body"], ensure_ascii=False)
+
+
+def test_openai_retries_without_temperature_for_reasoning_models():
+    """gpt-5.6-sol-style models 400 on any non-default `temperature`; the client
+    must drop the param and retry once instead of failing the cloud path."""
+    from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.openai import OpenAiError
+
+    calls: list[dict] = []
+
+    def transport(_url, _headers, body):  # noqa: ANN001, ANN202
+        calls.append(body)
+        if "temperature" in body:
+            raise OpenAiError(
+                "OpenAI HTTP 400: Unsupported value: 'temperature' does not "
+                "support 0.4 with this model."
+            )
+        return {"choices": [{"message": {"content": "ok"}}]}
+
+    c = OpenAiClient(api_key="test-key", model="gpt-5.6-sol", transport=transport)
+    assert c.chat("ping") == "ok"
+    assert len(calls) == 2 and "temperature" not in calls[1]
+
+
+def test_openai_does_not_retry_other_errors():
+    from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.openai import OpenAiError
+
+    def transport(_url, _headers, _body):  # noqa: ANN001, ANN202
+        raise OpenAiError("OpenAI HTTP 401: bad key")
+
+    c = OpenAiClient(api_key="test-key", model="gpt-5.6-sol", transport=transport)
+    try:
+        c.chat("ping")
+        raise AssertionError("expected OpenAiError")
+    except OpenAiError as e:
+        assert "401" in str(e)
