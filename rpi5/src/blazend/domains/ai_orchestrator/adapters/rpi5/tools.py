@@ -646,16 +646,19 @@ class Tools:
             rsys = (self.persona + " Jesteś prezenterką wiadomości. Zwykły tekst do "
                     "przeczytania na głos — bez Markdown, gwiazdek, nagłówków i URL-i.")
             rquery = (f"Znajdź w internecie najważniejsze DZISIEJSZE ({today}) wiadomości i "
-                      "ułóż krótki mówiony serwis po polsku w trzech częściach, dokładnie w tej "
-                      "kolejności: „Z Krakowa”, „Z kraju” (Polska), „Ze świata” — po dwie-trzy "
-                      "wiadomości, każda jednym zdaniem. Tylko fakty znalezione w sieci.")
+                      "ułóż mówiony serwis po polsku w trzech częściach, dokładnie w tej "
+                      "kolejności: „Z Krakowa”, „Z kraju” (Polska), „Ze świata” — po cztery-pięć "
+                      "wiadomości w każdej części, każda w jednym lub dwóch zdaniach z konkretami: "
+                      "kto, co, gdzie, kiedy, liczby i kwoty jeśli są znane. Tylko fakty "
+                      "znalezione w sieci.")
         else:
             rsys = (self.persona + " You are a news anchor. Plain text to be read aloud — "
                     "no Markdown, asterisks, headers or URLs.")
-            rquery = (f"Search the internet for TODAY'S ({today}) top news and compose a short "
-                      "spoken brief in three sections, in this exact order: From Kraków, From "
-                      "Poland, Worldwide — two-three items each, one sentence each. Only facts "
-                      "found on the web.")
+            rquery = (f"Search the internet for TODAY'S ({today}) top news and compose a spoken "
+                      "brief in three sections, in this exact order: From Kraków, From Poland, "
+                      "Worldwide — four-five items each, one-two sentences each with specifics: "
+                      "who, what, where, when, figures and amounts when known. Only facts found "
+                      "on the web.")
         web_tried, hit = self._research_brief(rquery, rsys, "news")
         if hit is not None:
             return hit
