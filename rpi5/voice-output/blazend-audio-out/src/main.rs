@@ -89,13 +89,25 @@ fn build_output_stream(
     queue: Queue,
 ) -> Result<cpal::Stream> {
     let err_fn = |e| tracing::error!("cpal output stream error: {e}");
+    // Keep-alive dither instead of digital silence: the Jabra SPEAK 410 mutes
+    // its amplifier after a stretch of exact-zero samples and swallows the
+    // first ~1 s when signal returns — with the narrated news flow the speaker
+    // idles 15-20 s between the cue and the brief, so the brief's opening died
+    // in the amp wake-up ("first seconds cut" AGAIN, 2026-08-21, after the ring
+    // overwrite was already fixed). ~-62 dBFS white noise is inaudible on the
+    // speakerphone but keeps the amp engaged. Cheap LCG per callback.
+    let mut seed_f32: u32 = 0x2545_F491;
+    let mut seed_i16: u32 = 0x9E37_79B9;
     let stream = match sample_format {
         SampleFormat::F32 => device.build_output_stream(
             config,
             move |data: &mut [f32], _: &_| {
                 let mut q = queue.lock().unwrap();
                 for frame in data.chunks_mut(channels) {
-                    let s = q.pop_front().unwrap_or(0.0);
+                    let s = q.pop_front().unwrap_or_else(|| {
+                        seed_f32 = seed_f32.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                        (f32::from((seed_f32 >> 16) as u16) / 32768.0 - 1.0) * 0.0008
+                    });
                     frame.iter_mut().for_each(|x| *x = s);
                 }
             },
@@ -107,7 +119,11 @@ fn build_output_stream(
             move |data: &mut [i16], _: &_| {
                 let mut q = queue.lock().unwrap();
                 for frame in data.chunks_mut(channels) {
-                    let s = (q.pop_front().unwrap_or(0.0).clamp(-1.0, 1.0) * 32767.0) as i16;
+                    let raw = q.pop_front().unwrap_or_else(|| {
+                        seed_i16 = seed_i16.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                        (f32::from((seed_i16 >> 16) as u16) / 32768.0 - 1.0) * 0.0008
+                    });
+                    let s = (raw.clamp(-1.0, 1.0) * 32767.0) as i16;
                     frame.iter_mut().for_each(|x| *x = s);
                 }
             },
