@@ -238,8 +238,10 @@ async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
                     Ok(n) => {
                         let usable = n - (n % 2);
                         let mono: Vec<f32> = bytes[..usable]
-                            .chunks_exact(2)
-                            .map(|b| f32::from(i16::from_le_bytes([b[0], b[1]])) / 32768.0)
+                            .as_chunks::<2>()
+                            .0
+                            .iter()
+                            .map(|b| f32::from(i16::from_le_bytes(*b)) / 32768.0)
                             .collect();
                         if tx.send(mono).is_err() {
                             break; // consumer gone

@@ -574,6 +574,20 @@ intents:
   # Capabilities / help — Jessica explains what she can do (Polish-first). The
   # fast-path gives an instant summary; follow-up "how does X work?" questions
   # fall through to the brain, whose system prompt also lists these functions.
+  # Full spoken command walkthrough (help.commands in tools.py) — richer than
+  # the one-liner what_can_you_do below.
+  - name: list_commands
+    triggers:
+      pl:
+        - "\\bjakie\\s+(s(ą|a)\\s+|znasz\\s+)?(komendy|polecenia|rozkazy)\\b"
+        - "\\b(lista|spis)\\s+(komend|polece(ń|n))\\b"
+        - "\\bwymie(ń|n)\\s+(komendy|polecenia)\\b"
+      en:
+        - "\\b(what|which|list)\\s+(are\\s+the\\s+|the\\s+)?commands\\b"
+        - "\\bwhat\\s+commands\\s+(do\\s+you\\s+)?(know|understand|have)\\b"
+    action: tool_call
+    tool: help.commands
+
   - name: what_can_you_do
     triggers:
       pl:
@@ -643,6 +657,21 @@ intents:
         - "weather|forecast|temperatur\\w*|\\bsnow\\b|is it (going to )?snow"
     action: tool_call
     tool: weather.query
+
+  # Sport MUST stay above news_brief: its generic patterns (wiadomości…, wieści…)
+  # would otherwise swallow "wiadomości sportowe" before the sport intent is tried.
+  - name: sport_brief
+    triggers:
+      pl:
+        - "\\bjak(\\s+tam)?\\s+sport\\w*\\b"
+        # spor(t|c): the locative mutates the stem — "w sporcie".
+        - "\\b(wiadomo(ś|s)ci|wie(ś|s)ci|serwis|co)\\s+(w\\s+)?spor(t|c)\\w*"
+        - "\\bsportowe\\s+(wiadomo(ś|s)ci|wie(ś|s)ci)\\b"
+      en:
+        - "\\bsports?\\s+news\\b"
+        - "\\bhow('?s| is)\\s+(the\\s+)?sport\\b"
+    action: tool_call
+    tool: news.sport
 
   - name: news_brief
     triggers:

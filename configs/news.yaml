@@ -56,4 +56,14 @@ tiers:
     - name: Polsat świat
       url: "https://www.polsatnews.pl/rss/swiat.xml"
 
+  sport:                                 # Sport ("jak sport") — keyless floor, Polish.
+    # Nationwide feeds only: Kraków club news (Wisła/Cracovia) has no reliable
+    # RSS — the preferred web-research path (GPT web_search) covers that tier.
+    - name: Weszło
+      url: "https://weszlo.com/feed/"
+    - name: Gazeta Sport
+      url: "https://rss.gazeta.pl/pub/rss/sport.xml"
+    - name: BBC Sport
+      url: "https://feeds.bbci.co.uk/sport/rss.xml"
+
 timeout_s: 12

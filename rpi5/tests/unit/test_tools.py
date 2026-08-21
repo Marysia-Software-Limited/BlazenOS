@@ -374,3 +374,69 @@ def test_audiobook_list_empty() -> None:
     t.audiobooks = _FakeBooks([])  # type: ignore[assignment]
     res = t.audiobook_list("pl")
     assert res.ok and "Nie mam jeszcze" in res.text
+
+
+class _FakeResearchOpenAi(_FakeOpenAi):
+    """Fake with the Responses-API research surface (web_search)."""
+
+    def __init__(self, research_text: str = "", *, fail: bool = False, **kw) -> None:
+        super().__init__(**kw)
+        self._research_text, self._fail, self.research_calls = research_text, fail, []
+
+    def research(self, user: str, *, system: str | None = None) -> str:
+        self.research_calls.append((user, system))
+        if self._fail:
+            from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.openai import OpenAiError
+            raise OpenAiError("web_search unavailable")
+        return self._research_text
+
+
+def test_news_prefers_live_web_research() -> None:
+    fake = _FakeResearchOpenAi("Z Krakowa: mecz. Z kraju: budżet. Ze świata: szczyt.")
+    res = _tools(openai=fake, news=_FakeNews()).news_brief("pl")
+    assert res.ok and res.payload.get("source") == "openai-web"
+    assert fake.research_calls and not fake.calls  # research used, chat not needed
+    q = fake.research_calls[0][0]
+    assert "Z Krakowa" in q and "Z kraju" in q and "Ze świata" in q
+
+
+def test_news_research_failure_falls_back_to_rss_compose() -> None:
+    fake = _FakeResearchOpenAi(fail=True, text="Z Krakowa: remont. Z kraju: budżet. Ze świata: ONZ.")
+    res = _tools(openai=fake, news=_FakeNews()).news_brief("pl")
+    assert res.ok and res.payload.get("source") == "openai"  # RSS+compose ladder held
+    assert fake.research_calls and fake.calls
+
+
+def test_sport_brief_uses_web_research_football_first() -> None:
+    fake = _FakeResearchOpenAi("Z Krakowa: Wisła wygrała. Z kraju: kadra. Ze świata: finał LM.")
+    res = _tools(openai=fake, news=_FakeNews()).news_sport("pl")
+    assert res.ok and res.payload.get("source") == "openai-web"
+    assert res.payload.get("kind") == "sport"
+    q = fake.research_calls[0][0]
+    assert "piłka nożna" in q and "Wisła" in q and "Ekstraklasa" in q
+
+
+def test_sport_brief_floor_reads_sport_tier() -> None:
+    fake = _FakeOpenAi(available=False)  # no key → keyless floor
+    news = _FakeNews({"sport": ["Wisła Kraków wygrała derby", "Świątek w finale"]})
+    res = _tools(openai=fake, news=news).news_sport("pl")
+    assert res.ok and res.payload.get("source") == "rss"
+    assert "Ze sportu" in res.text and "Wisła" in res.text
+
+
+def test_sport_brief_unavailable_without_key_and_feeds() -> None:
+    fake = _FakeOpenAi(available=False)
+    res = _tools(openai=fake, news=_FakeNews({})).news_sport("pl")
+    assert not res.ok and res.payload.get("reason") == "sport_unavailable"
+
+
+def test_help_commands_walkthrough_is_spoken_and_bilingual() -> None:
+    t = _tools(openai=_FakeOpenAi(available=False), news=_FakeNews())
+    pl = t.help_commands("pl")
+    en = t.help_commands("en")
+    assert pl.ok and en.ok and pl.payload.get("kind") == "commands"
+    # Covers the major groups, mentions the new briefs, and is TTS-safe.
+    for probe in ("która godzina", "jakie wieści", "jak sport", "odtwórz notatki", "radio"):
+        assert probe in pl.text
+    assert "\n" not in pl.text and "*" not in pl.text
+    assert "sports news" in en.text

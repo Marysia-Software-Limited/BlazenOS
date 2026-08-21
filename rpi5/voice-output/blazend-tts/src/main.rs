@@ -101,8 +101,10 @@ async fn synthesize(piper: &str, voice: &Path, text: &str) -> Result<Vec<i16>> {
     }
     Ok(output
         .stdout
-        .chunks_exact(2)
-        .map(|b| i16::from_le_bytes([b[0], b[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|b| i16::from_le_bytes(*b))
         .collect())
 }
 
@@ -130,8 +132,10 @@ fn read_pcm(path: &Path) -> Option<Vec<i16>> {
     }
     Some(
         bytes
-            .chunks_exact(2)
-            .map(|b| i16::from_le_bytes([b[0], b[1]]))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|b| i16::from_le_bytes(*b))
             .collect(),
     )
 }
@@ -176,12 +180,16 @@ fn parse_wav(bytes: &[u8]) -> Option<(Vec<i16>, u32)> {
         return None;
     }
     let mut samples: Vec<i16> = data
-        .chunks_exact(2)
-        .map(|b| i16::from_le_bytes([b[0], b[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|b| i16::from_le_bytes(*b))
         .collect();
     if channels == 2 {
         samples = samples
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|s| ((i32::from(s[0]) + i32::from(s[1])) / 2) as i16)
             .collect();
     }
@@ -314,11 +322,34 @@ async fn run_real(publisher: &Publisher, args: &Args) -> Result<()> {
     let mut xtts_down_until: Option<Instant> = None;
 
     loop {
-        let envelope = tokio::select! {
-            r = brain.next() => r?,
-            r = orchestrator.next() => r?,
+        // A broken upstream must never kill the voice: `Err` (framing garbage —
+        // live 2026-08-21: "frame too large: {\"a…" exited the daemon) and
+        // `Ok(None)` (publisher EOF — the old `continue` busy-polled the dead
+        // stream at 100% CPU after every brain restart) both mean the same
+        // thing: drop the stream and reconnect.
+        enum Src {
+            Brain,
+            Orchestrator,
+        }
+        let (src, res) = tokio::select! {
+            r = brain.next() => (Src::Brain, r),
+            r = orchestrator.next() => (Src::Orchestrator, r),
         };
-        let Some(env) = envelope else { continue };
+        let env = match res {
+            Ok(Some(env)) => env,
+            Ok(None) | Err(_) => {
+                if let Err(e) = &res {
+                    tracing::warn!(error = %e, "upstream stream broken — reconnecting");
+                }
+                match src {
+                    Src::Brain => brain = connect(rt.join("brain.sock")).await,
+                    Src::Orchestrator => {
+                        orchestrator = connect(rt.join("orchestrator.sock")).await;
+                    }
+                }
+                continue;
+            }
+        };
         let Event::BrainReply {
             chunk,
             final_,

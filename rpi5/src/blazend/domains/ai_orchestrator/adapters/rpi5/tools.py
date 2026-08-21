@@ -139,6 +139,9 @@ def _tidy(text: str) -> str:
 _MD_LINK = re.compile(r"\[([^\]]+)\]\((?:https?://[^)]+)\)")
 _URL = re.compile(r"\(https?://[^)]+\)|https?://\S+")
 _CITE = re.compile(r"\[\d+\]")
+# Web-research answers cite bare domains — "(cracovia.pl)", "(ekstraklasa.org)" —
+# which TTS would read aloud; drop any parenthesized domain-looking token.
+_DOMAIN_CITE = re.compile(r"\s*\((?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^)\s]*)?\)", re.IGNORECASE)
 _MD_EMPH = re.compile(r"[*_`]{1,3}")            # ** bold, * italic, ` code
 _MD_HEAD = re.compile(r"(?m)^\s{0,3}#{1,6}\s*")  # # headers at line start
 
@@ -147,6 +150,7 @@ def _clean_spoken(text: str) -> str:
     text = _MD_LINK.sub(r"\1", text)
     text = _URL.sub("", text)
     text = _CITE.sub("", text)
+    text = _DOMAIN_CITE.sub("", text)
     text = _MD_HEAD.sub("", text)
     text = _MD_EMPH.sub("", text)
     return re.sub(r"\s+", " ", text).strip()     # collapse newlines too (one spoken line)
@@ -240,6 +244,10 @@ class Tools:
             return self.rain_forecast(args.get("place"), str(args.get("when", "")), lang)
         if tool == "news.brief":
             return self.news_brief(lang)
+        if tool == "news.sport":
+            return self.news_sport(lang)
+        if tool == "help.commands":
+            return self.help_commands(lang)
         if tool == "web.lookup":
             return self.web_lookup(str(args.get("query", "")), lang)
         if tool == "radio.play":
@@ -604,7 +612,48 @@ class Tools:
             )
         return ToolResult(True, " ".join(parts), "news", {"source": "rss", "tiers": counts})
 
+    def _research_brief(self, query: str, sys: str, kind: str) -> ToolResult | None:
+        """Preferred cloud path (user request 2026-08-21): GPT-5.6-sol searches
+        the live internet via the hosted web_search tool and composes the brief
+        itself. Any failure returns None and the caller walks the ladder
+        (RSS+compose → Gemini → keyless floor)."""
+        composer = self._news_composer()
+        if not composer.available:
+            return None
+        research = getattr(composer, "research", None)
+        if research is None:
+            return None
+        try:
+            answer = _clean_spoken(research(query, system=sys))
+        except OpenAiError as e:
+            log.warning("%s research via OpenAI failed (%s); trying RSS ladder", kind, e)
+            return None
+        if not answer:
+            return None
+        return ToolResult(True, answer, "news", {"source": "openai-web", "kind": kind})
+
     def news_brief(self, lang: str) -> ToolResult:
+        # Preferred: live internet research (web_search) — today's news straight
+        # from the web, Kraków → kraj → świat.
+        today = datetime.now().date().isoformat()
+        if lang == "pl":
+            rsys = (self.persona + " Jesteś prezenterką wiadomości. Zwykły tekst do "
+                    "przeczytania na głos — bez Markdown, gwiazdek, nagłówków i URL-i.")
+            rquery = (f"Znajdź w internecie najważniejsze DZISIEJSZE ({today}) wiadomości i "
+                      "ułóż krótki mówiony serwis po polsku w trzech częściach, dokładnie w tej "
+                      "kolejności: „Z Krakowa”, „Z kraju” (Polska), „Ze świata” — po dwie-trzy "
+                      "wiadomości, każda jednym zdaniem. Tylko fakty znalezione w sieci.")
+        else:
+            rsys = (self.persona + " You are a news anchor. Plain text to be read aloud — "
+                    "no Markdown, asterisks, headers or URLs.")
+            rquery = (f"Search the internet for TODAY'S ({today}) top news and compose a short "
+                      "spoken brief in three sections, in this exact order: From Kraków, From "
+                      "Poland, Worldwide — two-three items each, one sentence each. Only facts "
+                      "found on the web.")
+        hit = self._research_brief(rquery, rsys, "news")
+        if hit is not None:
+            return hit
+
         # Data is ALWAYS real RSS from the configured sources — keyless, on-device.
         # Kraków + kraj are Polish; the world tier is the international agencies
         # (English) the user asked for, translated into the Polish brief below.
@@ -662,6 +711,88 @@ class Tools:
         floor = dict(tiers)
         floor["world"] = self.news.by_tier("world_pl") or tiers.get("world", [])
         return self._spoken_from_tiers(floor, lang)
+
+    def news_sport(self, lang: str) -> ToolResult:
+        """Sport brief ("jak sport", user request 2026-08-21): football first,
+        then the rest of sport — Kraków → Poland → world. Preferred path is live
+        web research; the keyless floor reads the `sport` RSS tier."""
+        today = datetime.now().date().isoformat()
+        if lang == "pl":
+            rsys = (self.persona + " Jesteś prezenterką sportową. Zwykły tekst do "
+                    "przeczytania na głos — bez Markdown, gwiazdek, nagłówków i URL-i.")
+            rquery = (f"Znajdź w internecie DZISIEJSZE ({today}) wiadomości sportowe — najpierw "
+                      "piłka nożna, potem pozostałe dyscypliny — i ułóż krótki mówiony serwis po "
+                      "polsku w trzech częściach, dokładnie w tej kolejności: „Z Krakowa” (Wisła "
+                      "Kraków, Cracovia, krakowski sport), „Z kraju” (Ekstraklasa, reprezentacja "
+                      "Polski, polscy sportowcy), „Ze świata” — po dwie-trzy wiadomości, każda "
+                      "jednym zdaniem. Tylko fakty znalezione w sieci.")
+        else:
+            rsys = (self.persona + " You are a sports anchor. Plain text to be read aloud — "
+                    "no Markdown, asterisks, headers or URLs.")
+            rquery = (f"Search the internet for TODAY'S ({today}) sports news — football first, "
+                      "then other sports — and compose a short spoken brief in three sections, in "
+                      "this exact order: From Kraków (Wisła Kraków, Cracovia), From Poland "
+                      "(Ekstraklasa, national team), Worldwide — two-three items each, one "
+                      "sentence each. Only facts found on the web.")
+        hit = self._research_brief(rquery, rsys, "sport")
+        if hit is not None:
+            return hit
+
+        # Keyless floor: the Polish `sport` RSS tier (nationwide — Kraków-specific
+        # sport has no reliable feed; the research path covers it), read natively.
+        items = (self.news.by_tier("sport") or [])[:4]
+        if not items:
+            return ToolResult(
+                False,
+                _t(lang, "Nie mogę teraz sprawdzić wiadomości sportowych.",
+                   "I can't check the sports news right now."),
+                "error", {"reason": "sport_unavailable"},
+            )
+        label = _t(lang, "Ze sportu", "In sports")
+        return ToolResult(True, f"{label}: {'; '.join(items)}.", "news",
+                          {"source": "rss", "kind": "sport", "count": len(items)})
+
+    # -- help ("jakie komendy") --------------------------------------------
+    # Curated, spoken walkthrough of the command surface — grouped with example
+    # phrases, because reading 80 regexes aloud is useless. Keep it in sync with
+    # configs/intents/system.yaml when commands are added ("jak sport" etc.).
+    _HELP_PL = (
+        "Rozumiem między innymi. "
+        "Sterowanie: stop, głośniej, ciszej, ustaw głośność na pięćdziesiąt, powtórz, "
+        "idź spać, obudź się. "
+        "Czas: która godzina, jaka jest data. "
+        "Pogoda: jaka pogoda w Krakowie, czy będzie padać. "
+        "Wiadomości: jakie wieści — serwis z Krakowa, z kraju i ze świata; "
+        "jak sport — wiadomości sportowe, najpierw piłka nożna. "
+        "Radio i muzyka: włącz radio Trójka, zagraj tytuł albo wykonawcę, następny, "
+        "poprzedni, co teraz gra, wyłącz radio. "
+        "Książki: jakie masz książki, włącz książkę, czytaj dalej, następny rozdział. "
+        "Notatki i pamięć: zapamiętaj że…, nagraj notatkę głosową, odtwórz notatki, "
+        "jakie mam notatki, co zapisałem o…, usuń ostatnią notatkę. "
+        "Przypomnienia: przypomnij mi o…, jakie mam przypomnienia. "
+        "Języki: mów po angielsku, mów po polsku. "
+        "A gdy zapytasz o cokolwiek innego, po prostu odpowiem."
+    )
+    _HELP_EN = (
+        "Among other things I understand. "
+        "Control: stop, louder, quieter, set volume to fifty, repeat, go to sleep, wake up. "
+        "Time: what time is it, what's the date. "
+        "Weather: what's the weather in Kraków, will it rain. "
+        "News: what's the news — a brief from Kraków, Poland and the world; "
+        "sports news — football first. "
+        "Radio and music: turn on radio, play a title or artist, next, previous, "
+        "what's playing, turn the radio off. "
+        "Books: what books do you have, play a book, keep reading, next chapter. "
+        "Notes and memory: remember that…, record a voice memo, play my memos, "
+        "what notes do I have, delete the last note. "
+        "Reminders: remind me about…, what are my reminders. "
+        "Languages: speak English, speak Polish. "
+        "And for anything else, just ask."
+    )
+
+    def help_commands(self, lang: str) -> ToolResult:
+        text = self._HELP_PL if lang == "pl" else self._HELP_EN
+        return ToolResult(True, text, "help", {"kind": "commands"})
 
     # -- web lookup --------------------------------------------------------
     def web_lookup(self, query: str, lang: str) -> ToolResult:

@@ -130,6 +130,36 @@ def test_english_news_questions_fire_news_brief(q):
     assert _matches("news_brief", q, lang="en")
 
 
+@pytest.mark.parametrize("q", [
+    "jak sport",
+    "Jak tam sport?",
+    "wiadomości sportowe",
+    "sportowe wieści",
+    "co w sporcie",
+])
+def test_sport_questions_fire_sport_brief(q):
+    assert _matches("sport_brief", q)
+
+
+@pytest.mark.parametrize("q", ["sports news", "how's sport", "how is the sport"])
+def test_english_sport_questions_fire_sport_brief(q):
+    assert _matches("sport_brief", q, lang="en")
+
+
+def test_sport_brief_is_ordered_before_news_brief():
+    """First match wins in the router (intent.rs) — the generic news patterns
+    ("wiadomości…") must not swallow "wiadomości sportowe"."""
+    import yaml as _yaml
+    names = [i["name"] for i in _yaml.safe_load(INTENTS.read_text(encoding="utf-8"))["intents"]]
+    assert names.index("sport_brief") < names.index("news_brief")
+
+
+def test_plain_news_does_not_fire_sport():
+    assert not _matches("sport_brief", "jakie są wieści")
+    assert not _matches("sport_brief", "co nowego w wiadomościach")
+    assert not _matches("sport_brief", "jaki sport lubisz")  # question to the brain, not a brief
+
+
 # -- radio stop: whisper drops the "s" of "stop" over a loud radio (2026-07-21)
 @pytest.mark.parametrize("cmd", [
     "Jessica, stop.",       # clean hearing — worked all along
@@ -310,3 +340,19 @@ def test_nagraj_with_content_words_does_not_collide():
     # "nagraj" followed by anything that isn't the memo noun is NOT the bare
     # command — it stays unmatched here (falls to the LLM, which can clarify).
     assert not _matches("voice_memo_record", "nagraj mi przypomnienie na jutro")
+
+
+@pytest.mark.parametrize("q", [
+    "jakie komendy",
+    "Jakie są komendy?",
+    "jakie znasz polecenia",
+    "lista komend",
+    "wymień komendy",
+])
+def test_command_list_questions_fire_list_commands(q):
+    assert _matches("list_commands", q)
+
+
+@pytest.mark.parametrize("q", ["what commands", "list commands", "what commands do you know"])
+def test_english_command_list_fires_list_commands(q):
+    assert _matches("list_commands", q, lang="en")

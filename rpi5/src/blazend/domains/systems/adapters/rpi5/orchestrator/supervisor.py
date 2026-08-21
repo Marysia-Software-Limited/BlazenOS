@@ -727,7 +727,15 @@ class Orchestrator:
                 patch["last_command"] = {
                     "intent": env.data.get("intent"), "result": env.data.get("intent")}
             else:
-                reply = self._dispatch_intent(env)
+                if str(env.data.get("intent", "")) in ("news_brief", "sport_brief"):
+                    # Live web research (GPT web_search) blocks for tens of
+                    # seconds. Acknowledge FIRST — silence here reads as "no
+                    # reaction" — and run the dispatch off-loop so wake events,
+                    # state and the half-duplex machinery stay alive meanwhile.
+                    await self._speak_working_cue()
+                    reply = await asyncio.to_thread(self._dispatch_intent, env)
+                else:
+                    reply = self._dispatch_intent(env)
                 # Acting on a command keeps the conversation open for follow-ups.
                 self._awake_until = asyncio.get_running_loop().time() + self._wake_window_s
                 if reply is not None:

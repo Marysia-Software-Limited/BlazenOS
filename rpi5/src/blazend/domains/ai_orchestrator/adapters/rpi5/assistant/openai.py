@@ -22,6 +22,9 @@ from typing import Any
 
 DEFAULT_MODEL = "gpt-4o-mini"
 _ENDPOINT = "https://api.openai.com/v1/chat/completions"
+# The Responses endpoint carries the hosted `web_search` tool — live internet
+# research (news briefs) goes here; plain chat stays on chat-completions.
+_RESPONSES_ENDPOINT = "https://api.openai.com/v1/responses"
 
 # A transport takes (url, headers, json_body) and returns the parsed response.
 Transport = Callable[[str, dict[str, str], dict[str, Any]], dict[str, Any]]
@@ -34,8 +37,12 @@ class OpenAiError(RuntimeError):
 def _http_transport(url: str, headers: dict[str, str], body: dict[str, Any]) -> dict[str, Any]:
     data = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=headers)
+    # A web_search research call (reasoning model browsing live pages) routinely
+    # needs 1-2 min; plain chat stays on the tight budget. Keyed off the URL so
+    # the injectable Transport signature stays (url, headers, body).
+    timeout = 150 if url == _RESPONSES_ENDPOINT else 30
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 (fixed host)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (fixed host)
             result: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
             return result
     except urllib.error.HTTPError as e:  # pragma: no cover - network path
@@ -100,6 +107,37 @@ class OpenAiClient:
             del body["temperature"]
             resp = self._transport(_ENDPOINT, headers, body)
         return _extract_text(resp)
+
+    def research(self, user: str, *, system: str | None = None) -> str:
+        """Web-grounded answer: the Responses API with the hosted ``web_search``
+        tool, so the model actually reads today's internet (used for the news
+        and sport briefs). Raises :class:`OpenAiError` when the key is missing,
+        the call fails, or no text came back — callers fall back to RSS."""
+        if not self.available:
+            raise OpenAiError("OPENAI_API_KEY is not set")
+        body: dict[str, Any] = {
+            "model": self.model,
+            "tools": [{"type": "web_search"}],
+            "input": user,
+        }
+        if system:
+            body["instructions"] = system
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+        }
+        resp = self._transport(_RESPONSES_ENDPOINT, headers, body)
+        parts: list[str] = []
+        for item in resp.get("output") or []:
+            if item.get("type") != "message":
+                continue
+            for chunk in item.get("content") or []:
+                if chunk.get("type") == "output_text" and chunk.get("text"):
+                    parts.append(chunk["text"])
+        text = "\n".join(parts).strip()
+        if not text:
+            raise OpenAiError("OpenAI research returned no text")
+        return text
 
     def chat_stream(self, user: str, *, system: str | None = None) -> Iterator[str]:
         """Satisfy the ``Llm`` protocol: yield the whole reply as one chunk (no

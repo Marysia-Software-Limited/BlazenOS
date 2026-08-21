@@ -26,7 +26,10 @@ require_wake: true
 # several seconds) still lands inside the window — an 8 s window dropped commands
 # as "asleep" when ASR lagged. Intent anchoring + require_wake keep ambient speech
 # from matching, so a longer window is safe.
-conversation_window_s: 15
+# 20 (was 15): measured 2026-08-21 — wake→asr.final ran 15-17 s when whisper was
+# CPU-starved (tts crash-loop), and every command died as "asleep". 20 s keeps a
+# loaded box inside the window; anchored intents + require_wake cover the risk.
+conversation_window_s: 20
 
 # Hands-free capture (S5 `blazend.voice.runner`). After a wake fires and the
 # acknowledgement plays, the runner records a FIXED window straight from the
