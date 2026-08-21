@@ -612,25 +612,31 @@ class Tools:
             )
         return ToolResult(True, " ".join(parts), "news", {"source": "rss", "tiers": counts})
 
-    def _research_brief(self, query: str, sys: str, kind: str) -> ToolResult | None:
+    def _research_brief(self, query: str, sys: str, kind: str) -> tuple[bool, ToolResult | None]:
         """Preferred cloud path (user request 2026-08-21): GPT-5.6-sol searches
         the live internet via the hosted web_search tool and composes the brief
-        itself. Any failure returns None and the caller walks the ladder
-        (RSS+compose → Gemini → keyless floor)."""
+        itself. Returns (attempted, result): on failure the caller walks the
+        ladder (RSS+compose → Gemini → keyless floor) and `attempted` lets the
+        floor SAY the web search failed (verbose-state decision 2026-08-21)."""
         composer = self._news_composer()
-        if not composer.available:
-            return None
         research = getattr(composer, "research", None)
-        if research is None:
-            return None
+        if not composer.available or research is None:
+            return False, None
         try:
             answer = _clean_spoken(research(query, system=sys))
         except OpenAiError as e:
             log.warning("%s research via OpenAI failed (%s); trying RSS ladder", kind, e)
-            return None
+            return True, None
         if not answer:
-            return None
-        return ToolResult(True, answer, "news", {"source": "openai-web", "kind": kind})
+            return True, None
+        return True, ToolResult(True, answer, "news", {"source": "openai-web", "kind": kind})
+
+    @staticmethod
+    def _web_failed_preamble(lang: str) -> str:
+        """Spoken state explanation for the RSS floor after a failed web search."""
+        return _t(lang,
+                  "Nie udało mi się przeszukać internetu, więc czytam nagłówki z serwisów. ",
+                  "I couldn't search the web, so I'm reading feed headlines instead. ")
 
     def news_brief(self, lang: str) -> ToolResult:
         # Preferred: live internet research (web_search) — today's news straight
@@ -650,7 +656,7 @@ class Tools:
                       "spoken brief in three sections, in this exact order: From Kraków, From "
                       "Poland, Worldwide — two-three items each, one sentence each. Only facts "
                       "found on the web.")
-        hit = self._research_brief(rquery, rsys, "news")
+        web_tried, hit = self._research_brief(rquery, rsys, "news")
         if hit is not None:
             return hit
 
@@ -710,7 +716,12 @@ class Tools:
         # (falling back to the English agencies only if no Polish world feed answers).
         floor = dict(tiers)
         floor["world"] = self.news.by_tier("world_pl") or tiers.get("world", [])
-        return self._spoken_from_tiers(floor, lang)
+        res = self._spoken_from_tiers(floor, lang)
+        if web_tried and res.ok:
+            # Verbose state: the user asked for live news and got RSS — say why.
+            return ToolResult(True, self._web_failed_preamble(lang) + res.text,
+                              res.action, res.payload)
+        return res
 
     def news_sport(self, lang: str) -> ToolResult:
         """Sport brief ("jak sport", user request 2026-08-21): football first,
@@ -734,7 +745,7 @@ class Tools:
                       "this exact order: From Kraków (Wisła Kraków, Cracovia), From Poland "
                       "(Ekstraklasa, national team), Worldwide — two-three items each, one "
                       "sentence each. Only facts found on the web.")
-        hit = self._research_brief(rquery, rsys, "sport")
+        web_tried, hit = self._research_brief(rquery, rsys, "sport")
         if hit is not None:
             return hit
 
@@ -749,7 +760,8 @@ class Tools:
                 "error", {"reason": "sport_unavailable"},
             )
         label = _t(lang, "Ze sportu", "In sports")
-        return ToolResult(True, f"{label}: {'; '.join(items)}.", "news",
+        preamble = self._web_failed_preamble(lang) if web_tried else ""
+        return ToolResult(True, f"{preamble}{label}: {'; '.join(items)}.", "news",
                           {"source": "rss", "kind": "sport", "count": len(items)})
 
     # -- help ("jakie komendy") --------------------------------------------

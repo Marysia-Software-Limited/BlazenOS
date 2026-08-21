@@ -164,7 +164,8 @@ async def test_not_understood_cue_is_rate_limited(runtime_dir: Path):
 
     await _wait_for(lambda: len(said) >= 1, timeout=2.0)
     await asyncio.sleep(0.3)  # give any (wrongly) un-throttled extra cues time to land
-    assert said == ["Nie zrozumiałam."]  # burst collapsed to one cue
+    # Burst collapsed to one cue (verbose-state phrasing, 2026-08-21).
+    assert said == ["Nie zrozumiałam. Powiedz proszę jeszcze raz."]
 
     await orch.shutdown()
     await asyncio.wait_for(task, timeout=2.0)
@@ -216,7 +217,7 @@ async def test_thinking_event_speaks_working_cue_once(runtime_dir: Path):
 
     await _wait_for(lambda: len(said) >= 1, timeout=2.0)
     await asyncio.sleep(0.3)
-    assert said == ["Chwileczkę."]
+    assert said == ["Chwileczkę, już to sprawdzam."]  # verbose-state phrasing
 
     await orch.shutdown()
     await asyncio.wait_for(task, timeout=2.0)

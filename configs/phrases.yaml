@@ -8,16 +8,29 @@
 
 version: 1
 
+# Verbose-state decision (user, 2026-08-21): Jessica narrates what she's doing
+# in full Polish sentences instead of bare one-worders — the user hears her
+# STATE, not just that she's alive. `listening` stays short on purpose: it
+# plays on every wake, where brevity is the feature.
 cues:
   # Heard a sound after "dżesika" but no intelligible words (ASR no-speech).
   not_understood:
-    pl: "Nie zrozumiałam."
-    en: "I didn't catch that."
+    pl: "Nie zrozumiałam. Powiedz proszę jeszcze raz."
+    en: "I didn't catch that. Please say it again."
   # Optional: capture window opened but closed empty.
   listening:
     pl: "Słucham?"
     en: "Yes?"
   # Optional: a long-running action is in progress.
   working:
-    pl: "Chwileczkę."
-    en: "One moment."
+    pl: "Chwileczkę, już to sprawdzam."
+    en: "One moment, I'm checking."
+  # Web-research briefs (news/sport): the search takes 30-90 s, so the wait is
+  # narrated (user request 2026-08-21) — one announcement up front, then a
+  # periodic "still searching" so the silence never reads as a dead command.
+  searching:
+    pl: "Poczekaj chwileczkę, szukam wiadomości."
+    en: "Hang on a moment, I'm looking for the news."
+  still_searching:
+    pl: "Chwileczkę, ciągle szukam."
+    en: "One moment, still searching."

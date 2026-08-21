@@ -282,8 +282,11 @@ class Orchestrator:
                        "processing_tick": True}
             self._hb_interval_s = 5.0
         lang = self._default_lang or "pl"
-        fallback = {"not_understood": "Nie zrozumiałam.", "listening": "Słucham?",
-                    "working": "Chwileczkę."}
+        fallback = {"not_understood": "Nie zrozumiałam. Powiedz proszę jeszcze raz.",
+                    "listening": "Słucham?",
+                    "working": "Chwileczkę, już to sprawdzam.",
+                    "searching": "Poczekaj chwileczkę, szukam wiadomości.",
+                    "still_searching": "Chwileczkę, ciągle szukam."}
         try:
             phrases = load_config("phrases")
             cues = {k: str(phrases.get(f"cues.{k}.{lang}", v)) for k, v in fallback.items()}
@@ -729,11 +732,25 @@ class Orchestrator:
             else:
                 if str(env.data.get("intent", "")) in ("news_brief", "sport_brief"):
                     # Live web research (GPT web_search) blocks for tens of
-                    # seconds. Acknowledge FIRST — silence here reads as "no
-                    # reaction" — and run the dispatch off-loop so wake events,
-                    # state and the half-duplex machinery stay alive meanwhile.
-                    await self._speak_working_cue()
-                    reply = await asyncio.to_thread(self._dispatch_intent, env)
+                    # seconds. Narrate the wait (user request 2026-08-21):
+                    # announce the search up front, then a periodic "still
+                    # searching" — silence here reads as "no reaction". The
+                    # dispatch runs off-loop so wake events, state and the
+                    # half-duplex machinery stay alive meanwhile.
+                    if not self._radio.playing:
+                        await self._speak(self._cues["searching"])
+                    task = asyncio.ensure_future(
+                        asyncio.to_thread(self._dispatch_intent, env))
+                    for _ in range(8):  # research transport caps at 150 s
+                        try:
+                            reply = await asyncio.wait_for(
+                                asyncio.shield(task), timeout=25.0)
+                            break
+                        except TimeoutError:
+                            if not self._radio.playing:
+                                await self._speak(self._cues["still_searching"])
+                    else:
+                        reply = await task
                 else:
                     reply = self._dispatch_intent(env)
                 # Acting on a command keeps the conversation open for follow-ups.

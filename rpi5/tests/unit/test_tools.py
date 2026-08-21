@@ -440,3 +440,14 @@ def test_help_commands_walkthrough_is_spoken_and_bilingual() -> None:
         assert probe in pl.text
     assert "\n" not in pl.text and "*" not in pl.text
     assert "sports news" in en.text
+
+
+def test_failed_web_search_is_explained_on_the_floor() -> None:
+    """Verbose-state (2026-08-21): research attempted + whole cloud ladder dead →
+    the RSS floor SAYS the web search failed instead of silently downgrading."""
+    fake = _FakeResearchOpenAi(fail=True, text="")  # research fails, compose empty
+    res = _tools(openai=fake, news=_FakeNews()).news_brief("pl")
+    assert res.ok and res.text.startswith("Nie udało mi się przeszukać internetu")
+    # Keyless (never attempted) floor keeps the plain reading — no false excuse.
+    quiet = _tools(openai=_FakeOpenAi(available=False), news=_FakeNews()).news_brief("pl")
+    assert quiet.ok and not quiet.text.startswith("Nie udało")
