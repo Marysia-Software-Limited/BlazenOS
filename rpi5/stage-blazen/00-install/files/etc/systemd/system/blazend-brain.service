@@ -26,7 +26,9 @@ Environment=BLAZEN_MODELS_DIR=/var/lib/blazen/models
 # peer IP here. Point the loader at the deployed registry; the registry falls back
 # to the baked local Bielik (4.5B/1.5B GGUF) when paul is unreachable, so it's safe
 # to ship. To override the endpoint manually, set BLAZEN_LLM_OLLAMA_URL.
-Environment=BLAZEN_MESH=/usr/share/blazen/defaults/mesh.yaml
+# Site mesh, not repo defaults — the defaults mesh lists paul's Ollama/XTTS;
+# the site file ships self-only (cc2883d) so nothing can route to LAN peers.
+Environment=BLAZEN_MESH=/etc/blazen/mesh.yaml
 Environment=BLAZEN_LLM_OLLAMA_MODEL=SpeakLeash/bielik-11b-v2.3-instruct:Q8_0
 # Cloud DOUBT fallback: when a key is present the engine PREFERS OpenAI (gpt-5.5)
 # for unclear/freeform requests, degrading to the local Bielik on any failure.

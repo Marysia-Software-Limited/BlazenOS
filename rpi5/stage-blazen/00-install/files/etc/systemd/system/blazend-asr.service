@@ -23,12 +23,13 @@ Environment=BLAZEN_MODELS_DIR=/var/lib/blazen/models
 # (~/.cache/huggingface is unreadable here). OMP cap leaves headroom for Bielik.
 Environment=HF_HUB_OFFLINE=1
 Environment=OMP_NUM_THREADS=2
-# GPU acceleration: the remote faster-whisper large-v3 endpoint (paul,
-# blazen-whisper.service) is resolved from the mesh registry (paul.asr.whisper-remote
-# in mesh.yaml) — no hardcoded peer IP here. engine.py falls back to the baked local
-# CT2 model if the POST fails/times out, so it's safe to ship. Override manually
-# with BLAZEN_ASR_REMOTE_URL.
-Environment=BLAZEN_MESH=/usr/share/blazen/defaults/mesh.yaml
+# Mesh MUST be the site file, not the repo defaults: the defaults mesh lists
+# paul's GPU whisper-remote, and engine.py gives mesh discovery priority over
+# the empty asr.yaml remote_url — with the defaults path every utterance tried
+# paul's :8090 first (silent GPU offload on LAN; a timeout penalty per command
+# once the appliance went GSM-only, caught 2026-08-21). The site mesh ships
+# self-only (cc2883d). Override manually with BLAZEN_ASR_REMOTE_URL.
+Environment=BLAZEN_MESH=/etc/blazen/mesh.yaml
 ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.domains.voice_input.adapters.rpi5.asr
 Restart=on-failure
 RestartSec=3
