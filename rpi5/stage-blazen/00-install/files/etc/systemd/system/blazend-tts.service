@@ -20,12 +20,12 @@ Environment=PATH=/usr/lib/blazen/.venv/bin:/usr/local/bin:/usr/bin:/bin
 # and cached phrases keep Ana. Restore the URL to re-enable paul's GPU voice:
 #   Environment=BLAZEN_TTS_XTTS_URL=http://192.168.50.102:8091/synthesize
 Environment=BLAZEN_TTS_XTTS_URL=
-# --ring-seconds 40: the ring must hold ONE FULL reply. At the 15 s default a
-# 16.7 s answer (audiobook list) wrapped and overwrote its own first ~2 s before
-# audio-out read it — the user heard the reply start mid-word ("first seconds of
-# speech missing"). 40 s covers the longest spoken replies (news digest, book
-# menu) at a cost of 1.7 MB shm.
-ExecStart=/usr/lib/blazen/bin/blazend-tts --voice-cache /var/lib/blazen/voice-cache --ring-seconds 40
+# --ring-seconds 120: the ring must hold ONE FULL reply. At 15 s a 16.7 s
+# audiobook list wrapped and cut its own first ~2 s; at 40 s the web-research
+# news/sport briefs (up to ~9 spoken sentences, 60-90 s of Piper audio) did the
+# same again (2026-08-21, "first seconds of the voice is cut"). 120 s covers
+# the longest brief with margin at a cost of ~5 MB shm.
+ExecStart=/usr/lib/blazen/bin/blazend-tts --voice-cache /var/lib/blazen/voice-cache --ring-seconds 120
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=yes
