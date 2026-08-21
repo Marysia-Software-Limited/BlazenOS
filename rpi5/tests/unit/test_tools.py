@@ -451,3 +451,12 @@ def test_failed_web_search_is_explained_on_the_floor() -> None:
     # Keyless (never attempted) floor keeps the plain reading — no false excuse.
     quiet = _tools(openai=_FakeOpenAi(available=False), news=_FakeNews()).news_brief("pl")
     assert quiet.ok and not quiet.text.startswith("Nie udało")
+
+
+def test_new_brief_tools_are_dispatchable() -> None:
+    """news.sport went live in tools.run() but was missing from the fast-path
+    dispatcher whitelist — 'jak sport' answered 'Jeszcze tego nie potrafię.'
+    (live 2026-08-21). Pin the news/help family into _TOOL_INTENTS."""
+    from blazend.domains.ai_orchestrator.adapters.rpi5.dispatch import _TOOL_INTENTS
+    for tool in ("news.brief", "news.sport", "help.commands"):
+        assert tool in _TOOL_INTENTS, tool
