@@ -356,3 +356,47 @@ def test_command_list_questions_fire_list_commands(q):
 @pytest.mark.parametrize("q", ["what commands", "list commands", "what commands do you know"])
 def test_english_command_list_fires_list_commands(q):
     assert _matches("list_commands", q, lang="en")
+
+
+# -- alarms (user request 2026-08-21): set / wake-me / list / cancel ----------
+@pytest.mark.parametrize("q", [
+    "obudź mnie o 7:00",
+    "Obudź mnie jutro o 6:30",
+    "przypomnij mi o 15:00 o spotkaniu",
+    "ustaw budzik na 8:00",
+])
+def test_alarm_set_fires_add_reminder(q):
+    assert _matches("add_reminder", q)
+
+
+@pytest.mark.parametrize("q", [
+    "jakie alarmy",
+    "jakie mam alarmy",
+    "jakie budziki",
+    "jakie mam przypomnienia",
+])
+def test_alarm_list_fires_list_reminders(q):
+    assert _matches("list_reminders", q)
+
+
+@pytest.mark.parametrize("q", [
+    "skasuj alarm",
+    "skasuj alarm o 7:00",
+    "usuń budzik",
+    "odwołaj przypomnienie o 15:00",
+    "wyłącz alarm",
+])
+def test_alarm_cancel_fires_reminder_delete(q):
+    assert _matches("reminder_delete", q)
+
+
+@pytest.mark.parametrize("q", ["wake me up at 7am", "cancel the alarm", "delete reminder at 3pm"])
+def test_english_alarm_commands(q):
+    assert (_matches("add_reminder", q, "en") or _matches("reminder_delete", q, "en"))
+
+
+def test_alarm_cancel_does_not_hijack_others():
+    assert not _matches("reminder_delete", "obudź się")           # wake_up intent
+    assert not _matches("reminder_delete", "wyłącz radio")        # radio_stop
+    assert not _matches("reminder_delete", "usuń ostatnią notatkę")  # memory_delete_last
+    assert not _matches("add_reminder", "obudź się")

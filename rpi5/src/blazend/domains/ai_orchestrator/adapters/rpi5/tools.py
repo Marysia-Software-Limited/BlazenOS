@@ -121,7 +121,10 @@ _TIME_SPAN = re.compile(
     r"|\b(jutro|tomorrow)\b",
     re.IGNORECASE,
 )
-_ALARM_HINT = re.compile(r"\b(alarm|budzik|wake\s+me|timer)\b", re.IGNORECASE)
+_ALARM_HINT = re.compile(r"\b(alarm|budzik|obud(ź|z)|pobudk\w*|wake\s+me|timer)\b", re.IGNORECASE)
+# "obudź mnie o 7" carries no task text beyond the verb — strip it so the
+# stored alarm gets the clean default label ("budzik") instead of the phrase.
+_WAKE_ME = re.compile(r"\b(obud(ź|z)\s+mnie|wake\s+me(\s+up)?)\b", re.IGNORECASE)
 _EVENT_HINT = re.compile(r"\b(wydarzenie|spotkanie|event|meeting)\b", re.IGNORECASE)
 _LEAD_FILLER = re.compile(
     r"^(?:mi|mnie|me|że|ze|żeby|zeby|aby|abym|o\s+tym,?\s*że|to|that|about|"
@@ -238,6 +241,8 @@ class Tools:
             return self.set_name(str(args.get("name", "")), lang)
         if tool == "context.add_reminder":
             return self.add_reminder(str(args.get("text", "")), lang)
+        if tool == "context.delete_reminder":
+            return self.delete_reminder(str(args.get("text", "")), lang)
         if tool == "weather.query":
             return self.weather_now(args.get("place"), lang)
         if tool == "rain.forecast":
@@ -457,7 +462,7 @@ class Tools:
             else "event" if _EVENT_HINT.search(text)
             else "reminder"
         )
-        task = _strip_lead(_TIME_SPAN.sub("", text))
+        task = _strip_lead(_WAKE_ME.sub("", _TIME_SPAN.sub("", text))).strip(" ,.:!")
         if when is None:
             return ToolResult(
                 True,
@@ -476,6 +481,28 @@ class Tools:
             "event": _t(lang, f"Zapisałam na {hhmm}", f"Saved for {hhmm}"),
         }.get(category, _t(lang, f"Przypomnę Ci o {hhmm}", f"I'll remind you at {hhmm}"))
         return ToolResult(True, f"{lead}: {task}.", "reminder", {"id": rem.id, "due": rem.due, "category": category})
+
+    def delete_reminder(self, text: str, lang: str) -> ToolResult:
+        """Cancel an alarm/reminder ("skasuj alarm o siódmej trzydzieści" /
+        "skasuj alarm") — by HH:MM when the utterance names a time, else the
+        next upcoming one. Speaks exactly what was cancelled (verbose-state)."""
+        now = datetime.now()
+        at = parse_when(text, now) if text.strip() else None
+        gone = self.memory.cancel_reminders(at=at)
+        if not gone:
+            return ToolResult(
+                True,
+                _t(lang, "Nie masz takiego alarmu ani przypomnienia.",
+                   "There's no such alarm or reminder."),
+                "reminder", {"cancelled": 0},
+            )
+        spoken = "; ".join(
+            f"{datetime.fromisoformat(r.due).strftime('%H:%M')} — {r.text}" for r in gone
+        )
+        return ToolResult(
+            True, _t(lang, f"Skasowałam: {spoken}.", f"Cancelled: {spoken}."),
+            "reminder", {"cancelled": len(gone), "ids": [r.id for r in gone]},
+        )
 
     # -- weather -----------------------------------------------------------
     def weather_now(self, place_name: str | None, lang: str) -> ToolResult:

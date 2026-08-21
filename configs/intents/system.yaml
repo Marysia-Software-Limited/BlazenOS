@@ -694,7 +694,7 @@ intents:
   - name: list_reminders
     triggers:
       pl:
-        - "jakie mam (przypomnienia|alarmy)|moje (przypomnienia|alarmy)|co mam (zaplanowane|na dzi(ś|s))"
+        - "jakie (mam )?(przypomnienia|alarmy|budziki)|moje (przypomnienia|alarmy)|co mam (zaplanowane|na dzi(ś|s))"
       en:
         - "list (reminders|alarms)|what (reminders|alarms)|my (reminders|alarms)|what do i have planned"
     action: tool_call
@@ -760,12 +760,27 @@ intents:
     action: tool_call
     tool: context.remember
 
+  # Cancel BEFORE add: "skasuj alarm o 7" must not fall through to chat, and
+  # none of add's verbs (przypomnij/ustaw/dodaj) collide with delete's.
+  - name: reminder_delete
+    triggers:
+      pl:
+        - "\\b(skasuj|usu(ń|n)|odwo(ł|l)aj|wy(ł|l)(ą|a)cz)\\b\\s+(ten\\s+|to\\s+)?(alarm|budzik|przypomnienie)\\w*(?P<text>.*)"
+      en:
+        - "\\b(cancel|delete|remove|turn\\s+off)\\b\\s+(the\\s+|that\\s+)?(alarm|reminder)(?P<text>.*)"
+    action: tool_call
+    tool: context.delete_reminder
+
   - name: add_reminder
     triggers:
       pl:
+        # "obudź mnie o 7" — the whole phrase stays in <text>: the alarm hint
+        # (obudź) classifies it, the tool strips the verb, parse_when the time.
         - "(?:przypomnij(?: mi)?|(?:ustaw|nastaw) (?:alarm|budzik)|dodaj (?:wydarzenie|spotkanie))\\s+(?P<text>.+)"
+        - "(?P<text>obud(ź|z)\\s+mnie\\s+.+)"
       en:
-        - "(?:remind me|set (?:an? )?(?:alarm|timer|reminder)|wake me(?: up)?|add (?:an? )?(?:event|meeting))\\s+(?P<text>.+)"
+        - "(?:remind me|set (?:an? )?(?:alarm|timer|reminder)|add (?:an? )?(?:event|meeting))\\s+(?P<text>.+)"
+        - "(?P<text>wake\\s+me(?:\\s+up)?\\s+.+)"
     action: tool_call
     tool: context.add_reminder
 

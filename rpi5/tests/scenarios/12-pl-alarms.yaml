@@ -26,5 +26,21 @@ turns:
       assistant_says_any: ["budzik", "otworzyć pokój"]
       assistant_language: pl
 
+  # Alarms function (user 2026-08-21): wake-me phrasing, bare list, cancel.
+  - user: "obudź mnie o 6:30"
+    expect:
+      assistant_says_any: ["budzik", "06:30"]
+      assistant_language: pl
+
+  - user: "jakie alarmy"
+    expect:
+      assistant_says_any: ["06:30", "budzik"]
+      assistant_language: pl
+
+  - user: "skasuj alarm o 6:30"
+    expect:
+      assistant_says_any: ["Skasowałam", "06:30"]
+      assistant_language: pl
+
 postconditions:
   no_unit_restarts: true

@@ -460,3 +460,42 @@ def test_new_brief_tools_are_dispatchable() -> None:
     from blazend.domains.ai_orchestrator.adapters.rpi5.dispatch import _TOOL_INTENTS
     for tool in ("news.brief", "news.sport", "help.commands"):
         assert tool in _TOOL_INTENTS, tool
+
+
+def test_wake_me_becomes_a_clean_alarm(tmp_path, monkeypatch) -> None:
+    """"obudź mnie o 7:00" → category alarm, task defaults to 'budzik' (the
+    verb is stripped), spoken confirmation names the time."""
+    from blazend.domains.context.adapters.rpi5.memory import MemoryStore
+    t = _tools(openai=_FakeOpenAi(available=False), news=_FakeNews())
+    t.memory = MemoryStore(tmp_path / "m.json")
+    res = t.add_reminder("obudź mnie o 7:00", "pl")
+    assert res.ok and res.payload.get("category") == "alarm"
+    assert "budzik" in res.text and "07:00" in res.text
+
+
+def test_delete_reminder_by_time_and_next(tmp_path) -> None:
+    from datetime import datetime, timedelta
+
+    from blazend.domains.context.adapters.rpi5.memory import MemoryStore
+    t = _tools(openai=_FakeOpenAi(available=False), news=_FakeNews())
+    t.memory = MemoryStore(tmp_path / "m.json")
+    now = datetime.now()
+    t.memory.add_reminder("budzik", due=now + timedelta(hours=2), now=now, category="alarm")
+    t.memory.add_reminder("spotkanie", due=now + timedelta(hours=5), now=now, category="event")
+    # By time: cancels the alarm at its HH:MM, leaves the event.
+    hhmm = (now + timedelta(hours=2)).strftime("%H:%M")
+    res = t.delete_reminder(f"o {hhmm}", "pl")
+    assert res.ok and res.payload.get("cancelled") == 1 and "budzik" in res.text
+    assert len(t.memory.pending()) == 1
+    # No time: cancels the next upcoming one.
+    res2 = t.delete_reminder("", "pl")
+    assert res2.payload.get("cancelled") == 1 and "spotkanie" in res2.text
+    assert not t.memory.pending()
+    # Nothing left: honest answer.
+    res3 = t.delete_reminder("", "pl")
+    assert res3.payload.get("cancelled") == 0
+
+
+def test_alarm_tools_are_dispatchable() -> None:
+    from blazend.domains.ai_orchestrator.adapters.rpi5.dispatch import _TOOL_INTENTS
+    assert "context.delete_reminder" in _TOOL_INTENTS

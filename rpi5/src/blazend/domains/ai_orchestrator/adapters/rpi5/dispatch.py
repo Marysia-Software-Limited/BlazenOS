@@ -32,7 +32,7 @@ _TOOL_INTENTS: frozenset[str] = frozenset({
     "music.play", "music.next", "music.prev", "audiobook.play", "audiobooks.list",
     "library.search",
     "context.recall", "context.recall_reminders", "context.remember", "context.set_name",
-    "context.add_reminder",
+    "context.add_reminder", "context.delete_reminder",
     "context.search_memory", "context.play_memos", "context.play_found",
     "context.memory_stats", "context.delete_last",
 })

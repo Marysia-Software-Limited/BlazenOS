@@ -464,6 +464,27 @@ class MemoryStore:
         self._maybe_reload()
         return [Reminder(**r) for r in self._db.reminders if not r.get("fired")]
 
+    def cancel_reminders(self, *, at: datetime | None = None) -> list[Reminder]:
+        """Cancel pending reminders ("skasuj alarm [o 7:00]"): those whose due
+        time-of-day matches ``at``'s HH:MM when given, else the single next
+        upcoming one. Marks them fired (the firing loop skips them) and returns
+        what was cancelled so the assistant can say it."""
+        self._maybe_reload()
+        pend = [r for r in self._db.reminders if not r.get("fired")]
+        if not pend:
+            return []
+        if at is not None:
+            hhmm = at.strftime("%H:%M")
+            hits = [r for r in pend
+                    if datetime.fromisoformat(r["due"]).strftime("%H:%M") == hhmm]
+        else:
+            hits = [min(pend, key=lambda r: r["due"])]
+        for r in hits:
+            r["fired"] = True
+        if hits:
+            self._save()
+        return [Reminder(**r) for r in hits]
+
     def due(self, now: datetime) -> list[Reminder]:
         """Return + mark fired every pending reminder whose time has come."""
         self._maybe_reload()

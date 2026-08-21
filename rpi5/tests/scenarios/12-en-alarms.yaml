@@ -26,5 +26,16 @@ turns:
       assistant_says_any: ["alarm", "take my pills"]
       assistant_language: en
 
+  # Alarms function (user 2026-08-21): wake-me phrasing, cancel.
+  - user: "wake me up at 6:30"
+    expect:
+      assistant_says_any: ["alarm", "06:30"]
+      assistant_language: en
+
+  - user: "cancel the alarm at 6:30"
+    expect:
+      assistant_says_any: ["Cancelled", "06:30"]
+      assistant_language: en
+
 postconditions:
   no_unit_restarts: true
