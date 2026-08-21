@@ -24,7 +24,7 @@ Environment=BLAZEN_DATA_DIR=/var/lib/blazen/data
 EnvironmentFile=-/etc/blazen/secrets.env
 # Same cloud model as the brain (news composition etc.); without this the
 # OpenAI client falls back to its baked default instead of the chosen tier.
-Environment=OPENAI_MODEL=gpt-5.6-sol
+Environment=OPENAI_MODEL=gpt-5.6-luna
 # Status LED: a single WS2812/NeoPixel on SPI0 MOSI (BCM10) shows Jessica's state
 # (blue=listening, magenta=thinking, blue=speaking, red=error, off=idle). Fail-
 # soft — no LED wired or SPI off → led.json stays the only status surface.

@@ -36,9 +36,11 @@ Environment=BLAZEN_LLM_OLLAMA_MODEL=SpeakLeash/bielik-11b-v2.3-instruct:Q8_0
 # /etc/blazen/secrets.env (0600). With no key the path stays fully on-device.
 # Model for the OPEN_QA / complex-question path. `gpt-5.5` is only the
 # router's internal backend label — the model actually sent to the API is
-# this env var. gpt-5.6-sol = the flagship reasoning tier of the GPT-5.6
-# family (sol/terra/luna), chosen by the user 2026-08-21.
-Environment=OPENAI_MODEL=gpt-5.6-sol
+# this env var. gpt-5.6-luna = the fast/cheap tier of the GPT-5.6 family
+# ($1/$6 per Mtok vs sol's $5/$30) — Jessica's cloud tasks (brief composition,
+# headline translation, open QA) are shallow and latency-sensitive, so the
+# low-reasoning lane is the right fit (user: "cheaper, best one", 2026-08-21).
+Environment=OPENAI_MODEL=gpt-5.6-luna
 EnvironmentFile=-/etc/blazen/secrets.env
 ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.domains.ai_orchestrator.adapters.rpi5.brain
 Restart=on-failure
