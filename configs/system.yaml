@@ -24,8 +24,13 @@ languages:
 startup_greeting:
   enabled: true
   delay_s: 8                                  # grace for TTS + audio-out to subscribe on boot
-  pl: "Cześć, tu Dżesika. Jestem gotowa do pomocy."
-  en: "Hi, I'm Jessica. I'm ready to help."
+  # {name} expands to ", <profile name>" when the owner's name is stored
+  # ("nazywam się …" / context.set_name) and to "" otherwise — the greeting is
+  # a personal self-introduction (Decision 2026-08-22: address the owner by
+  # name, e.g. "Cześć, Błazen!"). A /var/lib/blazen/quiet-until ISO timestamp
+  # suppresses it until that moment (quiet hours at a client site).
+  pl: "Cześć{name}! Tu Dżesika, twoja asystentka głosowa. Jestem gotowa do pomocy."
+  en: "Hi{name}! This is Jessica, your voice assistant. I'm ready to help."
 
 # Persona — see docs/product/02-PERSONA-AND-WAKE.md.
 persona:

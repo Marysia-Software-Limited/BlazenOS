@@ -430,9 +430,32 @@ class Orchestrator:
         enabled, delay, pl, en = self._greeting
         if not enabled:
             return
+        # Quiet hours: an operator-written ISO timestamp ("keep her silent
+        # until 10:00" at a client site, 2026-08-22) — while now < it, start-up
+        # stays mute. The scheduled introduction removes the marker; a
+        # malformed marker never mutes forever.
+        quiet = Path("/var/lib/blazen/quiet-until")
+        try:
+            if quiet.exists() and datetime.now() < datetime.fromisoformat(
+                    quiet.read_text().strip()):
+                log.info("startup greeting suppressed (quiet until %s)",
+                         quiet.read_text().strip())
+                return
+        except (OSError, ValueError):
+            pass
         await asyncio.sleep(delay)
         lang = self._default_lang
         text = en if lang == "en" else pl
+        # Personal introduction: {name} → ", <owner>" from the stored profile
+        # ("Błazen"), or nothing while no name is set.
+        name = ""
+        try:
+            from blazend.domains.context.adapters.rpi5.memory import MemoryStore
+            entry = MemoryStore()._db.profile.get("name") or {}
+            name = str(entry.get("value", "") or "")
+        except Exception:  # noqa: BLE001 — a broken store must not mute the greeting
+            pass
+        text = text.replace("{name}", f", {name}" if name else "")
         log.info("speaking startup greeting (%s)", lang)
         self._mark_speaking(len(text))  # bring audio-out up before TTS plays
         await asyncio.sleep(2.5)  # let the reconciler start audio-out

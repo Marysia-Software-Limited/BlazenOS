@@ -157,15 +157,23 @@ outranks the radio.
 
 `startup_greeting` makes Jessica introduce herself once, spoken by the orchestrator
 when the pipeline comes up (so a screenless user hears the system is alive). It is
-**Polish-first** and uses `languages.default`:
+**Polish-first**, uses `languages.default`, and since 2026-08-22 it is a
+**personal introduction**: `{name}` in the text expands to `, <owner>` when the
+owner's name is stored in the profile ("nazywam się …" / `context.set_name`) and
+to nothing otherwise:
 
 ```yaml
 startup_greeting:
   enabled: true
   delay_s: 8          # grace for TTS + audio-out to subscribe before speaking
-  pl: "Cześć, tu Jessica. Jestem gotowa do pomocy."
-  en: "Hi, I'm Jessica. I'm ready to help."
+  pl: "Cześć{name}! Tu Dżesika, twoja asystentka głosowa. Jestem gotowa do pomocy."
+  en: "Hi{name}! This is Jessica, your voice assistant. I'm ready to help."
 ```
+
+**Quiet hours:** an ISO timestamp in `/var/lib/blazen/quiet-until` suppresses the
+greeting until that moment (e.g. an appliance delivered to a client overnight —
+silent boots until 10:00, then a scheduled `rm` of the marker + orchestrator
+restart speaks the introduction). A malformed marker never mutes forever.
 
 **"What can you do?"** is a fast-path intent (`what_can_you_do` in
 `intents/system.yaml`, `action: say`) that speaks a canned bilingual capability
