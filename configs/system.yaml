@@ -29,8 +29,10 @@ startup_greeting:
   # a personal self-introduction (Decision 2026-08-22: address the owner by
   # name, e.g. "Cześć, Błazen!"). A /var/lib/blazen/quiet-until ISO timestamp
   # suppresses it until that moment (quiet hours at a client site).
-  pl: "Cześć{name}! Tu Dżesika, twoja asystentka głosowa. Jestem gotowa do pomocy."
-  en: "Hi{name}! This is Jessica, your voice assistant. I'm ready to help."
+  # The greeting also OFFERS voice recalibration (2026-08-22, new owner at the
+  # client): saying "naucz się mojego głosu" starts the guided sample capture.
+  pl: "Cześć{name}! Tu Dżesika, twoja asystentka głosowa. Jestem gotowa do pomocy. Jeśli chcesz, żebym lepiej rozpoznawała twój głos, powiedz: naucz się mojego głosu."
+  en: "Hi{name}! This is Jessica, your voice assistant. I'm ready to help. If you'd like me to recognise your voice better, say: learn my voice."
 
 # Persona — see docs/product/02-PERSONA-AND-WAKE.md.
 persona:

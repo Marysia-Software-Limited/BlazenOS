@@ -241,6 +241,8 @@ class _DialogStub:
         self._memo_stage: str | None = None
         self._memo_title = ""
         self._memo_lang = "pl"
+        self._voice_train_round = 0  # voice-training dialog off (2026-08-22)
+        self._voice_train_retries = 0
 
     async def _speak(self, text: str, lang: str = "pl") -> None:
         self.spoken.append(text)
@@ -328,3 +330,43 @@ def test_memo_queue_envelope_reaches_the_player():
     payload = reply.data["payload"]
     assert payload["is_playlist"] is True and payload["chapters"] == wavs
     assert payload["labels"] == ["Informacje ogóliste", "Bandera Power"]
+
+
+# -- voice training ("naucz się mojego głosu", 2026-08-22) --------------------
+def test_voice_training_rounds_collect_samples_then_thank(tmp_path):
+    """Five captures land as wavs in the training dir; rounds are narrated and
+    the dialog thanks the owner at the end (blind-first)."""
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import Orchestrator
+
+    stub = _DialogStub()
+    stub._VOICE_TRAIN_DIR = tmp_path / "voice-training"
+    stub._VOICE_TRAIN_ROUNDS = Orchestrator._VOICE_TRAIN_ROUNDS
+    stub._on_voice_sample = Orchestrator._on_voice_sample.__get__(stub)
+    stub._voice_train_round = 1
+
+    async def run() -> None:
+        for n in range(1, 6):
+            clip = tmp_path / f"clip-{n}.wav"
+            clip.write_bytes(b"RIFFxxxx")
+            await Orchestrator._on_memo_recorded(
+                stub, {"audio_path": str(clip), "transcript": "dżesika", "language": "pl"})
+
+    asyncio.run(run())
+    assert len(list((tmp_path / "voice-training").glob("wake-*.wav"))) == 5
+    assert stub._voice_train_round == 0                       # dialog finished
+    assert stub.windows == 4                                  # reopened between rounds
+    assert any("Dziękuję" in s for s in stub.spoken)          # thanked at the end
+    assert any("jeszcze cztery razy" in s for s in stub.spoken)
+
+
+def test_voice_training_does_not_disturb_memo_dialog(tmp_path):
+    """With training off, memo captures still walk the title/content dialog."""
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import Orchestrator
+
+    stub = _DialogStub()
+    stub._memo_stage = "title"
+    wav = tmp_path / "t.wav"
+    wav.write_bytes(b"RIFFxxxx")
+    asyncio.run(Orchestrator._on_memo_recorded(
+        stub, {"audio_path": str(wav), "transcript": "lista zakupów", "language": "pl"}))
+    assert stub._memo_stage == "content"

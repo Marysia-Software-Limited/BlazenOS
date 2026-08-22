@@ -219,6 +219,10 @@ class Orchestrator:
         self._hb_task: asyncio.Task[None] | None = None
         # Memo dictation dialog state: None | "title" | "content".
         self._memo_stage: str | None = None
+        # Voice-training dialog: 0 = off, else the sample round in progress
+        # (1..5). Shares the memo capture window machinery.
+        self._voice_train_round = 0
+        self._voice_train_retries = 0  # consecutive empty captures (cap 2)
         self._memo_title = ""
         self._memo_lang = "pl"
         # "dżesika stop" mid-processing: the brain may already be generating —
@@ -647,6 +651,23 @@ class Orchestrator:
         # Dictation opened but nothing was said — tell the (blind) user how to
         # retry instead of leaving dead air after "Nagrywam…".
         if env.topic == "error" and env.data.get("code") == "asr.memo_empty":
+            if self._voice_train_round:
+                # A silent voice-training round: retry the SAME round (max 2
+                # consecutive empties) so one missed sample doesn't abandon the
+                # calibration — but a silent room doesn't loop forever either.
+                self._voice_train_retries += 1
+                if self._voice_train_retries > 2:
+                    self._voice_train_round = 0
+                    self._voice_train_retries = 0
+                    await self._speak(
+                        "Przerywam naukę głosu. Powiedz „naucz się mojego głosu”, "
+                        "żeby spróbować od nowa.", self._memo_lang or "pl")
+                    return
+                await self._speak("Nie usłyszałam. Powiedz jeszcze raz: dżesika.",
+                                  self._memo_lang or "pl")
+                await self._wait_speech_done()
+                self._open_memo_window()
+                return
             self._memo_stage = None  # abandon the title/content dialog
             self._memo_title = ""
             await self._speak("Nie nagrałam nic. Powiedz „nagraj notatkę”, "
@@ -737,7 +758,8 @@ class Orchestrator:
                 log.info("asleep — ignoring %s", env.data.get("intent"))
                 patch["awake"] = False
             elif str(env.data.get("intent", "")) in (
-                    "music_now_playing", "music_shuffle", "voice_memo_record"):
+                    "music_now_playing", "music_shuffle", "voice_memo_record",
+                    "voice_learn"):
                 # Intents the orchestrator answers ITSELF, asynchronously — they
                 # pause/resume the exclusive player or open a capture window,
                 # which a sync dispatcher reply cannot do. Conversation stays open.
@@ -748,6 +770,8 @@ class Orchestrator:
                     await self._answer_now_playing(lang)
                 elif intent_name == "music_shuffle":
                     await self._shuffle_queue(lang)
+                elif intent_name == "voice_learn":
+                    await self._start_voice_training(lang)
                 else:
                     await self._start_memo_capture(lang)
                 patch["last_command"] = {
@@ -1178,6 +1202,63 @@ class Orchestrator:
         """"Co teraz gra?" — say what's on, then give the speaker back."""
         await self._speak_over_playback(self._describe_playback(lang), lang)
 
+    _VOICE_TRAIN_ROUNDS = 5
+    _VOICE_TRAIN_DIR = Path("/var/lib/blazen/voice-training")
+
+    async def _start_voice_training(self, lang: str) -> None:
+        """"Naucz się mojego głosu" (2026-08-22 — recalibration for a new
+        owner): a guided dialog that captures five wake-word samples into
+        `/var/lib/blazen/voice-training/`. Training itself runs off-device
+        (train-wake.py on the dev rig, samples pulled over the tailnet); this
+        collects the on-device half and thanks the owner. Reuses the memo
+        capture window; a playing stream is stopped first."""
+        if self._radio.playing:
+            await self._act_on_reply({"action": "music_stop"})
+        self._voice_train_round = 1
+        self._memo_lang = lang
+        await self._speak(
+            "Świetnie, nauczę się twojego głosu. Powiedz teraz wyraźnie: dżesika. "
+            "Powtórzymy to pięć razy." if lang != "en"
+            else "Great, I'll learn your voice. Now say clearly: Jessica. "
+                 "We'll repeat this five times.", lang)
+        await self._wait_speech_done()
+        self._open_memo_window()
+
+    async def _on_voice_sample(self, data: dict[str, Any]) -> None:
+        """One voice-training capture came back: keep the wav, narrate the
+        round count, and either open the next window or thank and finish."""
+        path = str(data.get("audio_path", ""))
+        transcript = str(data.get("transcript", ""))
+        lang = str(data.get("language", "") or self._memo_lang or "pl")
+        n = self._voice_train_round
+        self._voice_train_retries = 0  # a real capture resets the empty streak
+        try:
+            self._VOICE_TRAIN_DIR.mkdir(parents=True, exist_ok=True)
+            if path:
+                Path(path).rename(
+                    self._VOICE_TRAIN_DIR / f"wake-{datetime.now():%Y%m%d-%H%M%S}-{n}.wav")
+        except OSError as exc:
+            log.warning("voice-training sample %d not saved: %s", n, exc)
+        log.info("voice-training sample %d/%d (%r)", n, self._VOICE_TRAIN_ROUNDS,
+                 transcript[:40])
+        if n >= self._VOICE_TRAIN_ROUNDS:
+            self._voice_train_round = 0
+            await self._speak(
+                "Dziękuję! Zapamiętałam próbki twojego głosu. Będę cię lepiej "
+                "rozpoznawać po najbliższej aktualizacji." if lang != "en"
+                else "Thank you! I saved your voice samples. I'll recognise you "
+                     "better after the next update.", lang)
+            return
+        self._voice_train_round = n + 1
+        left = self._VOICE_TRAIN_ROUNDS - n
+        left_pl = {4: "jeszcze cztery razy", 3: "jeszcze trzy razy",
+                   2: "jeszcze dwa razy", 1: "jeszcze raz"}[left]
+        await self._speak(
+            f"Dobrze, {left_pl}: dżesika." if lang != "en"
+            else f"Good, {left} more time{'s' if left > 1 else ''}: Jessica.", lang)
+        await self._wait_speech_done()
+        self._open_memo_window()
+
     async def _start_memo_capture(self, lang: str) -> None:
         """"Nagraj notatkę" — a two-step Polish dialog (user request
         2026-08-04): ask for the TITLE, capture it, ask for the CONTENT,
@@ -1210,6 +1291,10 @@ class Orchestrator:
         confirms audibly with the title — the blind-first proof the right
         thing was recorded. Embedding into the semantic index happens lazily
         in the brain (mtime-triggered backfill)."""
+        if self._voice_train_round:
+            # A voice-training capture, not a memo — route to the trainer.
+            await self._on_voice_sample(data)
+            return
         path = str(data.get("audio_path", ""))
         transcript = str(data.get("transcript", ""))
         lang = str(data.get("language", "") or self._memo_lang or "pl")
