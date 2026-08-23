@@ -228,6 +228,16 @@ test-scenario: venv ## Run one scenario: make test-scenario S=01-wake-word
 test-soak: venv ## Tier 5: 24-hour scenario loop with telemetry
 	$(PY) rpi5/tests/tools/e2e-runner.py --soak 24h --image $(VM_IMAGE)
 
+.PHONY: installer-check
+installer-check: ## Lint + cross-distro smoke of installer/ (shellcheck, dry-run, Debian+Fedora containers)
+	shellcheck -x installer/install.sh installer/lib/*.sh installer/bin/blazen-audio-env
+	installer/install.sh --dry-run --mode desktop --profile cuda >/dev/null
+	installer/install.sh --dry-run --mode appliance --profile cpu >/dev/null
+	docker run --rm -v "$(REPO_ROOT)/installer:/installer:ro" debian:trixie \
+	  bash -c 'cd /installer && bash install.sh --dry-run --profile cpu >/dev/null && echo debian-ok'
+	docker run --rm -v "$(REPO_ROOT)/installer:/installer:ro" fedora:41 \
+	  bash -c 'cd /installer && bash install.sh --dry-run --profile cpu >/dev/null && echo fedora-ok'
+
 .PHONY: audio-fixtures
 audio-fixtures: venv ## Synthesise all WAV inputs from scenario YAMLs (via Piper)
 	$(PY) rpi5/tests/tools/synth-audio.py --scenarios rpi5/tests/scenarios --out rpi5/tests/fixtures/audio

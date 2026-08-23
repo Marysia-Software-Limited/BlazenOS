@@ -26,7 +26,7 @@ REPO_ROOT="$(cd "$INSTALLER_DIR/.." && pwd)"
 . "$INSTALLER_DIR/lib/common.sh"
 
 MODE=desktop PROFILE=cuda DRY_RUN=0 ASSUME_YES="" SKIP_PACKAGES=0
-UNINSTALL=0 WITH_XTTS=0 NODE_NAME="$(hostname)"
+UNINSTALL=0 WITH_XTTS=0 NODE_NAME="$(hostname 2>/dev/null || uname -n)"
 while [ $# -gt 0 ]; do
   case "$1" in
     --mode) MODE="$2"; shift 2 ;;
@@ -45,6 +45,7 @@ done
 [ "$PROFILE" = cpu ] || [ "$PROFILE" = cuda ] || die "--profile cpu|cuda"
 
 # ---- path model (THE platform abstraction) ---------------------------------
+# shellcheck disable=SC2034  # consumed by render_template/pkg_install in lib/
 if [ "$MODE" = desktop ]; then
   LIB_DIR="$HOME/.local/share/blazen"
   BIN_DIR="$LIB_DIR/bin"
@@ -170,6 +171,8 @@ if [ "$DRY_RUN" != 1 ]; then
       cublas="$(find "$VENV" -path '*nvidia/cublas/lib' -type d 2>/dev/null | head -1 || true)"
       [ -n "$cudnn" ] && printf 'LD_LIBRARY_PATH=%s:%s\n' "$cudnn" "$cublas"
     fi
+    # Jessica's rich voice off the local GPU XTTS server (scripts/blazen-xtts.service).
+    if [ "$WITH_XTTS" = 1 ]; then printf 'BLAZEN_TTS_XTTS_URL=http://127.0.0.1:8091/synthesize\n'; fi
   } > "$ENV_FILE"
   manifest_add "$ENV_FILE"
 else
