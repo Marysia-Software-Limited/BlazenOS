@@ -212,9 +212,9 @@ for t in "$INSTALLER_DIR"/templates/units/*.in; do
   unit="$(basename "${t%.in}")"
   render_template "$t" "$UNIT_DIR/$unit"
 done
-"${SYSCTL[@]}" daemon-reload || true
+run bash -c "${SYSCTL[*]} daemon-reload || true"
 if [ "$MODE" = desktop ]; then
-  run loginctl enable-linger "$USER" || true
+  run bash -c "loginctl enable-linger '${USER:-$(id -un)}' || true"
 fi
 run "${SYSCTL[@]}" enable blazend.target blazend-env.service \
   blazend-audio-in blazend-wake blazend-asr blazend-nlu blazend-brain \

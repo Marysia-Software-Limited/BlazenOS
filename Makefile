@@ -230,7 +230,7 @@ test-soak: venv ## Tier 5: 24-hour scenario loop with telemetry
 
 .PHONY: installer-check
 installer-check: ## Lint + cross-distro smoke of installer/ (shellcheck, dry-run, Debian+Fedora containers)
-	shellcheck -x installer/install.sh installer/lib/*.sh installer/bin/blazen-audio-env
+	shellcheck -S error -x installer/install.sh installer/lib/*.sh installer/bin/blazen-audio-env
 	installer/install.sh --dry-run --mode desktop --profile cuda >/dev/null
 	installer/install.sh --dry-run --mode appliance --profile cpu >/dev/null
 	docker run --rm -v "$(REPO_ROOT)/installer:/installer:ro" debian:trixie \
