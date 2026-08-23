@@ -1,0 +1,20 @@
+[Unit]
+Description=blazen_os audio capture (Rust)
+PartOf=blazend.target
+After=sound.target blazend-env.service
+Wants=blazend-env.service
+
+[Service]
+Type=simple
+@SERVICE_USER_BLOCK@
+Environment=BLAZEN_RUNTIME_DIR=@RUNTIME_DIR@
+EnvironmentFile=-@AUDIO_ENV_FILE@
+ExecStart=@BIN_DIR@/blazend-audio-in --device ${BLAZEN_INPUT_DEVICE} --ring-seconds 6 $BLAZEN_VAD_ARGS
+Restart=on-failure
+RestartSec=2
+SupplementaryGroups=audio
+@CPU_PINNING@
+@HARDENING_BLOCK@
+
+[Install]
+WantedBy=blazend.target

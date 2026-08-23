@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# blazen-audio-env OUTPUT_FILE [SITE_DIR]
+#
+# Runtime audio-profile detector (Decision 2026-08-23: the Jabra SPEAK 410 is
+# the PREFERRED profile with automatic fallback to default ALSA/PipeWire
+# devices). Runs as the oneshot blazend-env.service BEFORE every
+# audio-consuming unit; the units consume the result via
+# EnvironmentFile=-OUTPUT_FILE. Plug the Jabra in and restart blazend.target
+# to switch profiles — no reinstall.
+#
+# Jabra profile: direct plughw capture/playback on the Jabra card (a
+# wireplumber rule releases the card from PipeWire), forced-48k jabra_out PCM
+# via ALSA_CONFIG_PATH (the SPEAK 410 DAC never leaves 48 kHz), the measured
+# VAD thresholds from the appliance, amixer volume on the card.
+# Fallback profile: ALSA "default" (pipewire-alsa) everywhere, adaptive VAD,
+# no dedicated mixer (the supervisor skips amixer on an empty card).
+set -euo pipefail
+
+OUT="${1:?usage: blazen-audio-env OUTPUT_FILE [SITE_DIR]}"
+SITE_DIR="${2:-$HOME/.config/blazen}"
+
+jabra_card=""
+for card in /proc/asound/card*/; do
+  id_file="$card/id"
+  usb_file="$card/usbid"
+  [ -f "$id_file" ] || continue
+  if { [ -f "$usb_file" ] && grep -qi "0b0e:0412" "$usb_file"; } \
+     || grep -qi jabra "$card"/usbmixer 2>/dev/null \
+     || grep -qi jabra /proc/asound/cards; then
+    # Confirm THIS card is the Jabra (cards file lists all).
+    idx="$(basename "$card" | sed 's/card//')"
+    if grep -E "^ *$idx " /proc/asound/cards | grep -qi jabra; then
+      jabra_card="$(cat "$id_file")"
+      break
+    fi
+  fi
+done
+
+tmp="$(mktemp)"
+if [ -n "$jabra_card" ]; then
+  cat > "$tmp" <<EOF
+BLAZEN_AUDIO_PROFILE=jabra
+BLAZEN_INPUT_DEVICE=plughw:CARD=$jabra_card,DEV=0
+BLAZEN_OUTPUT_DEVICE=$jabra_card
+BLAZEN_AUDIO_OUT_ARGS=--device $jabra_card
+BLAZEN_MIXER_CARD=$jabra_card
+BLAZEN_MIXER_CONTROL=PCM
+BLAZEN_BEEP_DEVICE=jabra_out
+BLAZEN_PLAYBACK_DEVICE=jabra_out
+ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$SITE_DIR/jabra-asound.conf
+BLAZEN_VAD_ARGS=--hp-cutoff 0 --open-rms 80 --open-mult 1.0 --close-rms 50 --close-mult 1.0 --hangover-ms 400 --min-speech-ms 150 --max-speech-ms 1500
+EOF
+else
+  cat > "$tmp" <<EOF
+BLAZEN_AUDIO_PROFILE=alsa-default
+BLAZEN_INPUT_DEVICE=default
+BLAZEN_OUTPUT_DEVICE=default
+BLAZEN_AUDIO_OUT_ARGS=
+BLAZEN_MIXER_CARD=
+BLAZEN_MIXER_CONTROL=
+BLAZEN_BEEP_DEVICE=default
+BLAZEN_PLAYBACK_DEVICE=default
+BLAZEN_VAD_ARGS=--hp-cutoff 120 --open-mult 2.5 --close-mult 1.8 --hangover-ms 400 --min-speech-ms 150 --max-speech-ms 6000
+EOF
+fi
+mkdir -p "$(dirname "$OUT")"
+mv "$tmp" "$OUT"
+echo "audio profile: $(grep BLAZEN_AUDIO_PROFILE "$OUT" | cut -d= -f2)" >&2

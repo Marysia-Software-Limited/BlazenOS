@@ -1,0 +1,6 @@
+[Unit]
+Description=blazen_os Jessica voice pipeline
+Wants=blazend-env.service
+
+[Install]
+WantedBy=@TARGET_WANTEDBY@

@@ -1,0 +1,16 @@
+# Runtime audio-profile detection (Jabra preferred, ALSA fallback) — writes
+# @AUDIO_ENV_FILE@ consumed by every audio unit. Restart blazend.target after
+# plugging the Jabra in to switch profiles.
+[Unit]
+Description=blazen_os runtime environment detector
+PartOf=blazend.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+@SERVICE_USER_BLOCK@
+ExecStartPre=/usr/bin/env mkdir -p @RUNTIME_DIR@
+ExecStart=@BIN_DIR@/blazen-audio-env @AUDIO_ENV_FILE@ @SITE_DIR@
+
+[Install]
+WantedBy=@TARGET_WANTEDBY@

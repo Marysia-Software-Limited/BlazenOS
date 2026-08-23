@@ -1,0 +1,18 @@
+[Unit]
+Description=blazen_os fast-path intent router (Rust, shared jessica-core)
+PartOf=blazend.target
+After=blazend-asr.service
+Requires=blazend-asr.service
+
+[Service]
+Type=simple
+@SERVICE_USER_BLOCK@
+Environment=BLAZEN_RUNTIME_DIR=@RUNTIME_DIR@
+ExecStart=@BIN_DIR@/blazend-nlu --intents @SITE_DIR@/intents/system.yaml
+Restart=on-failure
+RestartSec=2
+@CPU_PINNING@
+@HARDENING_BLOCK@
+
+[Install]
+WantedBy=blazend.target

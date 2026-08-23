@@ -1,0 +1,17 @@
+[Unit]
+Description=Blazen fabric — serve this node's Jessica context snapshot
+After=network-online.target
+
+[Service]
+Type=simple
+@SERVICE_USER_BLOCK@
+Environment=BLAZEN_NODE=@NODE_NAME@
+Environment=BLAZEN_MESH=@MESH_FILE@
+Environment=PYTHONPATH=@PY_ROOT@
+Environment=BLAZEN_DATA_DIR=@DATA_DIR@
+ExecStart=@VENV_BIN@/jessica --serve-fabric
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=@TARGET_WANTEDBY@

@@ -1,0 +1,14 @@
+# Started/stopped BY the orchestrator (half-duplex hand-off) — not enabled in
+# the target. BLAZEN_AUDIO_OUT_ARGS comes from the runtime audio profile.
+[Unit]
+Description=blazen_os speaker playback (Rust)
+After=blazend-env.service
+Wants=blazend-env.service
+
+[Service]
+Type=simple
+@SERVICE_USER_BLOCK@
+Environment=BLAZEN_RUNTIME_DIR=@RUNTIME_DIR@
+EnvironmentFile=-@AUDIO_ENV_FILE@
+ExecStart=@BIN_DIR@/blazend-audio-out $BLAZEN_AUDIO_OUT_ARGS
+Restart=no

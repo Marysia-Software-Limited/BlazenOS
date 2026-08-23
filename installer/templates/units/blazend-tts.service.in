@@ -1,0 +1,20 @@
+[Unit]
+Description=blazen_os TTS (Rust, Piper)
+PartOf=blazend.target
+After=blazend-brain.service blazend-env.service
+Wants=blazend-env.service
+
+[Service]
+Type=simple
+@SERVICE_USER_BLOCK@
+Environment=BLAZEN_RUNTIME_DIR=@RUNTIME_DIR@
+Environment=PATH=@VENV_BIN@:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=@STATE_DIR@
+EnvironmentFile=-@ENV_FILE@
+EnvironmentFile=-@AUDIO_ENV_FILE@
+ExecStart=@BIN_DIR@/blazend-tts --voice-cache @STATE_DIR@/voice-cache --ring-seconds 300
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=blazend.target

@@ -40,6 +40,14 @@ from blazend.ipc import Publisher, Subscriber, runtime_dir
 
 log = logging.getLogger("blazend.domains.systems.adapters.rpi5.orchestrator")
 
+# How the orchestrator starts/stops blazend-audio-out for the half-duplex
+# hand-off. Appliance: root systemctl via the sudoers rule. Desktop user-scope
+# installs set BLAZEN_SYSTEMCTL="systemctl --user" — no sudoers needed.
+_SYSTEMCTL: list[str] = (
+    os.environ.get("BLAZEN_SYSTEMCTL", "sudo -n systemctl").split()
+)
+
+
 def _state_root() -> Path:
     """Persistent state root: the parent of BLAZEN_DATA_DIR (…/data) when set —
     desktop installs point it under XDG — else the appliance /var/lib/blazen."""
@@ -555,7 +563,7 @@ class Orchestrator:
         try:
             await asyncio.to_thread(
                 subprocess.run,
-                ["sudo", "-n", "systemctl", action, "blazend-audio-out"],
+                [*_SYSTEMCTL, action, "blazend-audio-out"],
                 check=False, timeout=10,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
@@ -917,7 +925,10 @@ class Orchestrator:
         )
 
     def _amixer(self, level: str) -> None:
-        """Set the Jabra playback volume (level like '27%'). Best-effort."""
+        """Set the Jabra playback volume (level like '27%'). Best-effort.
+        An empty mixer card (desktop default-ALSA profile) skips entirely."""
+        if not _JABRA_CARD:
+            return
         try:
             subprocess.run(
                 ["amixer", "-c", _JABRA_CARD, "set", _JABRA_MIXER, level],

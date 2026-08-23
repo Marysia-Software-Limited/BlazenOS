@@ -1,0 +1,11 @@
+[Unit]
+Description=Blazen — refresh the mesh audiobook catalog
+
+[Service]
+Type=oneshot
+@SERVICE_USER_BLOCK@
+Environment=BLAZEN_NODE=@NODE_NAME@
+Environment=BLAZEN_MESH=@MESH_FILE@
+Environment=BLAZEN_AUDIOBOOKS_CATALOG=@STATE_DIR@/audiobooks/catalog.json
+Environment=PYTHONPATH=@PY_ROOT@
+ExecStart=@VENV_BIN@/jessica --pull-catalog

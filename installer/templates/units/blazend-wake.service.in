@@ -1,0 +1,20 @@
+[Unit]
+Description=blazen_os wake-word detector (Rust)
+PartOf=blazend.target
+After=blazend-audio-in.service
+Requires=blazend-audio-in.service
+PartOf=blazend-audio-in.service
+
+[Service]
+Type=simple
+@SERVICE_USER_BLOCK@
+Environment=BLAZEN_RUNTIME_DIR=@RUNTIME_DIR@
+WorkingDirectory=@STATE_DIR@
+EnvironmentFile=-@ENV_FILE@
+ExecStart=@BIN_DIR@/blazend-wake --threshold 0.8 --cooldown-ms 3000
+Restart=on-failure
+RestartSec=2
+@HARDENING_BLOCK@
+
+[Install]
+WantedBy=blazend.target

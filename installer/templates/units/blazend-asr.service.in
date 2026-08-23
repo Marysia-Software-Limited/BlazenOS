@@ -1,0 +1,28 @@
+[Unit]
+Description=blazen_os ASR (Python, faster-whisper)
+PartOf=blazend.target
+After=blazend-audio-in.service blazend-env.service
+Requires=blazend-audio-in.service
+PartOf=blazend-audio-in.service
+Wants=blazend-env.service
+
+[Service]
+Type=simple
+@SERVICE_USER_BLOCK@
+WorkingDirectory=@PY_ROOT@
+Environment=PYTHONPATH=@PY_ROOT@
+Environment=BLAZEN_RUNTIME_DIR=@RUNTIME_DIR@
+Environment=BLAZEN_DATA_DIR=@DATA_DIR@
+Environment=BLAZEN_MODELS_DIR=@MODELS_DIR@
+Environment=BLAZEN_CONFIG_ROOT=@CONFIG_ROOT@
+Environment=BLAZEN_MESH=@MESH_FILE@
+Environment=HF_HUB_OFFLINE=1
+EnvironmentFile=-@ENV_FILE@
+EnvironmentFile=-@AUDIO_ENV_FILE@
+ExecStart=@VENV_BIN@/python -m blazend.domains.voice_input.adapters.rpi5.asr
+Restart=on-failure
+RestartSec=3
+@CPU_PINNING@
+
+[Install]
+WantedBy=blazend.target

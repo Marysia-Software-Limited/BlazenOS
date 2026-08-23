@@ -1,0 +1,7 @@
+# Site override (GPU desktop): faster-whisper large-v3-turbo on CUDA fp16 —
+# ~10x the appliance's small-int8 quality/speed budget. The defaults file
+# keeps the CPU contract; delete this file to fall back.
+version: 1
+active: large-v3-turbo
+device: cuda
+compute_type: float16

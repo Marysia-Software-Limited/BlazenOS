@@ -1,0 +1,12 @@
+# Site override (GPU desktop): route every task to the local Ollama Bielik 11B
+# — the on-device llama.cpp tier is absent on a desktop install; open questions
+# may escalate to the cloud when a key is present (same policy as the Pi).
+version: 1
+routing:
+  single_local_model: false
+  tasks:
+    command:   [ollama-11b]
+    recommend: [ollama-11b]
+    open_qa:   [gpt-5.5, ollama-11b]
+  backends:
+    ollama-11b: { max_tokens: 512 }

@@ -1,0 +1,15 @@
+[Unit]
+Description=blazen_os watchdog + recovery (Rust)
+PartOf=blazend.target
+
+[Service]
+Type=simple
+@SERVICE_USER_BLOCK@
+Environment=BLAZEN_RUNTIME_DIR=@RUNTIME_DIR@
+ExecStart=@BIN_DIR@/blazend-health
+Restart=always
+RestartSec=1
+@HARDENING_BLOCK@
+
+[Install]
+WantedBy=blazend.target

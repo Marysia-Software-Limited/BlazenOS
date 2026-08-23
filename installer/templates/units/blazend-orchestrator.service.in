@@ -1,0 +1,28 @@
+[Unit]
+Description=blazen_os pipeline orchestrator (Python)
+PartOf=blazend.target
+After=blazend-nlu.service blazend-brain.service blazend-env.service
+Wants=blazend-env.service
+
+[Service]
+Type=simple
+@SERVICE_USER_BLOCK@
+WorkingDirectory=@PY_ROOT@
+Environment=PYTHONPATH=@PY_ROOT@
+Environment=BLAZEN_RUNTIME_DIR=@RUNTIME_DIR@
+Environment=BLAZEN_DATA_DIR=@DATA_DIR@
+Environment=BLAZEN_MODELS_DIR=@MODELS_DIR@
+Environment=BLAZEN_CONFIG_ROOT=@CONFIG_ROOT@
+Environment=BLAZEN_MESH=@MESH_FILE@
+Environment=BLAZEN_LED_TYPE=none
+Environment=BLAZEN_PLAYER_BIN=@BIN_DIR@/blazend-player
+@SYSTEMCTL_ENV@
+EnvironmentFile=-@ENV_FILE@
+EnvironmentFile=-@AUDIO_ENV_FILE@
+EnvironmentFile=-@SECRETS_FILE@
+ExecStart=@VENV_BIN@/python -m blazend.domains.systems.adapters.rpi5.orchestrator
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=blazend.target

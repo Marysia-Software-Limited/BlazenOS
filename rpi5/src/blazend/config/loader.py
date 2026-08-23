@@ -61,8 +61,14 @@ class ConfigLoader:
         env_overrides: Mapping[str, str] | None = None,
     ) -> None:
         if (override_root := os.environ.get("BLAZEN_CONFIG_ROOT")) is not None:
-            self._roots: tuple[Path, ...] = (Path(override_root),)
-            self._override_dir = Path(override_root) / "overrides"
+            # A single path replaces both system roots (dev-host behavior,
+            # unchanged). Since 2026-08-23 an os.pathsep-separated list gives
+            # desktop installs the same defaults→site layering as the
+            # appliance ("defaults_dir:site_dir", later root wins; runtime
+            # overrides live under the LAST root's overrides/).
+            self._roots = tuple(
+                Path(p) for p in override_root.split(os.pathsep) if p)
+            self._override_dir = self._roots[-1] / "overrides"
         else:
             self._roots = tuple(system_roots or DEFAULT_SYSTEM_ROOTS)
             self._override_dir = override_dir or DEFAULT_OVERRIDE_DIR
@@ -120,12 +126,21 @@ def _deep_merge_into(dst: dict[str, Any], src: Mapping[str, Any]) -> None:
 # Map config names → env-var keys we honour. Conservative: only the small
 # set documented in .env.example.
 _ENV_MAP: dict[str, dict[str, str]] = {
-    "asr": {"BLAZEN_ASR_MODEL": "active"},
+    "asr": {"BLAZEN_ASR_MODEL": "active", "BLAZEN_ASR_DEVICE": "device"},
     "llm": {"BLAZEN_LLM_MODEL": "active_model"},
     "tts": {"BLAZEN_TTS_VOICE_EN": "voice_by_language.en",
             "BLAZEN_TTS_VOICE_PL": "voice_by_language.pl"},
     "wake-word": {"BLAZEN_WAKE_WORDS": "active"},
+    # Desktop installs (2026-08-23): the runtime audio detector writes these
+    # into audio.env; they must reach audio.yaml lookups too.
+    "audio": {"BLAZEN_INPUT_DEVICE": "input.device",
+              "BLAZEN_OUTPUT_DEVICE": "output.device"},
 }
+
+# ALSA device strings legitimately contain commas ("plughw:CARD=USB,DEV=0") —
+# never list-split these env values.
+_NO_SPLIT: frozenset[str] = frozenset(
+    {"BLAZEN_INPUT_DEVICE", "BLAZEN_OUTPUT_DEVICE"})
 
 
 def _apply_env_overrides(data: dict[str, Any], name: str, env: Mapping[str, str]) -> None:
@@ -133,7 +148,11 @@ def _apply_env_overrides(data: dict[str, Any], name: str, env: Mapping[str, str]
     for env_key, dotted in mapping.items():
         if (raw := env.get(env_key)) is None:
             continue
-        value: Any = [s.strip() for s in raw.split(",")] if "," in raw else raw
+        value: Any = (
+            raw if env_key in _NO_SPLIT
+            else [s.strip() for s in raw.split(",")] if "," in raw
+            else raw
+        )
         _set_dotted(data, dotted, value)
 
 
