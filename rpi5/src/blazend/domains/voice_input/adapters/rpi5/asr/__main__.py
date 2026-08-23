@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import wave
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,7 +34,13 @@ log = logging.getLogger("blazend.domains.voice_input.adapters.rpi5.asr")
 # Clips are screened at retrain time, NOT auto-ingested: a real but too-far/too-quiet
 # "dżesika" lands in the same branches, and blindly training on it would teach the
 # model to reject the user's own distant voice.
-_HARVEST_DIR = Path("/var/lib/blazen/wake-negatives")
+# Follows BLAZEN_DATA_DIR's parent on desktop installs (2026-08-23); the Pi
+# default is unchanged.
+_HARVEST_DIR = (
+    Path(os.environ["BLAZEN_DATA_DIR"]).parent / "wake-negatives"
+    if os.environ.get("BLAZEN_DATA_DIR")
+    else Path("/var/lib/blazen/wake-negatives")
+)
 _HARVEST_KEEP = 200  # newest clips kept; ~160 KB each → ~32 MB cap
 
 # Rolling utterance clips: every SUCCESSFULLY transcribed post-wake window is

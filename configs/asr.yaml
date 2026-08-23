@@ -26,6 +26,7 @@ memo_capture:
   lead_in_s: 8
 backend: faster-whisper
 compute_type: int8                     # int8 | int8_float32 | float16 (Hailo path overrides)
+device: cpu                            # cpu (appliance CONTRACT) | cuda (GPU desktop installs)
 beam_size: 5                           # push-to-talk → one short utterance at a time, so the
                                        # extra beam-search cost is fine and accuracy matters more
 language: pl                           # Polish-only mode: force PL (skips the auto-detect

@@ -16,11 +16,18 @@ should work on a clean mic where ASR-based detection also would.
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import numpy.typing as npt
 import onnxruntime as ort
 
-_WAKE_DIR = "/var/lib/blazen/models/wake"
+# BLAZEN_MODELS_DIR override (2026-08-23, desktop installs); Pi default unchanged.
+_WAKE_DIR = (
+    f"{os.environ['BLAZEN_MODELS_DIR']}/wake"
+    if os.environ.get("BLAZEN_MODELS_DIR")
+    else "/var/lib/blazen/models/wake"
+)
 #: mel-frame hop in audio samples (16 kHz → 10 ms frames).
 HOP = 160
 #: mel frames per embedding window.

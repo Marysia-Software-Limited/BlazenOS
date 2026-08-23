@@ -40,9 +40,17 @@ from blazend.ipc import Publisher, Subscriber, runtime_dir
 
 log = logging.getLogger("blazend.domains.systems.adapters.rpi5.orchestrator")
 
+def _state_root() -> Path:
+    """Persistent state root: the parent of BLAZEN_DATA_DIR (…/data) when set —
+    desktop installs point it under XDG — else the appliance /var/lib/blazen."""
+    d = os.environ.get("BLAZEN_DATA_DIR")
+    return Path(d).parent if d else Path("/var/lib/blazen")
+
+
 # Jabra SPEAK 410 output-volume control (voice volume commands + radio ducking).
-_JABRA_CARD = "USB"       # ALSA card id of the Jabra speakerphone
-_JABRA_MIXER = "PCM"      # its playback volume control
+# Env-overridable for non-appliance installs (2026-08-23); Pi defaults unchanged.
+_JABRA_CARD = os.environ.get("BLAZEN_MIXER_CARD", "USB")   # ALSA card id
+_JABRA_MIXER = os.environ.get("BLAZEN_MIXER_CONTROL", "PCM")  # playback control
 # Duck HARD (near-mute) while listening over a playing stream: the Jabra is a
 # speakerphone whose DSP gates the mic when it plays loud, so at 8% commands still
 # came through at only ~45-180 RMS (often dropped). ~2% un-gates the mic for a
@@ -94,7 +102,8 @@ DEFAULT_PEERS: tuple[str, ...] = (
 # A short two-note rising chime played straight to ALSA (not via blazend-audio-out,
 # which is slow to start and down while idle) so it's pre-verbal and adds no latency.
 _BEEP_RATE_HZ = 22050          # Jabra playback rate (matches audio.yaml output)
-_BEEP_DEVICE = "plughw:CARD=USB,DEV=0"  # concrete Jabra ALSA device (aplay -D)
+_BEEP_DEVICE = os.environ.get(
+    "BLAZEN_BEEP_DEVICE", "plughw:CARD=USB,DEV=0")  # Jabra ALSA device (aplay -D)
 
 
 _TRACK_NO_PREFIX = re.compile(r"^\s*\d{1,3}\s*[-.)]?\s+")
@@ -438,7 +447,7 @@ class Orchestrator:
         # until 10:00" at a client site, 2026-08-22) — while now < it, start-up
         # stays mute. The scheduled introduction removes the marker; a
         # malformed marker never mutes forever.
-        quiet = Path("/var/lib/blazen/quiet-until")
+        quiet = _state_root() / "quiet-until"
         try:
             if quiet.exists() and datetime.now() < datetime.fromisoformat(
                     quiet.read_text().strip()):
@@ -1203,7 +1212,7 @@ class Orchestrator:
         await self._speak_over_playback(self._describe_playback(lang), lang)
 
     _VOICE_TRAIN_ROUNDS = 5
-    _VOICE_TRAIN_DIR = Path("/var/lib/blazen/voice-training")
+    _VOICE_TRAIN_DIR = _state_root() / "voice-training"
 
     async def _start_voice_training(self, lang: str) -> None:
         """"Naucz się mojego głosu" (2026-08-22 — recalibration for a new

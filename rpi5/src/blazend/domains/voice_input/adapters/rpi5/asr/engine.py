@@ -130,15 +130,17 @@ def _resolve_model_dir(name: str) -> str:
 
 
 class _FasterWhisperBackend:
-    """Real backend. Imports faster-whisper lazily (CPU, int8)."""
+    """Real backend. Imports faster-whisper lazily (CPU int8 on the appliance;
+    ``asr.yaml device: cuda`` runs it on the GPU — desktop installs 2026-08-23)."""
 
     def __init__(
-        self, model: str, compute_type: str, beam_size: int, initial_prompt: str = ""
+        self, model: str, compute_type: str, beam_size: int, initial_prompt: str = "",
+        device: str = "cpu",
     ) -> None:
         from faster_whisper import WhisperModel
 
         self._model = WhisperModel(
-            _resolve_model_dir(model), device="cpu", compute_type=compute_type
+            _resolve_model_dir(model), device=device, compute_type=compute_type
         )
         self._beam_size = beam_size
         # A short domain prompt biases the decoder toward the vocabulary the
@@ -175,6 +177,8 @@ class Transcriber:
         self.model: str = os.environ.get("BLAZEN_ASR_MODEL") or str(cfg.get("active", "small"))
         self.language_mode: str = str(cfg.get("language", "auto"))  # auto | pl | en
         self.compute_type: str = str(cfg.get("compute_type", "int8"))
+        # cpu (appliance contract) | cuda (GPU desktop, asr.yaml device:).
+        self.device: str = str(cfg.get("device", "cpu"))
         self.beam_size: int = int(cfg.get("beam_size", 1))
         self.initial_prompt: str = str(cfg.get("initial_prompt", ""))
         # Optional remote GPU whisper (paul's blazen-whisper.service). When set,
@@ -192,7 +196,8 @@ class Transcriber:
     def _ensure_backend(self) -> WhisperBackend:
         if self._backend is None:
             self._backend = _FasterWhisperBackend(
-                self.model, self.compute_type, self.beam_size, self.initial_prompt
+                self.model, self.compute_type, self.beam_size, self.initial_prompt,
+                device=self.device,
             )
         return self._backend
 
