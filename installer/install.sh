@@ -61,6 +61,7 @@ if [ "$MODE" = desktop ]; then
   HARDENING_BLOCK="NoNewPrivileges=yes"
   TARGET_WANTEDBY="default.target"
   SYSTEMCTL_ENV="Environment=BLAZEN_SYSTEMCTL=systemctl --user"
+  AUDIO_GROUP=""
 else
   LIB_DIR="/usr/lib/blazen"
   BIN_DIR="$LIB_DIR/bin"
@@ -77,6 +78,7 @@ else
   HARDENING_BLOCK="NoNewPrivileges=yes\nProtectSystem=strict\nReadWritePaths=$RUNTIME_DIR $STATE_DIR\nProtectHome=yes"
   TARGET_WANTEDBY="multi-user.target"
   SYSTEMCTL_ENV="Environment=BLAZEN_SYSTEMCTL=sudo -n systemctl"
+  AUDIO_GROUP="SupplementaryGroups=audio"
 fi
 CONFIG_ROOT="$DEFAULTS_DIR:$SITE_DIR"
 ENV_FILE="$SITE_DIR/blazen.env"
@@ -180,6 +182,11 @@ model_cfgs=(--config "$REPO_ROOT/configs/tts.yaml" --config "$REPO_ROOT/configs/
 [ "$PROFILE" = cpu ] && model_cfgs+=(--config "$REPO_ROOT/configs/llm.yaml")
 run "$VENV/bin/python" "$REPO_ROOT/scripts/install_models.py" "${model_cfgs[@]}"
 run bash -c "rsync -a '$REPO_ROOT/models/' '$MODELS_DIR/'"
+# install_models.py only fetches direct URLs; the CUDA ASR model comes from
+# HuggingFace (CT2 conversion) and is pulled here when the profile needs it.
+if [ "$PROFILE" = cuda ] && [ ! -f "$MODELS_DIR/asr/large-v3-turbo/model.bin" ]; then
+  run "$VENV/bin/python" -c "from huggingface_hub import snapshot_download; snapshot_download('mobiuslabsgmbh/faster-whisper-large-v3-turbo', local_dir='$MODELS_DIR/asr/large-v3-turbo')"
+fi
 
 # ---- 7. Ollama (cuda profile) ----------------------------------------------
 if [ "$PROFILE" = cuda ]; then
@@ -206,7 +213,10 @@ done
 if [ "$MODE" = desktop ]; then
   run loginctl enable-linger "$USER" || true
 fi
-run "${SYSCTL[@]}" enable blazend.target blazend-env.service blazend-fabric-snapshot.service blazend-pull-catalog.timer
+run "${SYSCTL[@]}" enable blazend.target blazend-env.service \
+  blazend-audio-in blazend-wake blazend-asr blazend-nlu blazend-brain \
+  blazend-tts blazend-health blazend-orchestrator blazend-fabric \
+  blazend-fabric-snapshot.service blazend-pull-catalog.timer
 
 log "installed. Start with: ${SYSCTL[*]} start blazend.target"
 log "then say: dżesika … (Jabra preferred; plugging one in + restart re-detects)"

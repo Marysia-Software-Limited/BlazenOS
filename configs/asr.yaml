@@ -96,7 +96,9 @@ models:
     languages: [pl, en, de, fr, es, it, pt, ru, ...]
     license: MIT
   large-v3-turbo:
-    download_id: Systran/faster-whisper-large-v3-turbo
+    # The Systran mirror 404s (verified 2026-08-23); mobiuslabsgmbh is the
+    # original CT2 conversion and downloads cleanly.
+    download_id: mobiuslabsgmbh/faster-whisper-large-v3-turbo
     size_mb: 1600
     ram_mb: 3000
     pi5_latency_5s_ms: 1800

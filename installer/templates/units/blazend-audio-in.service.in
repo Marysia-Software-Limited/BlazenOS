@@ -12,7 +12,7 @@ EnvironmentFile=-@AUDIO_ENV_FILE@
 ExecStart=@BIN_DIR@/blazend-audio-in --device ${BLAZEN_INPUT_DEVICE} --ring-seconds 6 $BLAZEN_VAD_ARGS
 Restart=on-failure
 RestartSec=2
-SupplementaryGroups=audio
+@AUDIO_GROUP@
 @CPU_PINNING@
 @HARDENING_BLOCK@
 

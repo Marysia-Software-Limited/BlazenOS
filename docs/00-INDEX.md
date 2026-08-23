@@ -24,6 +24,7 @@ Read top-to-bottom on first contact. Afterwards, re-read only what changed.
 | 17  | [`17-MOBILE-MONOREPO.md`](17-MOBILE-MONOREPO.md)  | **Monorepo layout** — Pi 5 + Android + iOS + shared Rust core in one tree. The map. |
 | 18  | [`18-PROTOTYPE.md`](18-PROTOTYPE.md)              | **Working prototype** — `make demo`: name reaction, Polish chat, Gemini news, memory + reminders. |
 | 19  | [`19-DOMAIN-ARCHITECTURE.md`](19-DOMAIN-ARCHITECTURE.md) | **Domain architecture** — the 6 capability domains; portable cores as common libraries at the repo-root `domains/` tree, platform-specific adapters under `rpi5/`/`android/`/`ios/`; mind/body split; the 5-phase program. **Canonical layout doc.** |
+| 20  | [`20-LINUX-INSTALLER.md`](20-LINUX-INSTALLER.md) | **Common Linux installer** (`installer/`) — the full voice pipeline natively on Arch/Debian/Fedora; desktop (user units, XDG) vs appliance modes; runtime Jabra-preferred/ALSA-fallback audio detection; the CUDA profile (large-v3-turbo + Ollama Bielik 11B); macOS seam stubbed. |
 
 ## Android & iOS (mobile twins in this monorepo)
 

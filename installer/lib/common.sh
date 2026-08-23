@@ -48,6 +48,7 @@ render_template() {
     -e "s|@TARGET_WANTEDBY@|$TARGET_WANTEDBY|g" \
     -e "s|@SYSTEMCTL_ENV@|$SYSTEMCTL_ENV|g" \
     -e "s|@NODE_NAME@|$NODE_NAME|g" \
+    -e "s|@AUDIO_GROUP@|$AUDIO_GROUP|g" \
     "$src" > "$tmp"
   if grep -qE '@[A-Z_]+@' "$tmp"; then
     die "unsubstituted placeholder in $src: $(grep -oE '@[A-Z_]+@' "$tmp" | sort -u | tr '\n' ' ')"
