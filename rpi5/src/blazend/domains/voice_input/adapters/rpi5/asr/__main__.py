@@ -266,6 +266,21 @@ async def _real_loop(pub: Publisher) -> None:
     sub = await _connect(rt / "wake.sock")
     log.info("subscribed to wake.detected on wake.sock (fixed-window capture)")
 
+    async def _idle_unload() -> None:
+        # Power saving (asr.yaml unload_after_s > 0, GPU desktops): drop the
+        # idle model so the card can sleep; the next wake reloads it.
+        while True:
+            await asyncio.sleep(30)
+            try:
+                if transcriber.maybe_unload():
+                    log.info("asr model unloaded after %.0fs idle (power saving)",
+                             transcriber.unload_after_s)
+            except Exception:  # noqa: BLE001 — power saving must never kill ASR
+                log.exception("idle unload failed")
+
+    if getattr(transcriber, "unload_after_s", 0) > 0:
+        asyncio.create_task(_idle_unload())
+
     # Capture a FIXED window straight from the ring after the wake word — NOT the
     # energy VAD, which fragments quiet short utterances on this mic (it brackets
     # a transient + silence and whisper then finds no speech). The wake ts_ms is

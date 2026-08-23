@@ -67,9 +67,15 @@ class OllamaLlm:
         return msgs
 
     def _request(self, *, stream: bool, user: str, system: str | None) -> urllib.request.Request:
-        body = json.dumps(
-            {"model": self.model, "messages": self._messages(user, system), "stream": stream}
-        ).encode("utf-8")
+        payload: dict[str, object] = {
+            "model": self.model, "messages": self._messages(user, system), "stream": stream}
+        # Power saving (2026-08-23): how long Ollama keeps the model in VRAM
+        # after a reply — the GPU can't reach its idle P-state while loaded.
+        # Ollama's own default is 5m; BLAZEN_LLM_KEEP_ALIVE overrides ("2m",
+        # "0" = unload immediately, "-1" = keep forever).
+        if keep := os.environ.get("BLAZEN_LLM_KEEP_ALIVE"):
+            payload["keep_alive"] = keep
+        body = json.dumps(payload).encode("utf-8")
         return urllib.request.Request(
             f"{self.url}/api/chat",
             data=body,

@@ -27,6 +27,9 @@ memo_capture:
 backend: faster-whisper
 compute_type: int8                     # int8 | int8_float32 | float16 (Hailo path overrides)
 device: cpu                            # cpu (appliance CONTRACT) | cuda (GPU desktop installs)
+unload_after_s: 0                      # >0: drop the idle model after N s (GPU power saving;
+                                       # reload ~1.4 s on a desktop GPU). 0 = never (appliance —
+                                       # a Pi reload would cost ~20 s per command)
 beam_size: 5                           # push-to-talk → one short utterance at a time, so the
                                        # extra beam-search cost is fine and accuracy matters more
 language: pl                           # Polish-only mode: force PL (skips the auto-detect

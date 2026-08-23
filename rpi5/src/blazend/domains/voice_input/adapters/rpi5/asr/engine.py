@@ -13,9 +13,11 @@ overridable by ``BLAZEN_ASR_MODEL``; this 8 GB Pi defaults to `small`).
 
 from __future__ import annotations
 
+import gc
 import logging
 import math
 import os
+import time
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -179,6 +181,12 @@ class Transcriber:
         self.compute_type: str = str(cfg.get("compute_type", "int8"))
         # cpu (appliance contract) | cuda (GPU desktop, asr.yaml device:).
         self.device: str = str(cfg.get("device", "cpu"))
+        # Power saving (2026-08-23): drop the loaded model after this many idle
+        # seconds so the GPU can reach its low-power state between commands;
+        # the next wake reloads it (~1.4 s on a desktop GPU). 0 = never unload
+        # — the appliance default, where reload on the Pi would cost ~20 s.
+        self.unload_after_s: float = float(cfg.get("unload_after_s", 0))
+        self._last_used: float = 0.0
         self.beam_size: int = int(cfg.get("beam_size", 1))
         self.initial_prompt: str = str(cfg.get("initial_prompt", ""))
         # Optional remote GPU whisper (paul's blazen-whisper.service). When set,
@@ -192,6 +200,22 @@ class Transcriber:
         )
         self.remote_timeout: float = float(cfg.get("remote_timeout_s", 20))
         self._backend: WhisperBackend | None = backend
+
+    def maybe_unload(self) -> bool:
+        """Free the model after ``unload_after_s`` of idleness (power saving on
+        GPU desktops — VRAM held keeps the card out of its idle P-state).
+        Returns True when a model was actually dropped. No-op when
+        ``unload_after_s`` is 0 (the appliance) or the model isn't loaded."""
+        if (
+            self.unload_after_s <= 0
+            or self._backend is None
+            or self._last_used == 0.0
+            or time.monotonic() - self._last_used < self.unload_after_s
+        ):
+            return False
+        self._backend = None
+        gc.collect()
+        return True
 
     def _ensure_backend(self) -> WhisperBackend:
         if self._backend is None:
@@ -213,6 +237,7 @@ class Transcriber:
                 return remote  # else fall through to local
         backend = self._ensure_backend()
         result = backend.run(_to_float32(pcm), forced)
+        self._last_used = time.monotonic()
         return Transcript(
             language=coerce_language(result.language),
             text=result.text.strip(),
