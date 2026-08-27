@@ -41,12 +41,22 @@ audio-consuming unit and writes `$XDG_RUNTIME_DIR/blazen/audio.env`:
   `ALSA_CONFIG_PATH`, never system-wide — the desktop default is untouched),
   the measured appliance VAD thresholds, amixer volume on the card. A
   user-scope wireplumber rule releases **only** the Jabra from PipeWire
-  (direct hw capture dies if PipeWire holds the card).
+  (direct hw capture dies if PipeWire holds the card). The detector also maxes
+  the Jabra **capture** gain (control `Headset`, ships at 5/7 ≈ 71%;
+  2026-08-27) — more mic signal for the wake model, the ASR RMS floor and
+  whisper alike. (`BLAZEN_MIXER_CONTROL=PCM` is playback; capture is
+  `Headset`.)
 - **No Jabra**: ALSA `default` through pipewire-alsa for capture and playback,
   adaptive VAD, no dedicated mixer (voice volume commands no-op).
 
 Plug the Jabra in → `systemctl --user restart blazend.target` → profile
 switches. No reinstall, no config edit.
+
+The wake threshold is per-site too (2026-08-27): the unit defaults
+`BLAZEN_WAKE_THRESHOLD=0.8`; set it in the site `blazen.env` when the room/mic
+needs a laxer or stricter wake (paul runs `0.65`). `blazend-wake` logs
+`wake near-miss` for scores just under the threshold, so calibrate from the
+journal, not by feel.
 
 **Headless rigs (no logind seat, e.g. SSH-only):** logind grants device ACLs
 only to an active seat session, so on a headless machine neither PipeWire nor

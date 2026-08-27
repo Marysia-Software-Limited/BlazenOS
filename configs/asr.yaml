@@ -40,6 +40,24 @@ language: pl                           # Polish-only mode: force PL (skips the a
 # helped. Re-enable (a SHORT hint) only if the mic input is consistently clean.
 initial_prompt: ""
 
+# Domain lexicon (2026-08-27): the known vocabulary — intent trigger phrases,
+# radio station names+aliases, news sources, audiobook titles/authors, music
+# artist/album/track names — aggregated by asr/lexicon.py from the catalogs
+# already on disk. Two independent uses:
+#   correct:  post-ASR fuzzy repair of the finished transcript (difflib span
+#             match, canonical spelling substituted only when CLOSE but not
+#             exact). Safe everywhere — fixes real misreads like
+#             "Dżesika, stop!" → "Jeszcze karp! Top!" — so ON by default.
+#   hotwords: faster-whisper decoder bias (softer cousin of initial_prompt).
+#             OFF by default for the same far-field echo reason as
+#             initial_prompt above; enable in site asr.yaml on clean-mic
+#             installs (paul: close Jabra + large-v3-turbo handles it).
+lexicon:
+  correct: true
+  hotwords: false
+  fuzzy_ratio: 0.78            # difflib ratio a span must clear to be repaired
+  hotwords_max_chars: 120      # hotwords stay a short hint, not a dictionary
+
 # Optional remote GPU whisper (scripts/whisper_server.py on the dev host with a
 # GPU). When set, transcription is offloaded there — accurate + fast for the
 # far-field path where whisper-small on the Pi CPU misreads real Polish — with a

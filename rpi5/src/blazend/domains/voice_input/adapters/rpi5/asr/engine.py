@@ -137,7 +137,7 @@ class _FasterWhisperBackend:
 
     def __init__(
         self, model: str, compute_type: str, beam_size: int, initial_prompt: str = "",
-        device: str = "cpu",
+        device: str = "cpu", hotwords: str = "",
     ) -> None:
         from faster_whisper import WhisperModel
 
@@ -149,6 +149,9 @@ class _FasterWhisperBackend:
         # assistant actually hears (her name + common commands), which sharply
         # cuts misreads like "która godzina" → "kto jedzie na" on the quiet HAT.
         self._initial_prompt = initial_prompt or None
+        # Softer decoder bias than initial_prompt (asr.yaml lexicon.hotwords;
+        # OFF on the far-field appliance — see the initial_prompt echo note).
+        self._hotwords = hotwords or None
 
     def run(self, pcm: npt.NDArray[np.float32], language: str | None) -> BackendResult:
         segments, info = self._model.transcribe(
@@ -156,6 +159,7 @@ class _FasterWhisperBackend:
             language=language,
             beam_size=self._beam_size,
             initial_prompt=self._initial_prompt,
+            hotwords=self._hotwords,
             # Each utterance is an independent short command — don't carry text
             # across (avoids faster-whisper's repeat-hallucination on noise).
             condition_on_previous_text=False,
@@ -189,6 +193,10 @@ class Transcriber:
         self._last_used: float = 0.0
         self.beam_size: int = int(cfg.get("beam_size", 1))
         self.initial_prompt: str = str(cfg.get("initial_prompt", ""))
+        # Domain-vocabulary decoder bias (asr.yaml `lexicon:`). Built lazily in
+        # _ensure_backend so tests with an injected backend never load catalogs.
+        self.hotwords_enabled: bool = bool(cfg.get("lexicon.hotwords", False))
+        self.hotwords_max_chars: int = int(cfg.get("lexicon.hotwords_max_chars", 120))
         # Optional remote GPU whisper (paul's blazen-whisper.service). When set,
         # transcription is offloaded there — accurate + fast for the far-field path
         # — with a local fallback if it's unreachable. The endpoint comes from the
@@ -219,9 +227,16 @@ class Transcriber:
 
     def _ensure_backend(self) -> WhisperBackend:
         if self._backend is None:
+            hotwords = ""
+            if self.hotwords_enabled:
+                from blazend.domains.voice_input.adapters.rpi5.asr.lexicon import (  # noqa: PLC0415
+                    get_lexicon,
+                )
+
+                hotwords = get_lexicon().hotwords(self.hotwords_max_chars)
             self._backend = _FasterWhisperBackend(
                 self.model, self.compute_type, self.beam_size, self.initial_prompt,
-                device=self.device,
+                device=self.device, hotwords=hotwords,
             )
         return self._backend
 

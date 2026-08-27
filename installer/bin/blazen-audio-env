@@ -38,6 +38,11 @@ done
 
 tmp="$(mktemp)"
 if [ -n "$jabra_card" ]; then
+  # Max out the Jabra capture gain (control 'Headset'; ships at 5/7 ≈ 71%).
+  # More mic signal helps the wake model, the ASR RMS floor and whisper alike.
+  # (BLAZEN_MIXER_CONTROL=PCM below is PLAYBACK — capture is 'Headset'.)
+  # Best-effort: a missing control must never break profile detection.
+  amixer -c "$jabra_card" sset Headset 7 >/dev/null 2>&1 || true
   cat > "$tmp" <<EOF
 BLAZEN_AUDIO_PROFILE=jabra
 BLAZEN_INPUT_DEVICE=plughw:CARD=$jabra_card,DEV=0

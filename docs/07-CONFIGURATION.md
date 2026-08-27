@@ -58,6 +58,32 @@ hint; `BLAZEN_ASR_MODEL` overrides `asr.yaml active` (8 GB Pi → `small`);
 `BLAZEN_VAD_OPEN`/`BLAZEN_VAD_CLOSE` override the VAD energy floors for a
 low-sensitivity mic (see `vad` keys above).
 
+## ASR domain lexicon (`asr.yaml lexicon:`) — 2026-08-27
+
+Jessica's commands name a small, known world (intents, radio stations, music,
+audiobooks). `asr/lexicon.py` aggregates that vocabulary from the catalogs
+already on disk — intent trigger phrases (simple alternation regexes are
+expanded), `radio.yaml` names+aliases, `news.yaml` source names, the audiobook
+catalog + `ontology/books.json` authors, and `music-index.json` — and uses it
+two ways:
+
+- `lexicon.correct` (default `true`) — **post-ASR fuzzy repair**: sliding
+  token n-grams of the finished transcript are matched (folded + stemmed, the
+  shared `audiobook_catalog.text_norm`) against lexicon phrases with stdlib
+  `difflib`; a span that is CLOSE (`fuzzy_ratio`, default `0.78`) but not
+  already exact is replaced by the canonical spelling. Repairs real misreads —
+  "Dżesika, stop!" heard over a playing radio came back as "Jeszcze karp!
+  Top!" (paul, 2026-08-27) and now lands as "… stop!". Commands only; memo
+  dictation stays verbatim. Corrections are logged (`asr corrected: …`).
+- `lexicon.hotwords` (default `false`) — passes a short priority-ordered
+  vocabulary head (`hotwords_max_chars`, default `120`; wake forms → station
+  names → commands) to faster-whisper's `hotwords=` decoder bias. OFF by
+  default for the same reason `initial_prompt` is disabled (far-field prompt
+  echo); enable in site `asr.yaml` on clean-mic installs (paul).
+
+Every downstream resolver (radio/music/books) matches exact stems only, so
+this layer is what makes a one-character ASR slip survivable.
+
 ## Output loudness leveling + speech compression (`audio.yaml`)
 
 `blazend-player` (radio / music / audiobooks) runs an output-side dynamics chain
@@ -134,6 +160,11 @@ outranks the radio.
 
 - `wake-word.yaml capture_window_s` (default `4.5`) — the post-wake capture
   length in seconds. Env override: `BLAZEN_CAPTURE_S`.
+- `BLAZEN_WAKE_THRESHOLD` (unit env, default `0.8`) — the wake score threshold,
+  overridable per site in `blazen.env` (2026-08-27). Rooms/mics differ; the
+  detector logs `wake near-miss` at info for scores in `[0.6·thr, thr)`, so a
+  real "dżesika" landing under the threshold is visible in the journal and the
+  site value can be calibrated from evidence instead of guessed.
 - `wake-word.yaml require_wake` / `conversation_window_s` — wake gating: each
   acted-on utterance re-opens the follow-up window.
 - `wake-word.yaml harvest_false_wakes` (default `true`) — when a wake fires but

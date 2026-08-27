@@ -21,10 +21,14 @@ WorkingDirectory=/var/lib/blazen
 Environment=ORT_DYLIB_PATH=/usr/lib/blazen/.venv/lib/python3.13/site-packages/onnxruntime/capi/libonnxruntime.so.1.27.0
 # cooldown 3000ms collapses one spoken "dżesika" to a single wake and limits the
 # re-fire rate across the rolling detection window (excess wakes flood the ASR
-# fixed-window capture). threshold 0.7: close "dżesika" scores ~0.8-0.99, real
-# commands/rhymes <=0.36, so 0.7 has wide margin. NOTE: clap flag is --cooldown-ms
-# (hyphen), not _ms. Live capture LEVEL (Jabra DSP) is the limiter, not the score.
-ExecStart=/usr/lib/blazen/bin/blazend-wake --threshold 0.8 --cooldown-ms 3000
+# fixed-window capture). Threshold 0.8 default: close "dżesika" scores ~0.8-0.99,
+# real commands/rhymes <=0.36. Override per site via BLAZEN_WAKE_THRESHOLD in
+# /etc/blazen/blazen.env — rooms/mics differ; the near-miss journal lines show
+# where real utterances land. NOTE: clap flag is --cooldown-ms (hyphen), not _ms.
+# Live capture LEVEL (Jabra DSP) is the limiter, not the score.
+Environment=BLAZEN_WAKE_THRESHOLD=0.8
+EnvironmentFile=-/etc/blazen/blazen.env
+ExecStart=/usr/lib/blazen/bin/blazend-wake --threshold ${BLAZEN_WAKE_THRESHOLD} --cooldown-ms 3000
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=yes

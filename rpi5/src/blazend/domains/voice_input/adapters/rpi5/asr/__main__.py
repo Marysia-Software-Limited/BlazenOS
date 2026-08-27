@@ -240,6 +240,7 @@ async def _capture_memo(
 
 async def _real_loop(pub: Publisher) -> None:
     from blazend.domains.voice_input.adapters.rpi5.asr.engine import Transcriber
+    from blazend.domains.voice_input.adapters.rpi5.asr.lexicon import get_lexicon
 
     rt = runtime_dir()
     ring = await _open_ring(rt / "audio-ring.shm")
@@ -254,6 +255,13 @@ async def _real_loop(pub: Publisher) -> None:
     min_rms = float(_cfg.get("min_capture_rms", 200.0))
     min_rms_playing = float(_cfg.get("min_capture_rms_playing", 40.0))
     memo_cfg = _cfg.get("memo_capture", {}) or {}
+    # Post-ASR lexicon repair (asr.yaml `lexicon:`): fuzzy-match transcript
+    # spans against the domain vocabulary (commands, stations, titles) so one
+    # whisper slip ("Top!" for "stop!") doesn't kill the command. Commands
+    # only — memo dictation stays verbatim.
+    lex_correct = bool(_cfg.get("lexicon.correct", True))
+    lex_ratio = float(_cfg.get("lexicon.fuzzy_ratio", 0.78))
+    lexicon = get_lexicon() if lex_correct else None
     harvest = bool(load("wake-word").get("harvest_false_wakes", True))
     speaker_busy = rt / "speaker-busy"
     memo_marker = rt / "memo-capture"
@@ -374,23 +382,28 @@ async def _real_loop(pub: Publisher) -> None:
             )
             continue
         result = await asyncio.to_thread(transcriber.transcribe, pcm, ring.sample_rate)
-        if result.text:
+        text = result.text
+        if text and lexicon is not None:
+            text, hits = lexicon.correct(text, fuzzy_ratio=lex_ratio)
+            if hits:
+                log.info("asr corrected: %s", "; ".join(hits))
+        if text:
             # Keep the utterance audio briefly claimable: "zapamiętaj, że …"
             # stores the memory as sound + text by picking this clip up.
-            _save_clip(pcm, ring.sample_rate, result.text, clips_dir)
+            _save_clip(pcm, ring.sample_rate, text, clips_dir)
             await pub.publish(
                 Envelope(
                     topic="asr.final",
                     source="blazend-asr",
                     data={
                         "language": result.language,
-                        "text": result.text,
+                        "text": text,
                         "confidence": round(result.confidence, 3),
                     },
                 )
             )
             log.info(
-                "asr.final %s %r (conf=%.2f)", result.language, result.text, result.confidence
+                "asr.final %s %r (conf=%.2f)", result.language, text, result.confidence
             )
         else:
             # Passed the level gate but whisper found no words (too quiet/garbled,

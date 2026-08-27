@@ -9,9 +9,14 @@ PartOf=blazend-audio-in.service
 Type=simple
 @SERVICE_USER_BLOCK@
 Environment=BLAZEN_RUNTIME_DIR=@RUNTIME_DIR@
+# Wake threshold: 0.8 is the appliance default (validated: real "dżesika"
+# 0.8-0.99, other speech ≤0.36). Override per site via BLAZEN_WAKE_THRESHOLD
+# in blazen.env — rooms/mics differ, and near-miss journal lines (blazend-wake)
+# show where YOUR utterances actually land.
+Environment=BLAZEN_WAKE_THRESHOLD=0.8
 WorkingDirectory=@STATE_DIR@
 EnvironmentFile=-@ENV_FILE@
-ExecStart=@BIN_DIR@/blazend-wake --threshold 0.8 --cooldown-ms 3000
+ExecStart=@BIN_DIR@/blazend-wake --threshold ${BLAZEN_WAKE_THRESHOLD} --cooldown-ms 3000
 Restart=on-failure
 RestartSec=2
 @HARDENING_BLOCK@

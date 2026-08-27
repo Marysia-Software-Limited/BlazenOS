@@ -91,6 +91,7 @@ async fn run_real(publisher: &Publisher, args: &Args) -> Result<()> {
     let mut buffer: Vec<i16> = Vec::new();
     let mut last_pos = ring.write_pos();
     let mut cooldown_until = Instant::now();
+    let mut near_miss_until = Instant::now();
 
     loop {
         tokio::time::sleep(Duration::from_millis(200)).await;
@@ -107,8 +108,25 @@ async fn run_real(publisher: &Publisher, args: &Args) -> Result<()> {
         }
         let score = model.score(&buffer)?;
         tracing::debug!(score, "scored window");
+        // Near-misses at info: a real "dżesika" landing just under the
+        // threshold is otherwise invisible in the journal, which makes the
+        // threshold impossible to calibrate per room/mic. Its own cooldown —
+        // NEVER the wake one: the score climbs as the word completes, and a
+        // near-miss tick must not lock out the real detection right behind it.
+        if score >= args.threshold * 0.6
+            && score < args.threshold
+            && Instant::now() >= near_miss_until
+        {
+            near_miss_until = Instant::now() + Duration::from_millis(args.cooldown_ms);
+            tracing::info!(
+                score,
+                threshold = args.threshold,
+                "wake near-miss (below threshold)"
+            );
+        }
         if score >= args.threshold && Instant::now() >= cooldown_until {
             cooldown_until = Instant::now() + Duration::from_millis(args.cooldown_ms);
+            near_miss_until = cooldown_until; // decaying tail ≠ a fresh near-miss
             let ts = last_pos * 1000 / SR as u64;
             tracing::info!(score, "wake.detected");
             publisher
