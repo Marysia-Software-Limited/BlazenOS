@@ -395,3 +395,38 @@ def test_voice_training_does_not_disturb_memo_dialog(tmp_path):
     asyncio.run(Orchestrator._on_memo_recorded(
         stub, {"audio_path": str(wav), "transcript": "lista zakupów", "language": "pl"}))
     assert stub._memo_stage == "content"
+
+
+def test_guided_dialog_suppresses_wake_until_done_or_timeout():
+    """While voice training / dictation awaits a capture, wake activation is
+    suppressed (saying "dżesika" as a training sample must not activate her);
+    a dialog whose capture never returns times out and listening resumes."""
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import Orchestrator
+
+    stub = _DialogStub()
+
+    async def check() -> None:
+        now = asyncio.get_running_loop().time()
+        # No dialog → no suppression.
+        assert not Orchestrator._dialog_active(stub)
+        # Training round in progress, deadline in the future → suppressed.
+        stub._voice_train_round = 2
+        stub._dialog_until = now + 60
+        assert Orchestrator._dialog_active(stub)
+        # The address question counts as a dialog too.
+        stub._voice_train_round = 0
+        stub._voice_train_stage = "name"
+        assert Orchestrator._dialog_active(stub)
+        # Memo dictation counts.
+        stub._voice_train_stage = None
+        stub._memo_stage = "content"
+        assert Orchestrator._dialog_active(stub)
+        # Deadline passed → abandoned: states reset, wake re-enabled.
+        stub._voice_train_round = 3
+        stub._dialog_until = now - 1
+        assert not Orchestrator._dialog_active(stub)
+        assert stub._voice_train_round == 0
+        assert stub._voice_train_stage is None
+        assert stub._memo_stage is None
+
+    asyncio.run(check())

@@ -123,6 +123,10 @@ _SPEAKER_WARMUP_S = 1.5
 # opening a capture window every couple of seconds. One real "dżesika" → one beep
 # → one listen window; rapid repeats within the refractory are dropped.
 _WAKE_REFRACTORY_S = 4.0
+# How long a guided dialog (voice training / memo dictation) may wait for its
+# capture before the orchestrator declares it abandoned and re-enables wake
+# activation. Must exceed the longest capture (memo max_s 60) + prompts.
+_DIALOG_TIMEOUT_S = 90.0
 
 DEFAULT_PEERS: tuple[str, ...] = (
     "audio-in",
@@ -272,6 +276,14 @@ class Orchestrator:
         # Final voice-training step (2026-08-27): after the wake samples she
         # asks how to address the owner; "name" while that answer is awaited.
         self._voice_train_stage: str | None = None
+        # Guided-dialog deadline: while voice training / memo dictation waits
+        # for a capture, wake activation is SUPPRESSED (saying "dżesika" as a
+        # training sample must not beep + open a command window mid-dialog).
+        # The suppression is DERIVED from the dialog state, so it lifts by
+        # itself on completion, error, or abort — and this deadline is the
+        # backstop: if the capture never comes back (ASR died mid-window),
+        # the stale dialog state is dropped and normal listening resumes.
+        self._dialog_until = 0.0
         self._memo_title = ""
         self._memo_lang = "pl"
         # "dżesika stop" mid-processing: the brain may already be generating —
@@ -750,6 +762,14 @@ class Orchestrator:
             # a capture window every couple of seconds ("random beeps", commands
             # drowned out). One wake is handled, then a short deaf window.
             if now - self._wake_handled_at < _WAKE_REFRACTORY_S:
+                return
+            # A guided dialog owns the mic: during voice training the user is
+            # ASKED to say "dżesika", and during dictation any wake-ish sound
+            # must not beep + open a command window over the capture. Ignore
+            # the wake outright; the suppression lifts automatically when the
+            # dialog completes, errors out, or times out (_dialog_active).
+            if self._dialog_active():
+                log.info("wake ignored: guided dialog in progress")
                 return
             self._wake_handled_at = now
             self._awake_until = now + self._wake_window_s
@@ -1410,7 +1430,30 @@ class Orchestrator:
         await self._wait_speech_done()
         self._open_memo_window()
 
+    def _dialog_active(self) -> bool:
+        """True while a guided dialog (voice training rounds, the address
+        question, memo title/content dictation) is awaiting a capture — wake
+        activation is suppressed for its duration. Past ``_dialog_until`` the
+        dialog is declared abandoned (ASR never answered): its state is
+        dropped so Jessica goes back to normal listening instead of staying
+        deaf to her own name."""
+        if not (self._voice_train_round or self._voice_train_stage
+                or self._memo_stage is not None):
+            return False
+        if asyncio.get_running_loop().time() > self._dialog_until:
+            log.warning("guided dialog timed out — re-enabling wake activation")
+            self._voice_train_round = 0
+            self._voice_train_stage = None
+            self._voice_train_retries = 0
+            self._memo_stage = None
+            self._memo_title = ""
+            return False
+        return True
+
     def _open_memo_window(self) -> None:
+        # Every (re)opened capture window extends the guided-dialog deadline —
+        # multi-round training keeps the suppression alive round to round.
+        self._dialog_until = asyncio.get_running_loop().time() + _DIALOG_TIMEOUT_S
         try:
             (self._runtime_dir / "memo-capture").touch()
         except OSError as exc:
