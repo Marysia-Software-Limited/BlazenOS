@@ -37,13 +37,10 @@ from blazend.events import (
     Envelope,
     system_event,
 )
+from blazend.i18n import msg
 from blazend.ipc import Publisher, Subscriber, runtime_dir
 
 log = logging.getLogger("blazend.domains.ai_orchestrator.inference")
-
-
-def _t(lang: str, pl: str, en: str) -> str:
-    return pl if lang == "pl" else en
 
 
 class InferenceServer:
@@ -106,11 +103,7 @@ class InferenceServer:
             if answer:
                 log.info("answered via %s", name)
                 return str(answer)
-        return _t(
-            lang,
-            "Mogę rozmawiać swobodnie po ustawieniu lokalnego modelu albo klucza API.",
-            "I can chat freely once a local model or an API key is set.",
-        )
+        return msg("llm.no_backend", lang)
 
     def reply_for(self, env: Envelope) -> Envelope:
         """Build the ``brain.reply`` envelope for a ``brain.request``."""

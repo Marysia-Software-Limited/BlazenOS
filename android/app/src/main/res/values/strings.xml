@@ -39,4 +39,15 @@
     <string name="service_listening_text">Tap to open or say the wake word.</string>
     <string name="service_channel_name">Listening</string>
     <string name="service_channel_description">Notifications shown while Jessica\'s always-listening loop is active.</string>
+
+    <!-- Spoken replies (ReplyGenerator) -->
+    <string name="reply_volume_up">Turning it up.</string>
+    <string name="reply_volume_down">Turning it down.</string>
+    <string name="reply_time_query">Let me check the time for you.</string>
+    <string name="reply_language_pin_pl">Mówimy po polsku.</string>
+    <string name="reply_language_pin_en">Switching to English.</string>
+    <string name="reply_language_unpin">I\'ll listen and pick the language myself.</string>
+    <string name="reply_what_can_you_do">I can change the volume, check the time, or read the news.</string>
+    <string name="reply_stop">Going quiet.</string>
+    <string name="reply_unknown">I don\'t have that one wired up yet. Try again?</string>
 </resources>

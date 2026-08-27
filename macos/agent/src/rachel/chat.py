@@ -47,8 +47,8 @@ def _llm_config() -> dict[str, Any]:
 
 def persona() -> str:
     """Jessica's system prompt — the shared persona, so the Mac speaks in one voice."""
-    return str(_llm_config().get("system_prompt", "")).strip() or (
-        "Jesteś Dżesika, asystentka głosowa. Odpowiadaj po polsku, krótko.")
+    from rachel.l10n import msg
+    return str(_llm_config().get("system_prompt", "")).strip() or msg("persona")
 
 
 def classify(utterance: str) -> str:
@@ -102,8 +102,8 @@ class RachelChat:
         task = classify(utterance)
         llm = self._backend(task)
         if llm is None:
-            return ("Przepraszam, w tej chwili nie mam dostępu do modelu — "
-                    "sprawdź, czy serwer MLX działa.")
+            from rachel.l10n import msg
+            return msg("llm.unavailable")
         messages = [{"role": "system", "content": self._system()}, *self._history,
                     {"role": "user", "content": utterance}]
         max_tokens = 512 if task != "command" else 256

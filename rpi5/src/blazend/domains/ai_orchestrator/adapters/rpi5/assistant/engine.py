@@ -39,6 +39,7 @@ from blazend.domains.context.adapters.rpi5.embeddings import EmbedderError, Embe
 from blazend.domains.context.adapters.rpi5.memory import MemoryStore, Note
 from blazend.domains.context.adapters.rpi5.timeparse import parse_when
 from blazend.domains.local_ai.adapters.rpi5.localllm import Llm, LlmError
+from blazend.i18n import msg, plural, table
 
 # Streaming hooks for sentence-sliced TTS. ``on_sentence(text, language)`` fires
 # the instant a sentence completes; ``on_token()`` fires on the first token (for
@@ -47,14 +48,6 @@ OnSentence = Callable[[str, str], None]
 OnToken = Callable[[], None]
 
 log = logging.getLogger("blazend.domains.ai_orchestrator.adapters.rpi5.assistant")
-
-PERSONA = (
-    "Jesteś Jessica — głosowa asystentka osobista dla osób niewidomych i "
-    "słabowidzących, działająca na Raspberry Pi 5. Odpowiadaj w języku "
-    "użytkownika (polski lub angielski); domyślnie po polsku. Mów krótko — "
-    "jedno lub dwa zdania, chyba że poproszono o szczegóły. Bądź konkretna i "
-    "uczciwa; jeśli czegoś nie wiesz, powiedz to wprost."
-)
 
 # Router backend names that leave the LAN. The memory context is withheld from
 # these unless embeddings.yaml `notes_context.share_with_cloud: true` — Bieliks
@@ -72,10 +65,6 @@ def detect_lang(text: str) -> str:
     if _EN_HINT.search(text):
         return "en"
     return "pl"
-
-
-def _t(lang: str, pl: str, en: str) -> str:
-    return pl if lang == "pl" else en
 
 
 # --- command patterns (PL + EN) ------------------------------------------
@@ -118,17 +107,8 @@ _DATE_QUERY = re.compile(
     r"what'?s?\s+(the\s+)?(today'?s\s+)?date|what\s+day\s+is\s+(it|today)|what'?s\s+today)\b",
     re.IGNORECASE,
 )
-# Locale-independent day/month names (don't depend on the system locale).
-_PL_DAYS = ("poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela")
-_PL_MONTHS = (
-    "stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca",
-    "lipca", "sierpnia", "września", "października", "listopada", "grudnia",
-)
-_EN_DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-_EN_MONTHS = (
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-)
+# Locale-independent day/month names live in the message catalog
+# (tables.days / tables.months — don't depend on the system locale).
 # User's name: ask ("jak mam na imię" / "what's my name") vs set ("mam na imię X").
 _NAME_GET = re.compile(
     r"\b(jak\s+(mam\s+na\s+imię|mam\s+na\s+imie|się\s+nazywam|sie\s+nazywam)|"
@@ -309,7 +289,7 @@ class Assistant:
         news: NewsClient | None = None,
         recommender: RecommendationEngine | None = None,
         prompts: PromptLibrary | None = None,
-        persona: str = PERSONA,
+        persona: str | None = None,
         always_awake: bool = False,
         notes_top_k: int = 4,
         notes_min_score: float = 0.82,
@@ -346,7 +326,10 @@ class Assistant:
         self._notes_max_chars = notes_max_chars
         self._notes_include_voice = notes_include_voice
         self._notes_share_with_cloud = notes_share_with_cloud
-        self.persona = persona
+        # The Jessica persona (same text as jessica_core::DEFAULT_PERSONA), from
+        # the message catalog. Always the Polish text — the persona itself
+        # instructs the model to answer in the user's language.
+        self.persona = persona if persona is not None else msg("prompts.persona", "pl")
         self.awake = always_awake
         self._always_awake = always_awake
         # Book/music recommendation RAG (semantic + ontology). Injected in tests;
@@ -420,12 +403,8 @@ class Assistant:
         )
         if not hits:
             return ""
-        header = _t(
-            lang,
-            " Zapisane notatki użytkownika (wykorzystaj, jeśli pomocne):",
-            " The user's saved notes (use them if relevant):",
-        )
-        voice_tag = _t(lang, "[nagranie głosowe]", "[voice memo]")
+        header = msg("prompts.notes_context.header", lang)
+        voice_tag = msg("prompts.notes_context.voice_tag", lang)
         budget = self._notes_max_chars
         parts: list[str] = []
         for h in hits:
@@ -484,17 +463,13 @@ class Assistant:
                 # Overheard TV/radio after a false wake — answering "Śpię…" to a
                 # television is noise. Stay silent (empty text is never spoken).
                 return Reply("", lang, "asleep")
-            return Reply(
-                _t(lang, "Śpię — powiedz „Jessica”, żeby mnie obudzić.",
-                   "I'm asleep — say \"Jessica\" to wake me."),
-                lang, "asleep",
-            )
+            return Reply(msg("wake.asleep", lang), lang, "asleep")
 
         if not command:
             name = self.memory.get_profile("name")
             if name:
-                return Reply(_t(lang, f"Tak, {name}? Słucham.", f"Yes, {name}? I'm listening."), lang, "wake")
-            return Reply(_t(lang, "Tak? Słucham.", "Yes? I'm listening."), lang, "wake")
+                return Reply(msg("wake.greet_name", lang, name=name), lang, "wake")
+            return Reply(msg("wake.greet", lang), lang, "wake")
 
         return self._handle(command, lang, now=now, on_sentence=on_sentence, on_token=on_token)
 
@@ -578,13 +553,11 @@ class Assistant:
         template pick when no model is reachable."""
         rec = self.recommender
         if rec is None:
-            return Reply(_t(lang, "Nie mam jeszcze biblioteki do polecania.",
-                            "I don't have a library to recommend from yet."), lang, "recommend")
+            return Reply(msg("recommend.no_library", lang), lang, "recommend")
         kinds = self._recommend_kinds(text)
         cands = rec.candidates(text, kinds=kinds, k=6)
         if not cands:
-            return Reply(_t(lang, "Nie znalazłam nic pasującego. Spróbuj inaczej.",
-                            "I couldn't find a match. Try phrasing it differently."), lang, "recommend")
+            return Reply(msg("recommend.no_match", lang), lang, "recommend")
         reasoned = self._reason_recommend(text, cands, lang, kinds)
         if reasoned is not None:
             return reasoned
@@ -612,13 +585,12 @@ class Assistant:
         """Build the spoken recommendation, naming the title (so the user can then
         say "zagraj <title>"). No auto-play — a suggestion is spoken, not started."""
         title, who = str(item.get("title", "")), str(item.get("who", ""))
-        lead = _t(lang, f"Polecam „{title}”" + (f", {who}. " if who else ". "),
-                  f"I recommend “{title}”" + (f" by {who}. " if who else ". "))
+        lead = (msg("recommend.lead_who", lang, title=title, who=who) if who
+                else msg("recommend.lead", lang, title=title))
         # If the model already named the book, use its pitch alone; else prepend.
         text = pitch if (pitch and title and title.lower() in pitch.lower()) else (lead + pitch).strip()
         if not pitch:
-            text = lead.strip() + _t(lang, " Powiedz „zagraj to”, aby posłuchać.",
-                                     " Say “play it” to listen.")
+            text = lead.strip() + msg("recommend.play_hint", lang)
         return Reply(text, lang, "recommend",
                      {"title": title, "who": who, "kind": item.get("type"), "engine": engine})
 
@@ -628,21 +600,14 @@ class Assistant:
         rec = self.recommender
         n = rec.semantic.count("book") if rec is not None else 0
         if not n:
-            return Reply(_t(lang, "Nie mam jeszcze audiobooków.",
-                            "I don't have any audiobooks yet."), lang, "book_offer")
-        return Reply(
-            _t(lang,
-               f"Mam {n} audiobooków — klasyka, powieści, baśnie i poezja. "
-               "Powiedz na przykład „poleć coś przygodowego” albo „zagraj Trzej muszkieterowie”.",
-               f"I have {n} audiobooks — classics, novels, fairy tales and poetry. "
-               "Say for example “recommend something adventurous” or “play The Three Musketeers”."),
-            lang, "book_offer", {"count": n})
+            return Reply(msg("book.offer_none", lang), lang, "book_offer")
+        return Reply(msg("book.library_offer", lang, n=n), lang, "book_offer", {"count": n})
 
     def _remember(self, text: str, lang: str, *, now: datetime) -> Reply:
         body = _REMEMBER.sub("", text, count=1).strip(" ,.:!")
         body = _REMEMBER_TAIL.sub("", body).strip()
         if not body:
-            return Reply(_t(lang, "Co mam zapamiętać?", "What should I remember?"), lang, "wake")
+            return Reply(msg("memory.remember_what", lang), lang, "wake")
         # The ASR keeps a claimable clip of this very utterance — a claimed
         # memory is stored as sound + text (VoiceNote), else a plain text note.
         claimed = self.memory.claim_last_clip(body)
@@ -651,7 +616,7 @@ class Assistant:
                 claimed[0], now=now, duration_s=claimed[1], transcript=body)
             self._backfill_embeddings()  # make it searchable immediately
             return Reply(
-                _t(lang, f"Zapamiętałam: {body}.", f"Got it, I'll remember: {body}."),
+                msg("memory.remembered", lang, text=body),
                 lang, "note", {"id": vn.id, "text": body, "audio_path": vn.audio_path},
             )
         title, content = _split_title_content(body)
@@ -663,7 +628,7 @@ class Assistant:
             spoken = note.text
         self._embed_note(note)
         return Reply(
-            _t(lang, f"Zapamiętałam: {spoken}.", f"Got it, I'll remember: {spoken}."),
+            msg("memory.remembered", lang, text=spoken),
             lang, "note", {"id": note.id, "title": note.title, "text": note.text},
         )
 
@@ -671,23 +636,19 @@ class Assistant:
         m = _NAME_SET.search(text)
         name = m.group(1).strip() if m else ""
         if not name:
-            return Reply(_t(lang, "Jak mam Cię nazywać?", "What should I call you?"), lang, "wake")
+            return Reply(msg("profile.ask_name", lang), lang, "wake")
         name = name[:1].upper() + name[1:]
         self.memory.set_profile("name", name, now=now)
         return Reply(
-            _t(lang, f"Miło mi, {name}! Zapamiętam.", f"Nice to meet you, {name}! I'll remember."),
+            msg("profile.name_saved", lang, name=name),
             lang, "profile", {"name": name},
         )
 
     def _get_name(self, lang: str) -> Reply:
         name = self.memory.get_profile("name")
         if not name:
-            return Reply(
-                _t(lang, "Jeszcze nie znam Twojego imienia. Powiedz „mam na imię…”.",
-                   "I don't know your name yet. Say \"my name is…\"."),
-                lang, "profile", {"name": None},
-            )
-        return Reply(_t(lang, f"Masz na imię {name}.", f"Your name is {name}."), lang, "profile", {"name": name})
+            return Reply(msg("profile.name_unknown", lang), lang, "profile", {"name": None})
+        return Reply(msg("profile.name_is", lang, name=name), lang, "profile", {"name": name})
 
     def _say_time(self, lang: str, now: datetime) -> Reply:
         """Tell the current time from the (NTP-synced) system clock — no network."""
@@ -697,46 +658,38 @@ class Assistant:
             # ("dwudziesta trzecia szesnaście") instead of mangling "23:16".
             from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.plnum import time_words
 
-            return Reply(
-                f"Jest godzina {time_words(now.hour, now.minute)}.", lang, "time", data
-            )
-        h12 = now.hour % 12 or 12
-        ampm = "AM" if now.hour < 12 else "PM"
-        return Reply(f"The time is {h12}:{now.minute:02d} {ampm}.", lang, "time", data)
+            spoken = time_words(now.hour, now.minute)
+        else:
+            h12 = now.hour % 12 or 12
+            ampm = "AM" if now.hour < 12 else "PM"
+            spoken = f"{h12}:{now.minute:02d} {ampm}"
+        return Reply(msg("time.now", lang, time=spoken), lang, "time", data)
 
     def _say_date(self, lang: str, now: datetime) -> Reply:
         """Tell today's date with locale-independent day/month names."""
         wd = now.weekday()
         data = {"year": now.year, "month": now.month, "day": now.day, "weekday": wd}
-        if lang == "pl":
-            text = f"Dziś jest {_PL_DAYS[wd]}, {now.day} {_PL_MONTHS[now.month - 1]} {now.year}."
-        else:
-            text = f"Today is {_EN_DAYS[wd]}, {_EN_MONTHS[now.month - 1]} {now.day}, {now.year}."
+        text = msg("date.today", lang,
+                   day_name=table("days", wd, lang),
+                   day=now.day,
+                   month=table("months", now.month, lang),
+                   year=now.year)
         return Reply(text, lang, "date", data)
 
     def _record_voice_note(self, lang: str) -> Reply:
         # The engine only routes; the runner performs the actual capture + save
         # (audio I/O is a side effect, kept out of the pure engine).
-        return Reply(
-            _t(lang, "Słucham — naciśnij przycisk i nagraj notatkę.",
-               "Go ahead — press the button and record your note."),
-            lang, "voice_note_record", {},
-        )
+        return Reply(msg("memo.record_prompt", lang), lang, "voice_note_record", {})
 
     def _play_voice_notes(self, lang: str) -> Reply:
         notes = self.memory.voice_notes()
         if not notes:
             return Reply(
-                _t(lang, "Nie masz nagranych notatek głosowych.", "You have no voice notes."),
+                msg("memo.none_recorded", lang),
                 lang, "voice_note_play", {"paths": []},
             )
         paths = [n.audio_path for n in notes[-5:]]
-        n = len(paths)
-        if lang == "pl":
-            word = "notatkę" if n == 1 else "notatki" if 2 <= n <= 4 else "notatek"
-            text = f"Odtwarzam {n} {word} głosowe." if n != 1 else "Odtwarzam ostatnią notatkę głosową."
-        else:
-            text = f"Playing {n} voice note{'s' if n != 1 else ''}."
+        text = plural("voice_notes_playing", len(paths), lang)
         return Reply(text, lang, "voice_note_play", {"paths": paths})
 
     def _remind(self, text: str, lang: str, *, now: datetime) -> Reply:
@@ -747,22 +700,17 @@ class Assistant:
         task = _TIME_SPAN.sub("", task)
         task = _strip_lead_filler(task)
         if not when:
-            return Reply(
-                _t(lang, "Na kiedy? Np. „o 15:00” albo „za 10 minut”.",
-                   "When? E.g. \"at 3pm\" or \"in 10 minutes\"."),
-                lang, "wake",
-            )
+            return Reply(msg("reminder.ask_when", lang), lang, "wake")
         if not task:
-            task = {
-                "alarm": _t(lang, "budzik", "alarm"),
-                "event": _t(lang, "wydarzenie", "event"),
-            }.get(category, _t(lang, "przypomnienie", "reminder"))
+            task = table("reminder_labels", category, lang,
+                         default=table("reminder_labels", "reminder", lang))
         rem = self.memory.add_reminder(task, due=when, now=now, category=category)
         hhmm = when.strftime("%H:%M")
-        lead = {
-            "alarm": _t(lang, f"Ustawiłam budzik na {hhmm}", f"Alarm set for {hhmm}"),
-            "event": _t(lang, f"Zapisałam na {hhmm}", f"Saved for {hhmm}"),
-        }.get(category, _t(lang, f"Przypomnę Ci o {hhmm}", f"I'll remind you at {hhmm}"))
+        lead_key = {
+            "alarm": "reminder.lead_alarm",
+            "event": "reminder.lead_event",
+        }.get(category, "reminder.lead_default")
+        lead = msg(lead_key, lang, time=hhmm)
         return Reply(
             f"{lead}: {task}.",
             lang, "reminder", {"id": rem.id, "due": rem.due, "text": task, "category": category},
@@ -771,22 +719,22 @@ class Assistant:
     def _recall_notes(self, text: str, lang: str) -> Reply:
         notes = self.memory.notes()
         if not notes:
-            return Reply(_t(lang, "Nic jeszcze nie zapisałam.", "I haven't noted anything yet."), lang, "recall")
+            return Reply(msg("memory.none_noted", lang), lang, "recall")
         lines = "; ".join(n.text for n in notes[-10:])
         return Reply(
-            _t(lang, f"Pamiętam: {lines}.", f"I remember: {lines}."),
+            msg("memory.recall", lang, items=lines),
             lang, "recall", {"count": len(notes)},
         )
 
     def _recall_reminders(self, lang: str) -> Reply:
         pend = self.memory.pending()
         if not pend:
-            return Reply(_t(lang, "Nie masz żadnych przypomnień.", "You have no reminders."), lang, "recall")
+            return Reply(msg("reminder.none", lang), lang, "recall")
         lines = "; ".join(
             f"{datetime.fromisoformat(r.due).strftime('%H:%M')} — {r.text}" for r in pend[:10]
         )
         return Reply(
-            _t(lang, f"Twoje przypomnienia: {lines}.", f"Your reminders: {lines}."),
+            msg("reminder.list", lang, items=lines),
             lang, "recall", {"count": len(pend)},
         )
 
@@ -798,19 +746,16 @@ class Assistant:
         except WeatherError as e:
             log.warning("weather lookup failed (%s)", e)
             return Reply(
-                _t(lang, "Nie mogę teraz sprawdzić pogody.", "I can't check the weather right now."),
+                msg("weather.unavailable", lang),
                 lang, "error", {"reason": "weather_failed"},
             )
         desc = describe_code(c.code, lang)
         temp, feels, wind = round(c.temperature), round(c.feels_like), round(c.wind_speed)
-        if lang == "pl":
-            # Label form ("Kraków: …") avoids Polish locative inflection
-            # ("w Krakowie") that a bare nominative ("w Kraków") would get wrong.
-            out = (f"{c.place}: {temp}{c.units_temp}, {desc}. "
-                   f"Odczuwalna {feels}{c.units_temp}, wiatr {wind} {c.units_wind}.")
-        else:
-            out = (f"In {c.place} it's {temp}{c.units_temp}, {desc}. "
-                   f"Feels like {feels}{c.units_temp}, wind {wind} {c.units_wind}.")
+        # PL label form ("Kraków: …") avoids Polish locative inflection
+        # ("w Krakowie") that a bare nominative ("w Kraków") would get wrong.
+        out = msg("weather.conditions", lang, place=c.place, temp=temp,
+                  units=c.units_temp, desc=desc, feels=feels, wind=wind,
+                  wind_units=c.units_wind)
         return Reply(out, lang, "weather", {"place": c.place, "temp": temp, "code": c.code})
 
     def _weather_place(self, text: str, lang: str) -> Place | None:
@@ -837,15 +782,8 @@ class Assistant:
         international agencies for `en`).
         """
         if self.gemini.available:
-            if lang == "pl":
-                query = ("Podaj najważniejsze aktualne wiadomości z międzynarodowych agencji "
-                         "(Reuters, AP, AFP, BBC), ze szczególnym uwzględnieniem Krakowa i Polski.")
-                sys = self.persona + (" Odpowiedz po polsku, zwięźle, 3-4 najważniejsze punkty. "
-                                      "Przetłumacz nagłówki na polski.")
-            else:
-                query = ("Give the top current news from international agencies "
-                         "(Reuters, AP, AFP, BBC), focusing on Kraków and Poland.")
-                sys = self.persona + " Answer in English, briefly — 3-4 key points."
+            query = msg("prompts.news_gemini_engine.query", lang)
+            sys = msg("prompts.news_gemini.system", lang, persona=self.persona)
             try:
                 answer = self.gemini.grounded(query, system=sys)
                 return Reply(answer, lang, "news", {"grounded": True, "focus": "krakow-poland"})
@@ -858,11 +796,11 @@ class Assistant:
             log.warning("RSS news fallback failed (%s)", e)
             items = []
         if items:
-            lead = _t(lang, "Najważniejsze wiadomości:", "Top headlines:")
+            lead = msg("news.headlines_lead", lang)
             body = " ".join(f"{i + 1}. {h}." for i, h in enumerate(items))
             return Reply(f"{lead} {body}", lang, "news", {"source": "rss", "count": len(items)})
         return Reply(
-            _t(lang, "Nie mogę teraz sprawdzić wiadomości.", "I can't check the news right now."),
+            msg("news.unavailable", lang),
             lang, "error", {"reason": "news_unavailable"},
         )
 
@@ -870,50 +808,45 @@ class Assistant:
         """Play a named station, or offer the headline stations if none is named."""
         if not self.radio.available:
             return Reply(
-                _t(lang, "Radio nie jest skonfigurowane.", "Radio isn't configured."),
+                msg("radio.not_configured", lang),
                 lang, "radio_offer", {},
             )
         station = self.radio.resolve(text)
         if station is None:
             names = [s.name for s in self.radio.offer()]
             if len(names) > 1:
-                joined = ", ".join(names[:-1]) + _t(lang, f" lub {names[-1]}", f" or {names[-1]}")
+                joined = ", ".join(names[:-1]) + msg("radio.offer_last", lang, station=names[-1])
             else:
                 joined = names[0]
             return Reply(
-                _t(lang, f"Mogę włączyć: {joined}. Którą stację?",
-                   f"I can play: {joined}. Which station?"),
+                msg("radio.offer", lang, stations=joined),
                 lang, "radio_offer", {"stations": [s.id for s in self.radio.offer()]},
             )
         # "Włączam stację <name>" (apposition) keeps the name in the nominative
         # so single-word channel nicknames don't need accusative inflection
         # ("Włączam Trójka" → grammatically "Trójkę"); works for every station.
         return Reply(
-            _t(lang, f"Włączam stację {station.name}.", f"Playing {station.name}."),
+            msg("radio.station_on", lang, station=station.name),
             lang, "radio_play", {"id": station.id, "name": station.name, "url": station.url},
         )
 
     def _radio_stop(self, lang: str) -> Reply:
-        return Reply(
-            _t(lang, "Wyłączam radio.", "Turning off the radio."), lang, "radio_stop", {},
-        )
+        return Reply(msg("radio.off", lang), lang, "radio_stop", {})
 
     def _lookup(self, query: str, lang: str) -> Reply:
         """Open/summarise a site or answer a general up-to-date query via Gemini."""
         if not self.gemini.available:
             return Reply(
-                _t(lang,
-                   "To wymaga konta Gemini — ustaw GEMINI_API_KEY.",
-                   "That needs a Gemini account — set GEMINI_API_KEY."),
+                msg("web.needs_key", lang),
                 lang, "news", {"needs_key": True},
             )
-        sys = self.persona + _t(lang, " Streść zwięźle, po polsku.", " Summarise briefly, in English.")
+        sys = msg("prompts.web_lookup.system", lang, persona=self.persona)
         try:
             answer = self.gemini.grounded(query, system=sys)
         except GeminiError as e:
             log.warning("site lookup via Gemini failed (%s)", e)
             return Reply(
-                _t(lang, "Nie mogę teraz tego sprawdzić.", "I can't look that up right now."),
+                msg("web.lookup_failed", lang),
                 lang, "error", {"reason": "lookup_failed"},
             )
         return Reply(answer, lang, "news", {"grounded": True})
@@ -931,7 +864,7 @@ class Assistant:
         system = self.persona
         name = self.memory.get_profile("name")
         if name:
-            system += _t(lang, f" Użytkownik ma na imię {name}.", f" The user's name is {name}.")
+            system += msg("prompts.chat.user_name", lang, name=name)
         # Retrieve the user's relevant stored notes and inject them. Shared
         # `system=` kwarg → this covers every backend uniformly. PRIVACY GATE:
         # the memory block reaches CLOUD engines only when embeddings.yaml
@@ -967,12 +900,10 @@ class Assistant:
             try:
                 answer = self.gemini.chat(text, system=system_cloud)
             except GeminiError as e:
-                return Reply(_t(lang, f"Coś poszło nie tak: {e}", f"Something went wrong: {e}"), lang, "error")
+                return Reply(msg("error.chat_failed", lang, error=e), lang, "error")
             return Reply(answer, lang, "chat", {"engine": "gemini"})
         return Reply(
-            _t(lang,
-               "Mogę rozmawiać swobodnie po ustawieniu GEMINI_API_KEY (albo lokalnego modelu).",
-               "I can chat freely once GEMINI_API_KEY (or a local model) is set."),
+            msg("chat.needs_key", lang),
             lang, "chat", {"needs_key": True},
         )
 
@@ -1059,15 +990,18 @@ class Assistant:
         for r in self.memory.due(now):
             cat = getattr(r, "category", "reminder")
             task = r.text.strip()
+            # Announcements are spoken in Polish (runtime language pinned "pl"
+            # below); the catalog carries EN twins for asset parity.
             if cat == "alarm":
                 due_dt = datetime.fromisoformat(r.due)
-                extra = "" if task in ("", "budzik", "alarm") else f" {task}."
-                text = (f"Pobudka! Jest godzina {time_words(due_dt.hour, due_dt.minute)}."
-                        f"{extra} Pobudka, wstawaj!")
+                extra = ("" if task in ("", "budzik", "alarm")
+                         else msg("reminder.fired_task", "pl", task=task))
+                text = msg("reminder.fired_alarm", "pl",
+                           time=time_words(due_dt.hour, due_dt.minute), extra=extra)
             elif cat == "event":
-                text = f"Przypominam o wydarzeniu: {task}."
+                text = msg("reminder.fired_event", "pl", task=task)
             else:
-                text = f"Przypominam: {task}."
+                text = msg("reminder.fired", "pl", task=task)
             out.append(
                 Reply(text, "pl", "reminder",
                       {"id": r.id, "fired": True, "category": cat}),

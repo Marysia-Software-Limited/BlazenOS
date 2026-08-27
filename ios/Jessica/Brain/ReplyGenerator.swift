@@ -9,10 +9,16 @@ import JessicaCore
 /// ``FoundationModelResponder`` takes over for utterances that don't
 /// hit a registered intent.
 ///
+/// The reply copy lives in the translation catalog
+/// (`Jessica/Resources/L10n.swift`, keys `reply.*` — the Android twin
+/// carries the same keys as `reply_*` in `values{,-pl}/strings.xml`).
+/// Lookups pass the utterance language explicitly because the reply
+/// language is per-utterance, not the device locale.
+///
 /// Keep replies short — one or two sentences. The user hears them
 /// through a speaker; long replies fatigue. If a future intent needs
 /// longer output, add a dedicated tool-call branch instead of bloating
-/// these tables.
+/// the catalog.
 enum ReplyGenerator {
 
     /// `match == nil` → "I don't know that yet" reply in `language`.
@@ -30,14 +36,13 @@ enum ReplyGenerator {
     }
 
     private static func canned(intent: String, language: String) -> String {
-        let table = language.hasPrefix("pl") ? plReplies : enReplies
-        return table[intent]
-            ?? enReplies[intent]
+        L10n.reply(intent: intent, language: language)
+            ?? L10n.reply(intent: intent, language: "en")
             ?? unknown(language)
     }
 
     private static func unknown(_ language: String) -> String {
-        language.hasPrefix("pl") ? plUnknown : enUnknown
+        L10n.replyUnknown(language: language)
     }
 
     private static func timeReply(language: String) -> String {
@@ -49,27 +54,4 @@ enum ReplyGenerator {
             ? "Jest \(now)."
             : "It's \(now)."
     }
-
-    private static let plReplies: [String: String] = [
-        "volume_up": "Robi się głośniej.",
-        "volume_down": "Robi się ciszej.",
-        "language_pin_pl": "Mówimy po polsku.",
-        "language_pin_en": "Switching to English.",
-        "language_unpin": "Słucham uważnie — wybiorę język sama.",
-        "what_can_you_do": "Mogę zmienić głośność, sprawdzić godzinę albo przeczytać wiadomości.",
-        "stop": "Zamilkam.",
-    ]
-
-    private static let enReplies: [String: String] = [
-        "volume_up": "Turning it up.",
-        "volume_down": "Turning it down.",
-        "language_pin_pl": "Mówimy po polsku.",
-        "language_pin_en": "Switching to English.",
-        "language_unpin": "I'll listen and pick the language myself.",
-        "what_can_you_do": "I can change the volume, check the time, or read the news.",
-        "stop": "Going quiet.",
-    ]
-
-    private static let plUnknown = "Nie rozumiem jeszcze tego polecenia. Powiedz inaczej?"
-    private static let enUnknown = "I don't have that one wired up yet. Try again?"
 }

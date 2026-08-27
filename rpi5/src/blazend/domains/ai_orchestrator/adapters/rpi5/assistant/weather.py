@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from blazend.config import load
+from blazend.i18n import msg, table
 
 _FORECAST = (
     "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
@@ -44,34 +45,11 @@ _GEOCODE = "https://geocoding-api.open-meteo.com/v1/search?name={q}&count=1&lang
 # A transport takes a URL and returns parsed JSON (GET only — Open-Meteo).
 Transport = Callable[[str], dict[str, Any]]
 
-# WMO weather-code → short description, Polish-first.
-_WMO_PL: dict[int, str] = {
-    0: "bezchmurnie", 1: "przeważnie bezchmurnie", 2: "częściowe zachmurzenie",
-    3: "pochmurno", 45: "mgła", 48: "marznąca mgła",
-    51: "lekka mżawka", 53: "mżawka", 55: "gęsta mżawka",
-    56: "marznąca mżawka", 57: "gęsta marznąca mżawka",
-    61: "lekki deszcz", 63: "deszcz", 65: "ulewny deszcz",
-    66: "marznący deszcz", 67: "silny marznący deszcz",
-    71: "lekki śnieg", 73: "śnieg", 75: "intensywny śnieg", 77: "śnieg ziarnisty",
-    80: "przelotne opady", 81: "przelotne opady", 82: "gwałtowne ulewy",
-    85: "przelotny śnieg", 86: "intensywny przelotny śnieg",
-    95: "burza", 96: "burza z gradem", 99: "silna burza z gradem",
-}
-_WMO_EN: dict[int, str] = {
-    0: "clear sky", 1: "mainly clear", 2: "partly cloudy", 3: "overcast",
-    45: "fog", 48: "freezing fog", 51: "light drizzle", 53: "drizzle",
-    55: "dense drizzle", 56: "freezing drizzle", 57: "dense freezing drizzle",
-    61: "light rain", 63: "rain", 65: "heavy rain", 66: "freezing rain",
-    67: "heavy freezing rain", 71: "light snow", 73: "snow", 75: "heavy snow",
-    77: "snow grains", 80: "rain showers", 81: "rain showers",
-    82: "violent rain showers", 85: "snow showers", 86: "heavy snow showers",
-    95: "thunderstorm", 96: "thunderstorm with hail", 99: "severe thunderstorm with hail",
-}
-
-
 def describe_code(code: int, lang: str) -> str:
-    table = _WMO_PL if lang == "pl" else _WMO_EN
-    return table.get(code, "nieznane warunki" if lang == "pl" else "unknown conditions")
+    """WMO weather-code → short spoken description, from the message catalog
+    (``tables.weather_codes``; unknown codes → ``weather.unknown_conditions``)."""
+    return table("weather_codes", code, lang,
+                 default=msg("weather.unknown_conditions", lang))
 
 
 class WeatherError(RuntimeError):

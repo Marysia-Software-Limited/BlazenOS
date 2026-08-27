@@ -30,6 +30,7 @@ class JessicaOrchestrator(
 
     private val tts = JessicaTts(context)
     private val asr = JessicaAsr(context)
+    private val replyGenerator = ReplyGenerator(context)
 
     private val _state = MutableStateFlow<JessicaState>(JessicaState.Idle)
     val state: StateFlow<JessicaState> = _state.asStateFlow()
@@ -125,7 +126,7 @@ class JessicaOrchestrator(
         }
 
         val effectiveLanguage = if (isLanguagePinned.value) _language.value else asrLanguage
-        val reply = ReplyGenerator.reply(match, effectiveLanguage)
+        val reply = replyGenerator.reply(match, effectiveLanguage)
         _lastTurn.value = Turn(transcript, reply, effectiveLanguage)
         _state.value = JessicaState.Speaking(reply, effectiveLanguage)
         tts.speak(reply, effectiveLanguage)

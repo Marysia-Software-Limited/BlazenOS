@@ -113,6 +113,13 @@ Jessica's TTS voice + voice memos play through the separate `blazend-audio-out`
 Blind-first feedback about what Jessica is doing. Flags in `audio.yaml
 earcons:`; spoken cue text (PL/EN) in `phrases.yaml cues:`.
 
+Since 2026-08-27 `phrases.yaml` (v2) is the **full message catalog** — beyond
+`cues:` it holds `messages:`, `plurals:`, `tables:` and `prompts:` for every
+fixed user-facing string on the Pi surface, consumed via `blazend.i18n`. See
+`docs/21-TRANSLATIONS.md` for the translator workflow and
+`docs/13-LANGUAGES.md` §4.3 for the schema. Site installs can override any
+single key in `<site>/phrases.yaml` (normal config layering).
+
 - `wake_chime` — instant rising chime on "dżesika": "speak now". Back to `true`
   since 2026-08-04 (the retrained wake model brought false wakes to ~2/h).
 - `processing_tick` (+ `processing_tick_s`, default 5) — a soft low tick every

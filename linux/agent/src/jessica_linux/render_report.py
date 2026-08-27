@@ -16,17 +16,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from jessica_linux.l10n import msg
+
 Item = dict[str, Any]
 
 # Runtime is Polish-only; the EN template is retained at the asset level so the
 # note is re-enableable in English by a config flip (see docs/13-LANGUAGES.md).
-_TMPL = {
-    "pl": ("Audiobooki (literatura): gotowych {done}, w toku {rendering}, "
-           "dziś +{today}, błędów {failed}{fails}."),
-    "en": ("Audiobooks (literatura): {done} done, {rendering} rendering, "
-           "+{today} today, {failed} failed{fails}."),
-}
-_FAILWORD = {"pl": " — nie udało się: ", "en": " — failed: "}
+# Templates live in the node catalog (l10n.py: render.summary / render.failword).
 
 
 def summarize(manifest: dict[str, Item], *, now: datetime, lang: str = "pl",
@@ -51,9 +47,8 @@ def summarize(manifest: dict[str, Item], *, now: datetime, lang: str = "pl",
         titles = [str(v.get("title", "?")) for v in failed][:max_fail_titles]
         extra = len(failed) - len(titles)
         joined = ", ".join(titles) + (f" (+{extra})" if extra > 0 else "")
-        fails = _FAILWORD.get(lang, _FAILWORD["pl"]) + joined
+        fails = msg("render.failword", lang) + joined
 
-    tmpl = _TMPL.get(lang, _TMPL["pl"])
-    text = tmpl.format(done=done, rendering=rendering, today=done_today,
-                       failed=len(failed), fails=fails)
+    text = msg("render.summary", lang, done=done, rendering=rendering,
+               today=done_today, failed=len(failed), fails=fails)
     return f"render-{day}", text

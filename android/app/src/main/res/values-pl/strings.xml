@@ -39,4 +39,15 @@
     <string name="service_listening_text">Stuknij, by otworzyć, albo wypowiedz słowo wybudzające.</string>
     <string name="service_channel_name">Słuchanie</string>
     <string name="service_channel_description">Powiadomienia, gdy działa tryb ciągłego nasłuchu Jessiki.</string>
+
+    <!-- Spoken replies (ReplyGenerator) -->
+    <string name="reply_volume_up">Robi się głośniej.</string>
+    <string name="reply_volume_down">Robi się ciszej.</string>
+    <string name="reply_time_query">Sprawdzę zegar i powiem za chwilę.</string>
+    <string name="reply_language_pin_pl">Mówimy po polsku.</string>
+    <string name="reply_language_pin_en">Switching to English.</string>
+    <string name="reply_language_unpin">Słucham uważnie — wybiorę język sama.</string>
+    <string name="reply_what_can_you_do">Mogę zmienić głośność, sprawdzić godzinę albo przeczytać wiadomości.</string>
+    <string name="reply_stop">Zamilkam.</string>
+    <string name="reply_unknown">Nie rozumiem jeszcze tego polecenia. Powiedz inaczej?</string>
 </resources>

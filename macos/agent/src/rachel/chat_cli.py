@@ -33,7 +33,8 @@ def main(argv: list[str] | None = None) -> int:
         print(chat.ask(" ".join(a.prompt)))
         return 0
 
-    print("Dżesika (Mac) — pisz po polsku. Pusta linia kończy.", file=sys.stderr)
+    from rachel.l10n import msg
+    print(msg("repl.banner"), file=sys.stderr)
     while True:
         try:
             line = input("> ").strip()

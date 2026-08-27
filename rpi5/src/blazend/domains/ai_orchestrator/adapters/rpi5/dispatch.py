@@ -20,6 +20,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from blazend.i18n import msg
+
 if TYPE_CHECKING:
     from blazend.domains.ai_orchestrator.adapters.rpi5.tools import Tools
 
@@ -52,10 +54,6 @@ _LANG_TOKENS: dict[str, str] = {
     "spanish": "es", "hiszpański": "es", "hiszpańsku": "es",
     "hiszpanski": "es", "hiszpansku": "es",
 }
-
-
-def _t(lang: str, pl: str, en: str) -> str:
-    return pl if lang == "pl" else en
 
 
 class SettingsStore:
@@ -147,10 +145,8 @@ class IntentDispatcher:
             # Canned, bilingual spoken response carried by the intent spec
             # (e.g. the capabilities/help intent). Polish-first.
             resp = spec.get("response", {})
-            return DispatchResult(
-                _t(lang, str(resp.get("pl", "")), str(resp.get("en", ""))),
-                lang, "applied", data={"intent": name},
-            )
+            spoken = str(resp.get("pl", "")) if lang == "pl" else str(resp.get("en", ""))
+            return DispatchResult(spoken, lang, "applied", data={"intent": name})
         return DispatchResult(language=lang, action="noop", data={"intent": name})
 
     # -- mutate + confirmation ---------------------------------------------
@@ -182,65 +178,59 @@ class IntentDispatcher:
     def _mutate(self, mut: dict[str, Any], params: dict[str, Any], lang: str) -> DispatchResult:
         key = mut["key"]
         if self._denied(key):
-            return DispatchResult(_t(lang, "Tego nie mogę zmienić głosem.",
-                                     "I can't change that by voice."), lang, "denied", data={"key": key})
+            return DispatchResult(msg("settings.denied", lang), lang, "denied", data={"key": key})
         value = self._resolve_value(mut, params)
         if value is None:
-            return DispatchResult(_t(lang, "Nie zrozumiałam wartości.", "I didn't catch the value."),
-                                  lang, "denied")
+            return DispatchResult(msg("settings.bad_value", lang), lang, "denied")
         pol = self._allow.get(key, {})
         allowed = pol.get("allowed_values")
         if allowed is not None and value not in allowed:
             return DispatchResult(
-                _t(lang, f"Nie mogę ustawić {key} na {value}.", f"I can't set {key} to {value}."),
+                msg("settings.not_allowed", lang, setting=key, value=value),
                 lang, "denied", data={"key": key, "value": value})
         need = _CONFIRMS_NEEDED.get(pol.get("confirm", "never"), 0)
         if need == 0:
             return self._apply(key, value, lang)
         self._pending = {"key": key, "value": value, "remaining": need, "language": lang}
         loud = pol.get("confirm") in ("loud", "double_loud")
-        prompt = _t(lang,
-                    "Na pewno? Powiedz „potwierdzam”." if loud else "Potwierdź: powiedz „potwierdzam”.",
-                    "Are you sure? Say \"confirm\".")
+        prompt = msg("confirm.ask_loud" if loud else "confirm.ask", lang)
         return DispatchResult(prompt, lang, "pending", data={"key": key, "value": value, "remaining": need})
 
     def _confirm(self, lang: str) -> DispatchResult:
         if not self._pending:
-            return DispatchResult(_t(lang, "Nie ma nic do potwierdzenia.", "Nothing to confirm."), lang, "noop")
+            return DispatchResult(msg("confirm.nothing", lang), lang, "noop")
         self._pending["remaining"] -= 1
         if self._pending["remaining"] > 0:
-            return DispatchResult(_t(lang, "Potwierdź jeszcze raz.", "Confirm once more."), lang, "pending")
+            return DispatchResult(msg("confirm.again", lang), lang, "pending")
         key, value, plang = self._pending["key"], self._pending["value"], self._pending["language"]
         self._pending = None
         return self._apply(key, value, plang, confirmed=True)
 
     def _cancel(self, lang: str) -> DispatchResult:
         if not self._pending:
-            return DispatchResult(_t(lang, "Nie ma nic do anulowania.", "Nothing to cancel."), lang, "noop")
+            return DispatchResult(msg("confirm.nothing_to_cancel", lang), lang, "noop")
         self._pending = None
-        return DispatchResult(_t(lang, "Anulowane.", "Cancelled."), lang, "cancelled")
+        return DispatchResult(msg("confirm.cancelled", lang), lang, "cancelled")
 
     # -- language pin ------------------------------------------------------
     def _switch_language(self, params: dict[str, Any], lang: str) -> DispatchResult:
         token = str(params.get("lang", "")).strip().lower()
         code = _LANG_TOKENS.get(token)
         if code is None:
-            return DispatchResult(
-                _t(lang, "Nie zrozumiałam, na jaki język.", "I didn't catch which language."),
-                lang, "denied")
+            return DispatchResult(msg("lang.which", lang), lang, "denied")
         if code not in self._supported:
             return DispatchResult(
-                _t(lang, "Mówię tylko po polsku i angielsku.", "I only speak Polish and English."),
+                msg("lang.only_pl_en", lang),
                 lang, "denied", data={"requested": code})
         self._settings.set("languages.pinned", code)
         # Confirm in the *target* language so the user hears the switch land.
-        speak = _t(code, "Od teraz mówię po polsku.", "From now on I'll speak English.")
+        speak = msg("lang.switched", code)
         return DispatchResult(speak, code, "applied", data={"key": "languages.pinned", "value": code})
 
     def _unpin_language(self, lang: str) -> DispatchResult:
         self._settings.set("languages.pinned", None)
         return DispatchResult(
-            _t(lang, "Słucham automatycznie.", "I'll auto-detect the language now."),
+            msg("lang.auto", lang),
             lang, "applied", data={"key": "languages.pinned", "value": None})
 
     def _apply(self, key: str, value: Any, lang: str, *, confirmed: bool = False) -> DispatchResult:
@@ -257,15 +247,14 @@ class IntentDispatcher:
     @staticmethod
     def _confirmation_phrase(key: str, value: Any, lang: str) -> str:
         if key == "audio.volume":
-            return _t(lang, f"Głośność: {value}%.", f"Volume: {value}%.")
+            return msg("settings.volume", lang, value=value)
         if key == "system.power.reboot":
-            return _t(lang, "Uruchamiam ponownie.", "Rebooting.")
+            return msg("power.reboot", lang)
         if key == "system.power.shutdown":
-            return _t(lang, "Wyłączam się.", "Shutting down.")
+            return msg("power.shutdown", lang)
         if key == "ssh.enabled":
-            return _t(lang, f"SSH: {'włączone' if value else 'wyłączone'}.",
-                      f"SSH: {'enabled' if value else 'disabled'}.")
-        return _t(lang, f"Ustawione: {key} = {value}.", f"Set {key} = {value}.")
+            return msg("settings.ssh_on" if value else "settings.ssh_off", lang)
+        return msg("settings.set_generic", lang, setting=key, value=value)
 
     # -- tools -------------------------------------------------------------
     def _tool(
@@ -280,13 +269,15 @@ class IntentDispatcher:
             # ("dwudziesta trzecia szesnaście") instead of mangling "23:16".
             from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.plnum import time_words
 
-            pl = f"Jest godzina {time_words(now.hour, now.minute)}."
-            return DispatchResult(_t(lang, pl, f"It's {now:%H:%M}."), lang, "tool")
+            spoken_time = (time_words(now.hour, now.minute) if lang == "pl"
+                           else f"{now:%H:%M}")
+            return DispatchResult(msg("time.now_clock", lang, time=spoken_time), lang, "tool")
         if tool == "clock.date":
-            return DispatchResult(_t(lang, f"Dziś jest {now:%d.%m.%Y}.", f"Today is {now:%Y-%m-%d}."),
+            spoken_date = f"{now:%d.%m.%Y}" if lang == "pl" else f"{now:%Y-%m-%d}"
+            return DispatchResult(msg("date.today_numeric", lang, date=spoken_date),
                                   lang, "tool")
         if tool == "languages.list":
-            return DispatchResult(_t(lang, "Mówię po polsku i angielsku.", "I speak Polish and English."),
+            return DispatchResult(msg("lang.list", lang),
                                   lang, "tool", data={"languages": list(self._supported)})
-        return DispatchResult(_t(lang, "Jeszcze tego nie potrafię.", "I can't do that yet."),
+        return DispatchResult(msg("error.unimplemented", lang),
                               lang, "tool", data={"tool": tool, "unimplemented": True})

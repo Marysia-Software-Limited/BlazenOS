@@ -42,8 +42,17 @@ from blazend.domains.voice_input.adapters.rpi5.audio import RingReader
 log = logging.getLogger("blazend.domains.voice_input.adapters.rpi5.voice")
 
 # Polish-first acknowledgement spoken the moment the wake fires, so the user
-# knows to start their command. Bilingual by design (PL leads, EN co-equal).
-ACK_TEXT = {"pl": "Słucham?", "en": "Yes?"}
+# knows to start their command. Sourced from the message catalog
+# (`cues.listening`) — the same string the supervisor and phrases.yaml carry;
+# resolved lazily so the catalog governs, with the historical literals as the
+# no-catalog fallback (this runner also runs in stripped-down dev harnesses).
+def _ack_text(lang: str) -> str:
+    from blazend.i18n import msg
+
+    out = msg("cues.listening", lang)
+    if out == "cues.listening":  # catalog unavailable → historical defaults
+        return {"pl": "Słucham?", "en": "Yes?"}.get(lang, "Słucham?")
+    return out
 
 
 # -- injectable seams -------------------------------------------------------
@@ -341,7 +350,7 @@ class PiperSink:
             self._ack_wav = tempfile.mktemp(suffix=".wav")
             subprocess.run(
                 [self._piper, "-m", self._voice(self._ack_lang), "-f", self._ack_wav],
-                input=ACK_TEXT[self._ack_lang].encode(), check=True,
+                input=_ack_text(self._ack_lang).encode(), check=True,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
         self.play_wav(self._ack_wav)

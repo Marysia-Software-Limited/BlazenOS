@@ -7,7 +7,7 @@ level. Asserts that:
   1. system.yaml enables Polish (Polish leads; EN is deferred at runtime).
   2. ASR default is multilingual (not the `.en`-only model), language pinned PL.
   3. TTS has a default voice for both `en` and `pl` (EN asset retained).
-  4. wake-word config lists both `hey_blazen_en` and `hey_blazen_pl`,
+  4. wake-word config lists both `jessica_en` and `jessica_pl`,
      and both are in the `active` list.
   5. Every fast-path intent that has user-facing voice triggers carries
      both `en:` and `pl:` lists (each non-empty).

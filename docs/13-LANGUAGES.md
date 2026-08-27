@@ -217,7 +217,21 @@ auto_detect:
   switch_threshold: 0.7
 ```
 
-### 4.3 Per-language defaults (in each component config)
+### 4.3 The message catalog (`configs/phrases.yaml`) — 2026-08-27
+
+**Every fixed user-facing string on the Pi surface lives in ONE catalog**,
+`configs/phrases.yaml` (v2): `cues:` (pre-rendered state cues), `messages:`
+(dotted keys → `{pl, en}` values with `{placeholder}` slots), `plurals:`
+(per-category forms — PL one/few/many, EN one/other), `tables:` (enumerated
+lookups: weather codes, day/month names), `prompts:` (LLM templates that
+steer the reply language). Runtime API: `blazend.i18n` (`msg`/`plural`/
+`table`). The five historical `_t(lang, pl, en)` helpers are gone.
+
+Translator workflow, per-surface catalog map (Android/iOS/rachel), and the
+hard rules (edit values only; recognition data is NOT translatable) live in
+[`21-TRANSLATIONS.md`](21-TRANSLATIONS.md).
+
+### 4.4 Per-language defaults (in each component config)
 
 The configs already carry `allowed:` lists. The bilingual set is:
 
@@ -267,12 +281,17 @@ Each scenario YAML has a `language:` key in metadata; the runner uses it
 to pick the right Piper voice when synthesising user audio (we want the
 test mic to "sound" Polish for the PL scenarios, not Anglo-Polish).
 
-A Tier 0 invariant test (`rpi5/tests/unit/test_bilingual_coverage.py`) asserts:
+Two Tier 0 invariant tests enforce the asset parity:
 
-1. Every fast-path intent has both `en:` and `pl:` triggers.
-2. Every TTS confirmation phrase exists in EN and PL.
-3. Both wake-word entries are present and `allowed`.
-4. At least one PL scenario exists.
+- `rpi5/tests/unit/test_bilingual_coverage.py` — every fast-path intent has
+  both `en:` and `pl:` triggers; TTS voices exist for both languages; both
+  wake-word entries are present and `allowed`; PL + mixed scenarios exist.
+- `rpi5/tests/unit/test_i18n_catalog.py` (2026-08-27) — every key in the
+  `configs/phrases.yaml` message catalog carries BOTH `pl` and `en`,
+  placeholders match across languages, Polish leads each entry, and no
+  recognition regex leaks into the translator-facing catalog. (This is the
+  "every phrase exists in EN and PL" check that this section used to claim
+  before the catalog existed.)
 
 ---
 

@@ -24,6 +24,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from jessica_linux.l10n import msg
+
 _CALIBRE = Path(os.environ.get("CALIBRE_LIBRARY", str(Path.home() / "calibre")))
 # Where rendered audiobooks + the shared catalog live (served to other nodes).
 _LIBRARY = Path(os.environ.get("BLAZEN_AUDIOBOOKS_DIR", str(Path.home() / "audiobooks")))
@@ -243,7 +245,7 @@ def render_to_files(book: Book, *, voice: Any, library: Path | None = None,
     bdir.mkdir(parents=True, exist_ok=True)
     chapters = epub_chapters(book.epub)
     total = len(chapters)
-    log(f"„{book.title}” — {book.author}: {total} rozdziałów → {bdir}")
+    log(msg("render.book_header", title=book.title, author=book.author, total=total, dir=bdir))
     out: list[str] = []
     for ci, chapter in enumerate(chapters):
         mp3 = bdir / f"{ci + 1:03d}.mp3"
@@ -260,13 +262,13 @@ def render_to_files(book: Book, *, voice: Any, library: Path | None = None,
             for wf in wavs:
                 wf.unlink(missing_ok=True)
             out.append(str(mp3))
-        log(f"  rozdział {ci + 1}/{total} → {mp3.name}")
+        log(msg("render.chapter_file", i=ci + 1, total=total, name=mp3.name))
         upsert_catalog(book, out, library=lib)  # keep the catalog current as it renders
         if progress is not None:
             progress.save(book.slug, chapter=ci, offset_s=0.0, title=book.title,
                           updated=datetime.now(UTC).isoformat())
     upsert_catalog(book, out, library=lib)
-    log(f"gotowe: {len(out)} rozdziałów w {bdir}")
+    log(msg("render.done", n=len(out), dir=bdir))
     return out
 
 
@@ -277,7 +279,7 @@ def play_files(chapters: list[str], *, voice: Any, device: str | None = None,
     per chapter (resume). Returns the number of chapters played."""
     total = len(chapters)
     for i in range(start, total):
-        log(f"  rozdział {i + 1}/{total}")
+        log(msg("render.chapter", i=i + 1, total=total))
         voice.play_file(chapters[i], device=device)
         if progress is not None:
             progress.save(slug, chapter=i, offset_s=0.0, title=title,

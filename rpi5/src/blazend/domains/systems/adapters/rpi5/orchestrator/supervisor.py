@@ -36,6 +36,7 @@ from blazend.domains.systems.adapters.rpi5.recovery import for_level as recovery
 from blazend.domains.systems.adapters.rpi5.state import StateWriter
 from blazend.domains.voice_output.adapters.rpi5.radio_control import RadioControl
 from blazend.events import Envelope, system_event
+from blazend.i18n import msg, table
 from blazend.ipc import Publisher, Subscriber, runtime_dir
 
 log = logging.getLogger("blazend.domains.systems.adapters.rpi5.orchestrator")
@@ -476,8 +477,8 @@ class Orchestrator:
         """Startup self-introduction (Polish-first). Spoken once when the
         pipeline comes up so a screenless user hears the system is alive.
         Configurable via system.yaml: startup_greeting.{enabled,delay_s,pl,en}."""
-        pl = "Cześć, tu Jessica. Jestem gotowa do pomocy."
-        en = "Hi, I'm Jessica. I'm ready to help."
+        pl = msg("greeting.startup", "pl")
+        en = msg("greeting.startup", "en")
         enabled, delay = True, 5.0
         try:
             g = load_config("system").data.get("startup_greeting", {}) or {}
@@ -720,11 +721,10 @@ class Orchestrator:
                 if self._voice_train_retries > 2:
                     self._voice_train_round = 0
                     self._voice_train_retries = 0
-                    await self._speak(
-                        "Przerywam naukę głosu. Powiedz „naucz się mojego głosu”, "
-                        "żeby spróbować od nowa.", self._memo_lang or "pl")
+                    await self._speak(msg("train.abort", self._memo_lang or "pl"),
+                                      self._memo_lang or "pl")
                     return
-                await self._speak("Nie usłyszałam. Powiedz jeszcze raz: dżesika.",
+                await self._speak(msg("train.retry_sample", self._memo_lang or "pl"),
                                   self._memo_lang or "pl")
                 await self._wait_speech_done()
                 self._open_memo_window()
@@ -737,23 +737,15 @@ class Orchestrator:
                 if self._voice_train_retries > 2:
                     self._voice_train_stage = None
                     self._voice_train_retries = 0
-                    await self._speak(
-                        "Nie usłyszałam. Zostanę przy tym, jak zwracałam się "
-                        "do tej pory." if lang != "en"
-                        else "I didn't hear you. I'll keep addressing you as "
-                             "before.", lang)
+                    await self._speak(msg("train.name_empty_keep", lang), lang)
                     return
-                await self._speak(
-                    "Nie usłyszałam. Jak mam się do ciebie zwracać?"
-                    if lang != "en" else "I didn't hear you. How should I "
-                                         "address you?", lang)
+                await self._speak(msg("train.name_empty_retry", lang), lang)
                 await self._wait_speech_done()
                 self._open_memo_window()
                 return
             self._memo_stage = None  # abandon the title/content dialog
             self._memo_title = ""
-            await self._speak("Nie nagrałam nic. Powiedz „nagraj notatkę”, "
-                              "żeby spróbować jeszcze raz.")
+            await self._speak(msg("memo.retry_empty", self._default_lang))
         if env.topic == "wake.detected":
             now = asyncio.get_running_loop().time()
             # Refractory: ignore wakes that arrive too soon after the last handled
@@ -830,7 +822,7 @@ class Orchestrator:
                 # the answer the brain may still be generating.
                 self._cancel_heartbeat()
                 self._drop_next_reply = True
-                await self._speak("Anuluję.")
+                await self._speak(msg("misc.cancel", self._default_lang))
                 patch["last_command"] = {"intent": env.data.get("intent"),
                                          "result": "cancelled"}
                 await self._state.update(patch)
@@ -1199,7 +1191,7 @@ class Orchestrator:
                     self._awaiting_attention = False
                     self._book_paused_for_attention = False
                     self._book = None  # position already saved at the pause
-                    await self._speak("Zatrzymuję książkę. Powiedz „czytaj dalej”, gdy wrócisz.")
+                    await self._speak(msg("book.stopped_attention", self._default_lang))
                 continue
             if self._book_paused_for_attention:
                 continue
@@ -1217,7 +1209,7 @@ class Orchestrator:
                     self._book_stopping = True           # suppress auto-advance while paused
                     await asyncio.to_thread(self._radio.stop)
                     self._speaker_busy.unlink(missing_ok=True)  # mic un-gated for the reply
-                    await self._speak("Czy jeszcze słuchasz?")
+                    await self._speak(msg("book.attention_check", self._default_lang))
                     (self._runtime_dir / "activate").touch()  # open a listen window
                     self._awake_until = now + self._attention_window_s  # accept the reply
                 continue
@@ -1232,31 +1224,29 @@ class Orchestrator:
                 if done:  # ran off the end of the last chapter/track → finished
                     self._last_book = None  # finished → nothing to resume
                     if book.get("kind", "book") == "album":
-                        await self._speak("Koniec albumu.")
+                        await self._speak(msg("album.finished", self._default_lang))
                     else:
                         self._book_progress.clear(str(book.get("slug", "")))
-                        await self._speak("Skończyłam książkę.")
+                        await self._speak(msg("book.finished", self._default_lang))
                 self._book = None
 
     def _describe_playback(self, lang: str) -> str:
         """One spoken sentence about what's on the speaker right now."""
-        def t(pl: str, en: str) -> str:
-            return pl if lang != "en" else en
         if not self._radio.playing:
-            return t("Nic teraz nie gra.", "Nothing is playing right now.")
+            return msg("playback.nothing", lang)
         book = self._book
         if book is not None:
             idx, n = int(book["index"]) + 1, len(book["chapters"])
             if book.get("kind") == "album":
                 track = _queue_label(book, int(book["index"]))
-                return t(f"Gram „{track}” z albumu {book['name']} — utwór {idx} z {n}.",
-                         f"Playing “{track}” from the album {book['name']} — track {idx} of {n}.")
-            return t(f"Czytam „{book['name']}” — rozdział {idx} z {n}.",
-                     f"Reading “{book['name']}” — chapter {idx} of {n}.")
+                return msg("playback.album_track", lang,
+                           track=track, album=book["name"], idx=idx, n=n)
+            return msg("playback.book_chapter", lang,
+                       book=book["name"], idx=idx, n=n)
         name = str(self._last_source_name or "")
         if name:
-            return t(f"Gra {name}.", f"Playing {name}.")
-        return t("Gra radio.", "The radio is playing.")
+            return msg("playback.source", lang, name=name)
+        return msg("playback.radio", lang)
 
     async def _wait_speech_done(self) -> None:
         """Wait until the just-published spoken reply has actually played out:
@@ -1311,11 +1301,7 @@ class Orchestrator:
         self._voice_train_stage = None  # a stale name stage never survives a restart
         self._voice_train_retries = 0
         self._memo_lang = lang
-        await self._speak(
-            "Świetnie, nauczę się twojego głosu. Powiedz teraz wyraźnie: dżesika. "
-            "Powtórzymy to pięć razy." if lang != "en"
-            else "Great, I'll learn your voice. Now say clearly: Jessica. "
-                 "We'll repeat this five times.", lang)
+        await self._speak(msg("train.start", lang), lang)
         await self._wait_speech_done()
         self._open_memo_window()
 
@@ -1342,21 +1328,16 @@ class Orchestrator:
             # (user request 2026-08-27): one more captured answer, stored in
             # the profile ({name} in the greeting; never hardcoded).
             self._voice_train_stage = "name"
-            await self._speak(
-                "Dziękuję! Zapamiętałam próbki twojego głosu. A jak mam się "
-                "do ciebie zwracać?" if lang != "en"
-                else "Thank you! I saved your voice samples. And how should "
-                     "I address you?", lang)
+            await self._speak(msg("train.thanks_ask_address", lang), lang)
             await self._wait_speech_done()
             self._open_memo_window()
             return
         self._voice_train_round = n + 1
         left = self._VOICE_TRAIN_ROUNDS - n
-        left_pl = {4: "jeszcze cztery razy", 3: "jeszcze trzy razy",
-                   2: "jeszcze dwa razy", 1: "jeszcze raz"}[left]
         await self._speak(
-            f"Dobrze, {left_pl}: dżesika." if lang != "en"
-            else f"Good, {left} more time{'s' if left > 1 else ''}: Jessica.", lang)
+            msg("train.next_round", lang,
+                left=table("train_rounds_left", left, lang, default=str(left))),
+            lang)
         await self._wait_speech_done()
         self._open_memo_window()
 
@@ -1383,17 +1364,9 @@ class Orchestrator:
             if self._voice_train_retries > 1:
                 self._voice_train_stage = None
                 self._voice_train_retries = 0
-                await self._speak(
-                    "Nie zrozumiałam. Zostanę przy tym, jak zwracałam się "
-                    "do tej pory." if lang != "en"
-                    else "I didn't catch that. I'll keep addressing you as "
-                         "before.", lang)
+                await self._speak(msg("train.name_keep", lang), lang)
                 return
-            await self._speak(
-                "Nie zrozumiałam. Powiedz samo imię albo formę, na przykład: "
-                "mów mi Marku." if lang != "en"
-                else "I didn't catch that. Say just the name, for example: "
-                     "call me Ben.", lang)
+            await self._speak(msg("train.name_retry", lang), lang)
             await self._wait_speech_done()
             self._open_memo_window()
             return
@@ -1405,11 +1378,7 @@ class Orchestrator:
         except OSError as exc:
             log.warning("voice-training: profile name store failed: %s", exc)
         log.info("voice-training: owner address stored (%r)", name)
-        await self._speak(
-            f"Miło mi, {name}! Tak będę się do ciebie zwracać. Twój głos "
-            "też już znam." if lang != "en"
-            else f"Nice to meet you, {name}! That's how I'll address you. "
-                 "And I know your voice now.", lang)
+        await self._speak(msg("train.name_saved", lang, name=name), lang)
 
     async def _start_memo_capture(self, lang: str) -> None:
         """"Nagraj notatkę" — a two-step Polish dialog (user request
@@ -1424,9 +1393,7 @@ class Orchestrator:
         self._memo_stage = "title"
         self._memo_title = ""
         self._memo_lang = lang
-        await self._speak(
-            "Jak zatytułować notatkę?" if lang != "en"
-            else "What should the note be called?", lang)
+        await self._speak(msg("memo.ask_title", lang), lang)
         await self._wait_speech_done()
         self._open_memo_window()
 
@@ -1484,11 +1451,8 @@ class Orchestrator:
                 pass
             self._memo_title = " ".join(transcript.split()[:8]).strip(" ,.?!")
             self._memo_stage = "content"
-            prompt = ("Podyktuj treść." if self._memo_title
-                      else "Nie usłyszałam tytułu — podyktuj samą treść.")
-            if lang == "en":
-                prompt = ("Now dictate the content." if self._memo_title
-                          else "I didn't catch a title — dictate the content.")
+            prompt = msg("memo.ask_content" if self._memo_title
+                         else "memo.ask_content_no_title", lang)
             await self._speak(prompt, lang)
             await self._wait_speech_done()
             self._open_memo_window()
@@ -1508,24 +1472,19 @@ class Orchestrator:
             return
         spoken_label = title or " ".join(transcript.split()[:6])
         if spoken_label:
-            msg = (f"Nagrałam notatkę: {spoken_label}." if lang != "en"
-                   else f"Recorded your note: {spoken_label}.")
+            confirmation = msg("memo.saved", lang, label=spoken_label)
         else:
-            msg = ("Nagrałam notatkę, ale nie rozpoznałam słów."
-                   if lang != "en" else "Recorded the note, but caught no words.")
-        await self._speak(msg, lang)
+            confirmation = msg("memo.saved_no_words", lang)
+        await self._speak(confirmation, lang)
 
     async def _shuffle_queue(self, lang: str) -> None:
         """"Przetasuj" — reshuffle the REST of the playing queue; the current
         track finishes normally (it moves to slot 0 of the reordered queue).
         Confirmation names the upcoming track — audible proof the shuffle
         happened, which a silent reorder wouldn't give a blind user."""
-        def t(pl: str, en: str) -> str:
-            return pl if lang != "en" else en
         book = self._book
         if not self._radio.playing or book is None or book.get("kind") != "album":
-            await self._speak_over_playback(
-                t("Nie gram teraz kolejki utworów.", "No track queue is playing."), lang)
+            await self._speak_over_playback(msg("shuffle.none", lang), lang)
             return
         chapters = list(book["chapters"])
         idx = int(book["index"])
@@ -1539,12 +1498,10 @@ class Orchestrator:
         book["labels"] = [labels[idx], *[label for _, label in pairs]]
         book["index"] = 0
         if pairs:
-            nxt = _queue_label(book, 1)
-            msg = t(f"Przetasowałam. Następny będzie „{nxt}”.",
-                    f"Shuffled. Next up: “{nxt}”.")
+            confirmation = msg("shuffle.done_next", lang, next=_queue_label(book, 1))
         else:
-            msg = t("Przetasowałam.", "Shuffled.")
-        await self._speak_over_playback(msg, lang)
+            confirmation = msg("shuffle.done", lang)
+        await self._speak_over_playback(confirmation, lang)
 
     def _album_nav(self, delta: int) -> Envelope:
         """Jump ±1 track in the now-playing album queue (or say why we can't).
@@ -1559,9 +1516,9 @@ class Orchestrator:
         chapters = list(book["chapters"])
         idx = int(book["index"]) + delta
         if idx < 0:
-            return spoken("To pierwszy utwór albumu.")
+            return spoken(msg("nav.first_track", "pl"))
         if idx >= len(chapters):
-            return spoken("To ostatni utwór albumu.")
+            return spoken(msg("nav.last_track", "pl"))
         return Envelope(topic="brain.reply", source="blazend-orchestrator",
                         data={"action": "music_play", "payload": {
                             "path": chapters[idx], "name": str(book["name"]),
@@ -1575,13 +1532,13 @@ class Orchestrator:
                             data={"language": "pl", "text": msg, "chunk": msg,
                                   "final_": True, "action": "command.chapter"})
         if self._book is None or self._book.get("kind", "book") == "album":
-            return spoken("Nie czytam teraz książki.")
+            return spoken(msg("nav.no_book", "pl"))
         chapters = list(self._book["chapters"])
         idx = int(self._book["index"]) + delta
         if idx < 0:
-            return spoken("To pierwszy rozdział.")
+            return spoken(msg("nav.first_chapter", "pl"))
         if idx >= len(chapters):
-            return spoken("To ostatni rozdział.")
+            return spoken(msg("nav.last_chapter", "pl"))
         return Envelope(topic="brain.reply", source="blazend-orchestrator",
                         data={"action": "music_play", "payload": {
                             "path": chapters[idx], "name": str(self._book["name"]),

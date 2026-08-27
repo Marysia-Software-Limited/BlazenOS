@@ -12,10 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from blazend.domains.systems.adapters.rpi5.led import GREEN, RED, YELLOW
-
-
-def _t(lang: str, pl: str, en: str) -> str:
-    return pl if lang == "pl" else en
+from blazend.i18n import msg
 
 
 @dataclass
@@ -31,20 +28,12 @@ class RecoveryAnnouncement:
 def for_level(level: str, lang: str = "pl") -> RecoveryAnnouncement:
     """LED colour + bilingual spoken cue for a `health.status` level."""
     if level == "degraded":
-        return RecoveryAnnouncement(
-            "degraded", YELLOW,
-            _t(lang, "Coś się zacięło, już wracam.", "I'm stuck — one moment."))
+        return RecoveryAnnouncement("degraded", YELLOW, msg("health.degraded", lang))
     if level == "recovery":
-        return RecoveryAnnouncement(
-            "recovery", RED,
-            _t(lang, "Tryb awaryjny. Połączenie SSH jest dostępne.",
-                     "Recovery mode. SSH is available."))
+        return RecoveryAnnouncement("recovery", RED, msg("health.recovery", lang))
     if level == "critical":
         return RecoveryAnnouncement(
-            "critical", RED,
-            _t(lang, "Błąd krytyczny. Uruchamiam tryb ratunkowy.",
-                     "Critical error. Booting recovery mode."),
-            recovery_image=True)
+            "critical", RED, msg("health.critical", lang), recovery_image=True)
     return RecoveryAnnouncement("ok", GREEN, "")
 
 

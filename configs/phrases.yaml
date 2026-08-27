@@ -1,12 +1,21 @@
-# /etc/blazen/phrases.yaml — Jessica's fixed spoken phrases (state cues +
-# confirmations). These are the strings pre-rendered to the XTTS voice cache
-# (Phase 2, so they play in her one voice offline) and spoken by the runtime TTS.
-# Polish-first, English co-equal (PL + EN parity — see docs/13-LANGUAGES.md).
+# /etc/blazen/phrases.yaml — Jessica's MESSAGE CATALOG: every fixed spoken /
+# displayed string on the Pi surface, keyed by stable id, with per-language
+# values. THE file external translators (or agents) edit — see
+# docs/21-TRANSLATIONS.md for the workflow and the hard rules:
 #
-# State cues answer the blind-user question "what is Jessica doing?": a beep on
-# wake (generated, not here), and these spoken cues for the rest.
+#   * edit only the language VALUES ("pl:", "en:") — never keys or {placeholders};
+#   * every key carries BOTH pl and en (asset parity, docs/13-LANGUAGES.md;
+#     runtime is Polish-only, EN stays a config flip away);
+#   * Polish leads (listed first) in every entry;
+#   * recognition data (intent trigger regexes, radio aliases) is NOT here and
+#     must never be — it lives with its matchers.
+#
+# The `cues:` group is pre-rendered to the XTTS voice cache (render-voicebank);
+# the cache key hashes the TEXT, so rewording a cue invalidates its recording.
+# Enforced by rpi5/tests/unit/test_i18n_catalog.py (parity, placeholders).
+# Runtime API: rpi5/src/blazend/i18n.py (msg / plural / table).
 
-version: 1
+version: 2
 
 # Verbose-state decision (user, 2026-08-21): Jessica narrates what she's doing
 # in full Polish sentences instead of bare one-worders — the user hears her
@@ -34,3 +43,811 @@ cues:
   still_searching:
     pl: "Chwileczkę, ciągle szukam."
     en: "One moment, still searching."
+
+# ---------------------------------------------------------------------------
+# messages: flat dotted keys, grouped by domain prefix. Extracted VERBATIM
+# from the code on 2026-08-27 (wording unchanged — unit/scenario assertions
+# and the voice cache pin the output). Keys are referenced from Python via
+# blazend.i18n.msg("<key>", lang, **params).
+messages:
+  # -- orchestrator: startup + misc ----------------------------------------
+  greeting.startup:
+    pl: "Cześć, tu Jessica. Jestem gotowa do pomocy."
+    en: "Hi, I'm Jessica. I'm ready to help."
+  misc.cancel:
+    pl: "Anuluję."
+    en: "Cancelling."
+
+  # -- voice training (wake-word samples + the address finale) -------------
+  train.start:
+    pl: "Świetnie, nauczę się twojego głosu. Powiedz teraz wyraźnie: dżesika. Powtórzymy to pięć razy."
+    en: "Great, I'll learn your voice. Now say clearly: Jessica. We'll repeat this five times."
+  train.next_round:
+    pl: "Dobrze, {left}: dżesika."
+    en: "Good, {left}: Jessica."
+  train.retry_sample:
+    pl: "Nie usłyszałam. Powiedz jeszcze raz: dżesika."
+    en: "I didn't hear you. Say it once more: Jessica."
+  train.abort:
+    pl: "Przerywam naukę głosu. Powiedz „naucz się mojego głosu”, żeby spróbować od nowa."
+    en: "I'm stopping the voice training. Say \"learn my voice\" to start over."
+  train.thanks_ask_address:
+    pl: "Dziękuję! Zapamiętałam próbki twojego głosu. A jak mam się do ciebie zwracać?"
+    en: "Thank you! I saved your voice samples. And how should I address you?"
+  train.name_saved:
+    pl: "Miło mi, {name}! Tak będę się do ciebie zwracać. Twój głos też już znam."
+    en: "Nice to meet you, {name}! That's how I'll address you. And I know your voice now."
+  train.name_retry:
+    pl: "Nie zrozumiałam. Powiedz samo imię albo formę, na przykład: mów mi Marku."
+    en: "I didn't catch that. Say just the name, for example: call me Ben."
+  train.name_keep:
+    pl: "Nie zrozumiałam. Zostanę przy tym, jak zwracałam się do tej pory."
+    en: "I didn't catch that. I'll keep addressing you as before."
+  train.name_empty_retry:
+    pl: "Nie usłyszałam. Jak mam się do ciebie zwracać?"
+    en: "I didn't hear you. How should I address you?"
+  train.name_empty_keep:
+    pl: "Nie usłyszałam. Zostanę przy tym, jak zwracałam się do tej pory."
+    en: "I didn't hear you. I'll keep addressing you as before."
+
+  # -- voice memos (title → content dictation) -----------------------------
+  memo.ask_title:
+    pl: "Jak zatytułować notatkę?"
+    en: "What should the note be called?"
+  memo.ask_content:
+    pl: "Podyktuj treść."
+    en: "Now dictate the content."
+  memo.ask_content_no_title:
+    pl: "Nie usłyszałam tytułu — podyktuj samą treść."
+    en: "I didn't catch a title — dictate the content."
+  memo.saved:
+    pl: "Nagrałam notatkę: {label}."
+    en: "Recorded your note: {label}."
+  memo.saved_no_words:
+    pl: "Nagrałam notatkę, ale nie rozpoznałam słów."
+    en: "Recorded the note, but caught no words."
+  memo.retry_empty:
+    pl: "Nie nagrałam nic. Powiedz „nagraj notatkę”, żeby spróbować jeszcze raz."
+    en: "I didn't record anything. Say \"record a note\" to try again."
+
+  # -- playback narration (radio / albums / audiobooks) --------------------
+  playback.nothing:
+    pl: "Nic teraz nie gra."
+    en: "Nothing is playing right now."
+  playback.album_track:
+    pl: "Gram „{track}” z albumu {album} — utwór {idx} z {n}."
+    en: "Playing “{track}” from the album {album} — track {idx} of {n}."
+  playback.book_chapter:
+    pl: "Czytam „{book}” — rozdział {idx} z {n}."
+    en: "Reading “{book}” — chapter {idx} of {n}."
+  playback.source:
+    pl: "Gra {name}."
+    en: "Playing {name}."
+  playback.radio:
+    pl: "Gra radio."
+    en: "The radio is playing."
+  album.finished:
+    pl: "Koniec albumu."
+    en: "End of the album."
+  book.finished:
+    pl: "Skończyłam książkę."
+    en: "I've finished the book."
+  book.stopped_attention:
+    pl: "Zatrzymuję książkę. Powiedz „czytaj dalej”, gdy wrócisz."
+    en: "I'm stopping the book. Say \"keep reading\" when you're back."
+  book.attention_check:
+    pl: "Czy jeszcze słuchasz?"
+    en: "Are you still listening?"
+  shuffle.none:
+    pl: "Nie gram teraz kolejki utworów."
+    en: "No track queue is playing."
+  shuffle.done_next:
+    pl: "Przetasowałam. Następny będzie „{next}”."
+    en: "Shuffled. Next up: “{next}”."
+  shuffle.done:
+    pl: "Przetasowałam."
+    en: "Shuffled."
+  nav.first_track:
+    pl: "To pierwszy utwór albumu."
+    en: "That's the first track of the album."
+  nav.last_track:
+    pl: "To ostatni utwór albumu."
+    en: "That's the last track of the album."
+  nav.no_book:
+    pl: "Nie czytam teraz książki."
+    en: "I'm not reading a book right now."
+  nav.first_chapter:
+    pl: "To pierwszy rozdział."
+    en: "That's the first chapter."
+  nav.last_chapter:
+    pl: "To ostatni rozdział."
+    en: "That's the last chapter."
+
+  # -- LLM fallback (inference.py) -----------------------------------------
+  llm.no_backend:
+    pl: "Mogę rozmawiać swobodnie po ustawieniu lokalnego modelu albo klucza API."
+    en: "I can chat freely once a local model or an API key is set."
+
+  # -- watchdog / recovery announcements (recovery.py; scenario 05 pins the
+  # Polish fragments "zacięło" / "tryb awaryjny" / "błąd krytyczny") ---------
+  health.degraded:
+    pl: "Coś się zacięło, już wracam."
+    en: "I'm stuck — one moment."
+  health.recovery:
+    pl: "Tryb awaryjny. Połączenie SSH jest dostępne."
+    en: "Recovery mode. SSH is available."
+  health.critical:
+    pl: "Błąd krytyczny. Uruchamiam tryb ratunkowy."
+    en: "Critical error. Booting recovery mode."
+
+  # -- tools: dispatch ------------------------------------------------------
+  error.unknown_tool:
+    pl: "Nie znam tego narzędzia."
+    en: "I don't know that tool."
+
+  # -- tools: memory/profile ------------------------------------------------
+  memory.none_noted:
+    pl: "Nic jeszcze nie zapisałam."
+    en: "I haven't noted anything yet."
+  memory.recall:
+    pl: "Pamiętam: {items}."
+    en: "I remember: {items}."
+  memory.search_what:
+    pl: "O czym mam poszukać?"
+    en: "Search for what?"
+  memory.search_none:
+    pl: "Nie znalazłam nic o: {query}."
+    en: "I found nothing about {query}."
+  memory.search_found:
+    pl: "Znalazłam: {items}."
+    en: "I found: {items}."
+  # Appended (with a joining space) to memory.search_found when a hit is a memo.
+  memory.search_has_recording:
+    pl: "Mam też nagranie — powiedz „odtwórz nagranie”."
+    en: "I also have the recording — say “play the recording”."
+  memory.stats_empty:
+    pl: "Nie mam jeszcze żadnych wspomnień."
+    en: "I have no memories yet."
+  # {parts} is the counted inventory ("1 notatkę i 2 nagrania"), composed in
+  # code from the `notes` / `recordings` plurals joined by memory.stats_join.
+  memory.stats:
+    pl: "Mam {parts}."
+    en: "I have {parts}."
+  memory.stats_join:
+    pl: " i "
+    en: " and "
+  memory.delete_none:
+    pl: "Nie mam czego usunąć."
+    en: "There is nothing to delete."
+  memory.no_words_label:
+    pl: "nagranie bez słów"
+    en: "a recording with no words"
+  memory.deleted:
+    pl: "Usunęłam: {label}."
+    en: "Deleted: {label}."
+  memory.remember_what:
+    pl: "Co mam zapamiętać?"
+    en: "What should I remember?"
+  memory.remembered:
+    pl: "Zapamiętałam: {text}."
+    en: "Got it, I'll remember: {text}."
+  profile.ask_name:
+    pl: "Jak mam Cię nazywać?"
+    en: "What should I call you?"
+  profile.name_saved:
+    pl: "Miło mi, {name}! Zapamiętam."
+    en: "Nice to meet you, {name}! I'll remember."
+  # {memos} is the counted phrase from the `voice_notes` plural entry.
+  memo.playing:
+    pl: "Odtwarzam {memos}."
+    en: "Playing {memos}."
+  memo.queue_name:
+    pl: "notatki głosowe"
+    en: "voice notes"
+  memo.none:
+    pl: "Nie mam żadnych nagrań."
+    en: "I have no recordings."
+
+  # -- tools: reminders -----------------------------------------------------
+  reminder.none:
+    pl: "Nie masz żadnych przypomnień."
+    en: "You have no reminders."
+  reminder.list:
+    pl: "Twoje przypomnienia: {items}."
+    en: "Your reminders: {items}."
+  reminder.ask_when:
+    pl: "Na kiedy? Np. „o 15:00” albo „za 10 minut”."
+    en: "When? E.g. \"at 3pm\" or \"in 10 minutes\"."
+  # Confirmation leads; code composes "{lead}: {task}." with the stored task.
+  reminder.lead_alarm:
+    pl: "Ustawiłam budzik na {time}"
+    en: "Alarm set for {time}"
+  reminder.lead_event:
+    pl: "Zapisałam na {time}"
+    en: "Saved for {time}"
+  reminder.lead_default:
+    pl: "Przypomnę Ci o {time}"
+    en: "I'll remind you at {time}"
+  reminder.delete_none:
+    pl: "Nie masz takiego alarmu ani przypomnienia."
+    en: "There's no such alarm or reminder."
+  reminder.cancelled:
+    pl: "Skasowałam: {items}."
+    en: "Cancelled: {items}."
+
+  # -- tools: weather -------------------------------------------------------
+  weather.unavailable:
+    pl: "Nie mogę teraz sprawdzić pogody."
+    en: "I can't check the weather right now."
+  # {rain} is weather.rain_prefix (or empty); {rng} is weather.range_suffix
+  # (or empty) — optional fragments composed in code so the sentence stays
+  # byte-identical whether or not the API returned the extra data.
+  weather.now:
+    pl: "{place}: {rain}Teraz {temp}{units}, {desc}{rng}."
+    en: "{place}: {rain}Now {temp}{units}, {desc}{rng}."
+  weather.rain_prefix:
+    pl: "Szansa opadów {prob}%. "
+    en: "Chance of rain {prob}%. "
+  weather.range_suffix:
+    pl: ", od {lo} do {hi}{units}"
+    en: ", {lo} to {hi}{units}"
+  rain.unavailable:
+    pl: "Nie mam dostępu do prognozy opadów."
+    en: "I don't have access to the rain forecast."
+  rain.tomorrow:
+    pl: "Jutro szansa opadów {prob}%."
+    en: "Tomorrow the chance of rain is {prob}%."
+  rain.today:
+    pl: "Szansa opadów dziś {prob}%."
+    en: "Chance of rain today {prob}%."
+  rain.peak_suffix:
+    pl: " Najwięcej koło {hour}:00."
+    en: " Highest around {hour}:00."
+  rain.tomorrow_suffix:
+    pl: " Jutro {prob}%."
+    en: " Tomorrow {prob}%."
+
+  # -- tools: news ----------------------------------------------------------
+  news.unavailable:
+    pl: "Nie mogę teraz sprawdzić wiadomości."
+    en: "I can't check the news right now."
+  # One spoken tier of the keyless floor: label from tables.news_labels (or
+  # news.sport_label), items joined with "; " in code.
+  news.tier_line:
+    pl: "{label}: {items}."
+    en: "{label}: {items}."
+  news.web_failed_preamble:
+    pl: "Nie udało mi się przeszukać internetu, więc czytam nagłówki z serwisów. "
+    en: "I couldn't search the web, so I'm reading feed headlines instead. "
+  news.sport_unavailable:
+    pl: "Nie mogę teraz sprawdzić wiadomości sportowych."
+    en: "I can't check the sports news right now."
+  news.sport_label:
+    pl: "Ze sportu"
+    en: "In sports"
+
+  # -- tools: help ----------------------------------------------------------
+  # Curated spoken walkthrough of the command surface. One spoken line (no
+  # newlines in the folded value). Keep in sync with configs/intents/system.yaml.
+  help.commands:
+    pl: >-
+      Rozumiem między innymi.
+      Sterowanie: stop, głośniej, ciszej, ustaw głośność na pięćdziesiąt, powtórz,
+      idź spać, obudź się.
+      Czas: która godzina, jaka jest data.
+      Pogoda: jaka pogoda w Krakowie, czy będzie padać.
+      Wiadomości: jakie wieści — serwis z Krakowa, z kraju i ze świata;
+      jak sport — wiadomości sportowe, najpierw piłka nożna.
+      Radio i muzyka: włącz radio Trójka, zagraj tytuł albo wykonawcę, następny,
+      poprzedni, co teraz gra, wyłącz radio.
+      Książki: jakie masz książki, włącz książkę, czytaj dalej, następny rozdział.
+      Notatki i pamięć: zapamiętaj że…, nagraj notatkę głosową, odtwórz notatki,
+      jakie mam notatki, co zapisałem o…, usuń ostatnią notatkę.
+      Przypomnienia: przypomnij mi o…, jakie mam przypomnienia.
+      Języki: mów po angielsku, mów po polsku.
+      A gdy zapytasz o cokolwiek innego, po prostu odpowiem.
+    en: >-
+      Among other things I understand.
+      Control: stop, louder, quieter, set volume to fifty, repeat, go to sleep, wake up.
+      Time: what time is it, what's the date.
+      Weather: what's the weather in Kraków, will it rain.
+      News: what's the news — a brief from Kraków, Poland and the world;
+      sports news — football first.
+      Radio and music: turn on radio, play a title or artist, next, previous,
+      what's playing, turn the radio off.
+      Books: what books do you have, play a book, keep reading, next chapter.
+      Notes and memory: remember that…, record a voice memo, play my memos,
+      what notes do I have, delete the last note.
+      Reminders: remind me about…, what are my reminders.
+      Languages: speak English, speak Polish.
+      And for anything else, just ask.
+
+  # -- tools: web lookup ----------------------------------------------------
+  web.needs_key:
+    pl: "To wymaga konta Gemini — ustaw GEMINI_API_KEY."
+    en: "That needs a Gemini account — set GEMINI_API_KEY."
+  web.lookup_failed:
+    pl: "Nie mogę teraz tego sprawdzić."
+    en: "I can't look that up right now."
+
+  # -- tools: radio/music ---------------------------------------------------
+  radio.not_configured:
+    pl: "Radio nie jest skonfigurowane."
+    en: "Radio isn't configured."
+  # {stations} is the spoken station list, its last element joined via
+  # radio.offer_last ("A, B lub C").
+  radio.offer:
+    pl: "Mogę włączyć: {stations}. Którą stację?"
+    en: "I can play: {stations}. Which station?"
+  radio.offer_last:
+    pl: " lub {station}"
+    en: " or {station}"
+  radio.station_on:
+    pl: "Włączam stację {station}."
+    en: "Playing {station}."
+  radio.off:
+    pl: "Wyłączam radio."
+    en: "Turning off the radio."
+  music.playing:
+    pl: "Gram {name}."
+    en: "Playing {name}."
+  music.library_empty:
+    pl: "Biblioteka muzyki jest pusta."
+    en: "The music library is empty."
+  # {tracks} is the counted phrase from the `tracks` plural entry.
+  music.album:
+    pl: "Gram album {name} — {tracks}."
+    en: "Playing the album {name} — {tracks}."
+  music.shuffled:
+    pl: "Dobrze — {tracks} w losowej kolejności."
+    en: "Alright — {tracks}, shuffled."
+  music.first_track:
+    pl: "To już pierwszy utwór."
+    en: "This is the first track."
+  music.search_none:
+    pl: "Nie znalazłam nic pasującego do „{query}”."
+    en: "I found nothing matching “{query}”."
+
+  # -- tools: audiobooks ----------------------------------------------------
+  book.none:
+    pl: "Nie mam jeszcze audiobooków."
+    en: "I have no audiobooks yet."
+  book.not_found:
+    pl: "Nie znalazłam „{query}”. Mam: {titles}."
+    en: "I couldn't find “{query}”. I have: {titles}."
+  book.list_empty:
+    pl: "Nie mam jeszcze żadnych audiobooków."
+    en: "I don't have any audiobooks yet."
+  book.list:
+    pl: "Mam {n} audiobooków, na przykład: {titles}. Powiedz „przeczytaj” i tytuł."
+    en: "I have {n} audiobooks, for example: {titles}. Say “read” and a title."
+  book.resuming:
+    pl: "Wznawiam: {book}."
+    en: "Resuming: {book}."
+  book.reading:
+    pl: "Czytam: {book}."
+    en: "Reading: {book}."
+
+  # -- engine: wake / sleep gating ------------------------------------------
+  wake.asleep:
+    pl: "Śpię — powiedz „Jessica”, żeby mnie obudzić."
+    en: "I'm asleep — say \"Jessica\" to wake me."
+  wake.greet_name:
+    pl: "Tak, {name}? Słucham."
+    en: "Yes, {name}? I'm listening."
+  wake.greet:
+    pl: "Tak? Słucham."
+    en: "Yes? I'm listening."
+
+  # -- engine: clock / calendar ---------------------------------------------
+  # {time} is pre-rendered per language in code: Polish words via plnum (so
+  # Piper says "dwudziesta trzecia szesnaście" naturally), EN "h:mm AM/PM".
+  time.now:
+    pl: "Jest godzina {time}."
+    en: "The time is {time}."
+  # {day_name} / {month} come from tables.days / tables.months.
+  date.today:
+    pl: "Dziś jest {day_name}, {day} {month} {year}."
+    en: "Today is {day_name}, {month} {day}, {year}."
+
+  # -- engine: profile (asking one's own name) ------------------------------
+  profile.name_unknown:
+    pl: "Jeszcze nie znam Twojego imienia. Powiedz „mam na imię…”."
+    en: "I don't know your name yet. Say \"my name is…\"."
+  profile.name_is:
+    pl: "Masz na imię {name}."
+    en: "Your name is {name}."
+
+  # -- engine: voice notes ---------------------------------------------------
+  memo.record_prompt:
+    pl: "Słucham — naciśnij przycisk i nagraj notatkę."
+    en: "Go ahead — press the button and record your note."
+  memo.none_recorded:
+    pl: "Nie masz nagranych notatek głosowych."
+    en: "You have no voice notes."
+
+  # -- engine: recommendations (RAG) ----------------------------------------
+  recommend.no_library:
+    pl: "Nie mam jeszcze biblioteki do polecania."
+    en: "I don't have a library to recommend from yet."
+  recommend.no_match:
+    pl: "Nie znalazłam nic pasującego. Spróbuj inaczej."
+    en: "I couldn't find a match. Try phrasing it differently."
+  # Leads keep their trailing space; code appends the model's pitch after them.
+  recommend.lead_who:
+    pl: "Polecam „{title}”, {who}. "
+    en: "I recommend “{title}” by {who}. "
+  recommend.lead:
+    pl: "Polecam „{title}”. "
+    en: "I recommend “{title}”. "
+  recommend.play_hint:
+    pl: " Powiedz „zagraj to”, aby posłuchać."
+    en: " Say “play it” to listen."
+  # engine's empty-library line: PL matches book.none, EN matches
+  # book.list_empty (the tools' pairs) — keyed apart to keep every existing
+  # string verbatim; merge deliberately later.
+  book.offer_none:
+    pl: "Nie mam jeszcze audiobooków."
+    en: "I don't have any audiobooks yet."
+  book.library_offer:
+    pl: "Mam {n} audiobooków — klasyka, powieści, baśnie i poezja. Powiedz na przykład „poleć coś przygodowego” albo „zagraj Trzej muszkieterowie”."
+    en: "I have {n} audiobooks — classics, novels, fairy tales and poetry. Say for example “recommend something adventurous” or “play The Three Musketeers”."
+
+  # -- engine: weather (full current-conditions sentence; the PL label form
+  # "Kraków: …" avoids locative inflection of the place name) ----------------
+  weather.conditions:
+    pl: "{place}: {temp}{units}, {desc}. Odczuwalna {feels}{units}, wiatr {wind} {wind_units}."
+    en: "In {place} it's {temp}{units}, {desc}. Feels like {feels}{units}, wind {wind} {wind_units}."
+  # describe_code() default for a WMO code missing from tables.weather_codes.
+  weather.unknown_conditions:
+    pl: "nieznane warunki"
+    en: "unknown conditions"
+
+  # -- engine: news (keyless RSS fallback lead) ------------------------------
+  news.headlines_lead:
+    pl: "Najważniejsze wiadomości:"
+    en: "Top headlines:"
+
+  # -- engine: chat fallbacks ------------------------------------------------
+  error.chat_failed:
+    pl: "Coś poszło nie tak: {error}"
+    en: "Something went wrong: {error}"
+  # engine's canned no-backend line (llm.no_backend is inference.py's wording).
+  chat.needs_key:
+    pl: "Mogę rozmawiać swobodnie po ustawieniu GEMINI_API_KEY (albo lokalnego modelu)."
+    en: "I can chat freely once GEMINI_API_KEY (or a local model) is set."
+
+  # -- engine: due-reminder announcements. Runtime speaks these in Polish
+  # only (Reply language is pinned "pl"); the EN twins are newly authored
+  # 2026-08-27 for asset parity, not yet user-heard. -------------------------
+  reminder.fired_alarm:
+    pl: "Pobudka! Jest godzina {time}.{extra} Pobudka, wstawaj!"
+    en: "Wake up! It's {time}.{extra} Wake up, rise and shine!"
+  # The optional task woven into the alarm call ({extra} above; leading space).
+  reminder.fired_task:
+    pl: " {task}."
+    en: " {task}."
+  reminder.fired_event:
+    pl: "Przypominam o wydarzeniu: {task}."
+    en: "Reminding you about the event: {task}."
+  reminder.fired:
+    pl: "Przypominam: {task}."
+    en: "Reminding you: {task}."
+
+  # -- dispatch: voice-mutation grammar --------------------------------------
+  settings.denied:
+    pl: "Tego nie mogę zmienić głosem."
+    en: "I can't change that by voice."
+  settings.bad_value:
+    pl: "Nie zrozumiałam wartości."
+    en: "I didn't catch the value."
+  # {setting} is the settings key (named so it can't collide with msg()'s
+  # own `key` argument).
+  settings.not_allowed:
+    pl: "Nie mogę ustawić {setting} na {value}."
+    en: "I can't set {setting} to {value}."
+  # PL distinguishes the loud confirmation wording; EN carried one form.
+  confirm.ask_loud:
+    pl: "Na pewno? Powiedz „potwierdzam”."
+    en: "Are you sure? Say \"confirm\"."
+  confirm.ask:
+    pl: "Potwierdź: powiedz „potwierdzam”."
+    en: "Are you sure? Say \"confirm\"."
+  confirm.nothing:
+    pl: "Nie ma nic do potwierdzenia."
+    en: "Nothing to confirm."
+  confirm.again:
+    pl: "Potwierdź jeszcze raz."
+    en: "Confirm once more."
+  confirm.nothing_to_cancel:
+    pl: "Nie ma nic do anulowania."
+    en: "Nothing to cancel."
+  confirm.cancelled:
+    pl: "Anulowane."
+    en: "Cancelled."
+
+  # -- dispatch: language pin ------------------------------------------------
+  lang.which:
+    pl: "Nie zrozumiałam, na jaki język."
+    en: "I didn't catch which language."
+  lang.only_pl_en:
+    pl: "Mówię tylko po polsku i angielsku."
+    en: "I only speak Polish and English."
+  # Spoken in the TARGET language (a per-language confirmation, not a
+  # translation pair) — the user hears the switch land.
+  lang.switched:
+    pl: "Od teraz mówię po polsku."
+    en: "From now on I'll speak English."
+  lang.auto:
+    pl: "Słucham automatycznie."
+    en: "I'll auto-detect the language now."
+  lang.list:
+    pl: "Mówię po polsku i angielsku."
+    en: "I speak Polish and English."
+
+  # -- dispatch: applied-setting confirmations -------------------------------
+  settings.volume:
+    pl: "Głośność: {value}%."
+    en: "Volume: {value}%."
+  power.reboot:
+    pl: "Uruchamiam ponownie."
+    en: "Rebooting."
+  power.shutdown:
+    pl: "Wyłączam się."
+    en: "Shutting down."
+  settings.ssh_on:
+    pl: "SSH: włączone."
+    en: "SSH: enabled."
+  settings.ssh_off:
+    pl: "SSH: wyłączone."
+    en: "SSH: disabled."
+  settings.set_generic:
+    pl: "Ustawione: {setting} = {value}."
+    en: "Set {setting} = {value}."
+
+  # -- dispatch: simple tools ------------------------------------------------
+  # {time} / {date} pre-rendered per language in code (PL words / EN digits).
+  time.now_clock:
+    pl: "Jest godzina {time}."
+    en: "It's {time}."
+  date.today_numeric:
+    pl: "Dziś jest {date}."
+    en: "Today is {date}."
+  error.unimplemented:
+    pl: "Jeszcze tego nie potrafię."
+    en: "I can't do that yet."
+
+# ---------------------------------------------------------------------------
+# tables: enumerated lookups (key → per-language value). Used where a language
+# spells a bounded set of values in words.
+tables:
+  # Spoken "rounds left" for the voice-training dialog (Polish spells the
+  # number out; the count is at most the training round count).
+  train_rounds_left:
+    "1": {pl: "jeszcze raz", en: "1 more time"}
+    "2": {pl: "jeszcze dwa razy", en: "2 more times"}
+    "3": {pl: "jeszcze trzy razy", en: "3 more times"}
+    "4": {pl: "jeszcze cztery razy", en: "4 more times"}
+
+  # -- tools: news — spoken section labels of the three brief tiers ---------
+  news_labels:
+    local: {pl: "Z Krakowa", en: "From Kraków"}
+    national: {pl: "Z kraju", en: "Nationally"}
+    world: {pl: "Ze świata", en: "Worldwide"}
+
+  # -- tools: reminders — default task label per reminder category ----------
+  reminder_labels:
+    alarm: {pl: "budzik", en: "alarm"}
+    event: {pl: "wydarzenie", en: "event"}
+    reminder: {pl: "przypomnienie", en: "reminder"}
+
+  # -- engine: locale-independent day / month names for the spoken date
+  # (weekday index 0-6 Monday-first; month number 1-12; PL months are
+  # genitive — they follow the day number). ---------------------------------
+  days:
+    "0": {pl: "poniedziałek", en: "Monday"}
+    "1": {pl: "wtorek", en: "Tuesday"}
+    "2": {pl: "środa", en: "Wednesday"}
+    "3": {pl: "czwartek", en: "Thursday"}
+    "4": {pl: "piątek", en: "Friday"}
+    "5": {pl: "sobota", en: "Saturday"}
+    "6": {pl: "niedziela", en: "Sunday"}
+  months:
+    "1": {pl: "stycznia", en: "January"}
+    "2": {pl: "lutego", en: "February"}
+    "3": {pl: "marca", en: "March"}
+    "4": {pl: "kwietnia", en: "April"}
+    "5": {pl: "maja", en: "May"}
+    "6": {pl: "czerwca", en: "June"}
+    "7": {pl: "lipca", en: "July"}
+    "8": {pl: "sierpnia", en: "August"}
+    "9": {pl: "września", en: "September"}
+    "10": {pl: "października", en: "October"}
+    "11": {pl: "listopada", en: "November"}
+    "12": {pl: "grudnia", en: "December"}
+
+  # -- weather: WMO weather code → short spoken description (Open-Meteo).
+  # Unknown codes fall back to messages weather.unknown_conditions. ----------
+  weather_codes:
+    "0": {pl: "bezchmurnie", en: "clear sky"}
+    "1": {pl: "przeważnie bezchmurnie", en: "mainly clear"}
+    "2": {pl: "częściowe zachmurzenie", en: "partly cloudy"}
+    "3": {pl: "pochmurno", en: "overcast"}
+    "45": {pl: "mgła", en: "fog"}
+    "48": {pl: "marznąca mgła", en: "freezing fog"}
+    "51": {pl: "lekka mżawka", en: "light drizzle"}
+    "53": {pl: "mżawka", en: "drizzle"}
+    "55": {pl: "gęsta mżawka", en: "dense drizzle"}
+    "56": {pl: "marznąca mżawka", en: "freezing drizzle"}
+    "57": {pl: "gęsta marznąca mżawka", en: "dense freezing drizzle"}
+    "61": {pl: "lekki deszcz", en: "light rain"}
+    "63": {pl: "deszcz", en: "rain"}
+    "65": {pl: "ulewny deszcz", en: "heavy rain"}
+    "66": {pl: "marznący deszcz", en: "freezing rain"}
+    "67": {pl: "silny marznący deszcz", en: "heavy freezing rain"}
+    "71": {pl: "lekki śnieg", en: "light snow"}
+    "73": {pl: "śnieg", en: "snow"}
+    "75": {pl: "intensywny śnieg", en: "heavy snow"}
+    "77": {pl: "śnieg ziarnisty", en: "snow grains"}
+    "80": {pl: "przelotne opady", en: "rain showers"}
+    "81": {pl: "przelotne opady", en: "rain showers"}
+    "82": {pl: "gwałtowne ulewy", en: "violent rain showers"}
+    "85": {pl: "przelotny śnieg", en: "snow showers"}
+    "86": {pl: "intensywny przelotny śnieg", en: "heavy snow showers"}
+    "95": {pl: "burza", en: "thunderstorm"}
+    "96": {pl: "burza z gradem", en: "thunderstorm with hail"}
+    "99": {pl: "silna burza z gradem", en: "severe thunderstorm with hail"}
+
+# ---------------------------------------------------------------------------
+# plurals: counted phrases. Polish carries one/few/many (CLDR); English
+# one/other. Templates may use {n}. Rendered via blazend.i18n.plural().
+plurals:
+  # -- tools: music — "1 utwór / 2 utwory / 5 utworów" ----------------------
+  tracks:
+    pl: {one: "1 utwór", few: "{n} utwory", many: "{n} utworów"}
+    en: {one: "1 track", other: "{n} tracks"}
+  # -- tools: memory — voice memos counted as "nagranie" (EN "recording",
+  # used by the memory inventory) vs "voice note" (used by the memo queue).
+  recordings:
+    pl: {one: "1 nagranie", few: "{n} nagrania", many: "{n} nagrań"}
+    en: {one: "1 recording", other: "{n} recordings"}
+  voice_notes:
+    pl: {one: "1 nagranie", few: "{n} nagrania", many: "{n} nagrań"}
+    en: {one: "1 voice note", other: "{n} voice notes"}
+  # -- tools: memory — notes after "mam" (accusative): "1 notatkę" ----------
+  notes:
+    pl: {one: "1 notatkę", few: "{n} notatki", many: "{n} notatek"}
+    en: {one: "1 note", other: "{n} notes"}
+  # -- engine: "odtwórz notatki" confirmation (n ≤ 5 — the queue caps at the
+  # five newest memos, so the few/many split matches the old 2-4 branch).
+  voice_notes_playing:
+    pl: {one: "Odtwarzam ostatnią notatkę głosową.", few: "Odtwarzam {n} notatki głosowe.", many: "Odtwarzam {n} notatek głosowe."}
+    en: {one: "Playing 1 voice note.", other: "Playing {n} voice notes."}
+
+# ---------------------------------------------------------------------------
+# prompts: LLM prompt text (system personas + grounded-brief templates).
+# Not spoken directly, but user-visible through the answers it shapes — same
+# parity + placeholder rules as messages. Read via msg("prompts.<key>", lang).
+prompts:
+  # The Jessica persona (same text as jessica_core::DEFAULT_PERSONA; formerly
+  # tools.PERSONA / engine.PERSONA).
+  persona:
+    pl: >-
+      Jesteś Jessica — głosowa asystentka osobista dla osób niewidomych i
+      słabowidzących, działająca na Raspberry Pi 5. Odpowiadaj w języku
+      użytkownika (polski lub angielski); domyślnie po polsku. Mów krótko —
+      jedno lub dwa zdania, chyba że poproszono o szczegóły. Bądź konkretna i
+      uczciwa; jeśli czegoś nie wiesz, powiedz to wprost.
+    en: >-
+      You are Jessica — a personal voice assistant for blind and visually
+      impaired people, running on a Raspberry Pi 5. Answer in the user's
+      language (Polish or English); Polish by default. Speak briefly — one or
+      two sentences unless asked for details. Be concrete and honest; if you
+      don't know something, say so plainly.
+
+  # -- tools: news brief — live web research (preferred path) ---------------
+  news_research.system:
+    pl: >-
+      {persona} Jesteś prezenterką wiadomości. Zwykły tekst do
+      przeczytania na głos — bez Markdown, gwiazdek, nagłówków i URL-i.
+    en: >-
+      {persona} You are a news anchor. Plain text to be read aloud —
+      no Markdown, asterisks, headers or URLs.
+  news_research.query:
+    pl: >-
+      Znajdź w internecie najważniejsze DZISIEJSZE ({today}) wiadomości i
+      ułóż mówiony serwis po polsku w trzech częściach, dokładnie w tej
+      kolejności: „Z Krakowa”, „Z kraju” (Polska), „Ze świata” — po cztery-pięć
+      wiadomości w każdej części, każda w jednym lub dwóch zdaniach z konkretami:
+      kto, co, gdzie, kiedy, liczby i kwoty jeśli są znane. Tylko fakty
+      znalezione w sieci.
+    en: >-
+      Search the internet for TODAY'S ({today}) top news and compose a spoken
+      brief in three sections, in this exact order: From Kraków, From Poland,
+      Worldwide — four-five items each, one-two sentences each with specifics:
+      who, what, where, when, figures and amounts when known. Only facts found
+      on the web.
+
+  # -- tools: news brief — RSS headline composer (cloud fallback) -----------
+  news_compose.system:
+    pl: >-
+      {persona} Jesteś prezenterką wiadomości. Z podanych nagłówków ułóż
+      krótki, mówiony serwis po polsku w trzech częściach: „Z Krakowa”, „Z kraju”,
+      „Ze świata” — po dwie wiadomości w każdej, każda jednym zdaniem. Nagłówki
+      zagraniczne przetłumacz na polski. Nie dodawaj faktów spoza nagłówków,
+      bez wstępu, bez adresów URL. Zwykły tekst do przeczytania na głos — bez
+      formatowania Markdown, bez gwiazdek i nagłówków.
+    en: >-
+      {persona} You are a news anchor. From these headlines compose a short
+      spoken brief in three sections — From Kraków, Nationally, Worldwide — two
+      items each, one sentence each. Add no facts beyond the headlines, no
+      preamble, no URLs. Plain text to be read aloud — no Markdown, no asterisks
+      or headers.
+  news_compose.query:
+    pl: "Nagłówki na dziś:\n{headlines}"
+    en: "Today's headlines:\n{headlines}"
+
+  # -- tools: news brief — Gemini grounded search (secondary cloud path) ----
+  news_gemini.query:
+    pl: >-
+      Podaj najważniejsze aktualne wiadomości z międzynarodowych agencji
+      (Guardian, BBC, CNN, AP), ze szczególnym uwzględnieniem Krakowa i Polski.
+    en: >-
+      Give the top current news from international agencies
+      (Guardian, BBC, CNN, AP), focusing on Kraków and Poland.
+  news_gemini.system:
+    pl: >-
+      {persona} Odpowiedz po polsku, zwięźle, 3-4 najważniejsze punkty.
+      Przetłumacz nagłówki na polski.
+    en: "{persona} Answer in English, briefly — 3-4 key points."
+
+  # -- tools: sport brief — live web research -------------------------------
+  sport_research.system:
+    pl: >-
+      {persona} Jesteś prezenterką sportową. Zwykły tekst do
+      przeczytania na głos — bez Markdown, gwiazdek, nagłówków i URL-i.
+    en: >-
+      {persona} You are a sports anchor. Plain text to be read aloud —
+      no Markdown, asterisks, headers or URLs.
+  sport_research.query:
+    pl: >-
+      Znajdź w internecie DZISIEJSZE ({today}) wiadomości sportowe — najpierw
+      piłka nożna, potem pozostałe dyscypliny — i ułóż krótki mówiony serwis po
+      polsku w trzech częściach, dokładnie w tej kolejności: „Z Krakowa” (Wisła
+      Kraków, Cracovia, krakowski sport), „Z kraju” (Ekstraklasa, reprezentacja
+      Polski, polscy sportowcy), „Ze świata” — po dwie-trzy wiadomości, każda
+      jednym zdaniem. Tylko fakty znalezione w sieci.
+    en: >-
+      Search the internet for TODAY'S ({today}) sports news — football first,
+      then other sports — and compose a short spoken brief in three sections, in
+      this exact order: From Kraków (Wisła Kraków, Cracovia), From Poland
+      (Ekstraklasa, national team), Worldwide — two-three items each, one
+      sentence each. Only facts found on the web.
+
+  # -- tools: web lookup ----------------------------------------------------
+  web_lookup.system:
+    pl: "{persona} Streść zwięźle, po polsku."
+    en: "{persona} Summarise briefly, in English."
+
+  # -- engine: memory context injected into the chat system prompt ----------
+  notes_context.header:
+    pl: " Zapisane notatki użytkownika (wykorzystaj, jeśli pomocne):"
+    en: " The user's saved notes (use them if relevant):"
+  notes_context.voice_tag:
+    pl: "[nagranie głosowe]"
+    en: "[voice memo]"
+  # -- engine: personalisation suffix on the chat system prompt -------------
+  chat.user_name:
+    pl: " Użytkownik ma na imię {name}."
+    en: " The user's name is {name}."
+  # -- engine: legacy Gemini news query. Near-duplicate of news_gemini.query
+  # (which names Guardian/BBC/CNN/AP); the engine's names Reuters/AP/AFP/BBC —
+  # kept apart verbatim; merge deliberately later. The engine reuses
+  # news_gemini.system for the matching system prompt.
+  news_gemini_engine.query:
+    pl: >-
+      Podaj najważniejsze aktualne wiadomości z międzynarodowych agencji
+      (Reuters, AP, AFP, BBC), ze szczególnym uwzględnieniem Krakowa i Polski.
+    en: >-
+      Give the top current news from international agencies
+      (Reuters, AP, AFP, BBC), focusing on Kraków and Poland.

@@ -49,41 +49,16 @@ from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.weather import (
 from blazend.domains.context.adapters.rpi5.embeddings import EmbedderError
 from blazend.domains.context.adapters.rpi5.memory import MemoryStore
 from blazend.domains.context.adapters.rpi5.timeparse import parse_when
+from blazend.i18n import msg, plural, table
 
 log = logging.getLogger("blazend.domains.ai_orchestrator.tools")
 
-# The Jessica persona (same text as engine.PERSONA / jessica_core::DEFAULT_PERSONA).
-# Lives here now that the engine is being retired; used for the grounded-LLM
-# system prompts (news, web lookup).
-PERSONA = (
-    "Jesteś Jessica — głosowa asystentka osobista dla osób niewidomych i "
-    "słabowidzących, działająca na Raspberry Pi 5. Odpowiadaj w języku "
-    "użytkownika (polski lub angielski); domyślnie po polsku. Mów krótko — "
-    "jedno lub dwa zdania, chyba że poproszono o szczegóły. Bądź konkretna i "
-    "uczciwa; jeśli czegoś nie wiesz, powiedz to wprost."
-)
 
-
-def _t(lang: str, pl: str, en: str) -> str:
-    return pl if lang == "pl" else en
-
-
-def _pl_tracks(n: int) -> str:
-    """Polish plural for track counts: 1 utwór, 2-4 utwory, 5+ utworów."""
-    if n == 1:
-        return "1 utwór"
-    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
-        return f"{n} utwory"
-    return f"{n} utworów"
-
-
-def _pl_memos(n: int) -> str:
-    """Polish plural for voice notes: 1 nagranie, 2-4 nagrania, 5+ nagrań."""
-    if n == 1:
-        return "1 nagranie"
-    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
-        return f"{n} nagrania"
-    return f"{n} nagrań"
+def _persona() -> str:
+    """The Jessica persona (same text as jessica_core::DEFAULT_PERSONA), from
+    the message catalog (``prompts.persona``). Always the Polish text — the
+    persona itself instructs the model to answer in the user's language."""
+    return msg("prompts.persona", "pl")
 
 
 def _queue_labels(tracks: Sequence[Any]) -> list[str]:
@@ -102,16 +77,6 @@ def _memo_label(title: str, text: str) -> str:
     if label:
         return label
     return " ".join(text.split()[:6])
-
-
-def _pl_notes_count(n: int) -> str:
-    """Polish plural for notes after "mam" (accusative): 1 notatkę,
-    2-4 notatki, 5+ notatek."""
-    if n == 1:
-        return "1 notatkę"
-    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
-        return f"{n} notatki"
-    return f"{n} notatek"
 
 
 # Reminder parsing helpers (ported from the engine). The NLU strips the trigger
@@ -195,7 +160,7 @@ class Tools:
         radio: RadioDirectory | None = None,
         music: MusicDirectory | None = None,
         openai: OpenAiClient | None = None,
-        persona: str = PERSONA,
+        persona: str | None = None,
     ) -> None:
         self.memory = memory or MemoryStore()
         self.weather = weather or WeatherClient()
@@ -208,7 +173,7 @@ class Tools:
         self.music = music or MusicDirectory()
         self.audiobooks = AudiobookDirectory()
         self.semantic = SemanticLibrary()  # voice semantic search over music + books
-        self.persona = persona
+        self.persona = persona if persona is not None else _persona()
         # Last music request ("coś Kazika" / "Kazika"), so "zagraj inny" replays it
         # → resolve() picks a fresh random track from the same pool (same artist).
         self._last_query = ""
@@ -271,16 +236,16 @@ class Tools:
             return self.audiobook_list(lang)
         if tool == "library.search":
             return self.library_search(str(args.get("query", "")), lang)
-        return ToolResult(False, _t(lang, "Nie znam tego narzędzia.", "I don't know that tool."), "error")
+        return ToolResult(False, msg("error.unknown_tool", lang), "error")
 
     # -- context -----------------------------------------------------------
     def recall_notes(self, lang: str) -> ToolResult:
         # One memory, whatever its form: text notes + transcribed voice memos.
         items = self.memory.memory_items()
         if not items:
-            return ToolResult(True, _t(lang, "Nic jeszcze nie zapisałam.", "I haven't noted anything yet."), "recall")
+            return ToolResult(True, msg("memory.none_noted", lang), "recall")
         lines = "; ".join(i.text for i in items[-10:])
-        return ToolResult(True, _t(lang, f"Pamiętam: {lines}.", f"I remember: {lines}."), "recall", {"count": len(items)})
+        return ToolResult(True, msg("memory.recall", lang, items=lines), "recall", {"count": len(items)})
 
     def _memory_embedder(self) -> Any:
         """Lazy on-device e5 embedder for explicit memory search (same wiring
@@ -300,7 +265,7 @@ class Tools:
         replays the user's own recording."""
         q = query.strip(" ,.?!")
         if not q:
-            return ToolResult(True, _t(lang, "O czym mam poszukać?", "Search for what?"), "recall")
+            return ToolResult(True, msg("memory.search_what", lang), "recall")
         hits = []
         emb = self._memory_embedder()
         if emb is not None and emb.available:
@@ -319,10 +284,10 @@ class Tools:
                     if folded in i.text.casefold() or folded in i.title.casefold()][:3]
         if not hits:
             return ToolResult(
-                True, _t(lang, f"Nie znalazłam nic o: {q}.", f"I found nothing about {q}."),
+                True, msg("memory.search_none", lang, query=q),
                 "recall", {"query": q, "hits": 0})
         lines = "; ".join(h.text for h in hits)
-        spoken = _t(lang, f"Znalazłam: {lines}.", f"I found: {lines}.")
+        spoken = msg("memory.search_found", lang, items=lines)
         resolved = ((self.memory.voice_note_wav(h.id, h.audio_path), _memo_label(h.title, h.text))
                     for h in hits if h.kind == "voice")
         found = [(str(w), label) for w, label in resolved if w is not None]
@@ -330,8 +295,7 @@ class Tools:
         self._found_memo_paths = voice_paths
         self._found_memo_labels = dict(found)
         if voice_paths:
-            spoken += _t(lang, " Mam też nagranie — powiedz „odtwórz nagranie”.",
-                         " I also have the recording — say “play the recording”.")
+            spoken += " " + msg("memory.search_has_recording", lang)
         return ToolResult(True, spoken, "recall",
                           {"query": q, "hits": len(hits), "voice_hits": len(voice_paths)})
 
@@ -340,9 +304,9 @@ class Tools:
         n = len(paths)
         return ToolResult(
             True,
-            _t(lang, f"Odtwarzam {_pl_memos(n)}.", f"Playing {n} voice note{'s' if n != 1 else ''}."),
+            msg("memo.playing", lang, memos=plural("voice_notes", n, lang)),
             "music_play", {
-                "path": paths[0], "name": _t(lang, "notatki głosowe", "voice notes"),
+                "path": paths[0], "name": msg("memo.queue_name", lang),
                 "is_playlist": True, "chapters": paths, "chapter": 0,
                 "labels": list(labels or []),
             })
@@ -357,7 +321,7 @@ class Tools:
                               for v in self.memory.voice_notes())
                  if w is not None][-5:]
         if not pairs:
-            return ToolResult(True, _t(lang, "Nie mam żadnych nagrań.", "I have no recordings."), "recall")
+            return ToolResult(True, msg("memo.none", lang), "recall")
         return self._memo_queue([p for p, _ in pairs], lang,
                                 labels=[label for _, label in pairs])
 
@@ -376,18 +340,22 @@ class Tools:
         memos = self.memory.voice_notes()
         if not notes and not memos:
             return ToolResult(
-                True, _t(lang, "Nie mam jeszcze żadnych wspomnień.", "I have no memories yet."),
+                True, msg("memory.stats_empty", lang),
                 "recall", {"notes": 0, "voice_notes": 0})
+        # Polish drops an empty part ("Mam 1 notatkę."); English always names
+        # both counts ("I have 0 notes and 2 recordings.") — as before.
         if lang == "pl":
             parts = []
             if notes:
-                parts.append(_pl_notes_count(len(notes)))
+                parts.append(plural("notes", len(notes), lang))
             if memos:
-                parts.append(_pl_memos(len(memos)))
-            spoken = f"Mam {' i '.join(parts)}."
+                parts.append(plural("recordings", len(memos), lang))
+            joined = msg("memory.stats_join", lang).join(parts)
         else:
-            spoken = (f"I have {len(notes)} note{'s' if len(notes) != 1 else ''}"
-                      f" and {len(memos)} recording{'s' if len(memos) != 1 else ''}.")
+            joined = (plural("notes", len(notes), lang)
+                      + msg("memory.stats_join", lang)
+                      + plural("recordings", len(memos), lang))
+        spoken = msg("memory.stats", lang, parts=joined)
         return ToolResult(True, spoken, "recall",
                           {"notes": len(notes), "voice_notes": len(memos)})
 
@@ -398,22 +366,22 @@ class Tools:
         (recoverable by hand), never straight to deletion."""
         item = self.memory.delete_last_memory()
         if item is None:
-            return ToolResult(True, _t(lang, "Nie mam czego usunąć.", "There is nothing to delete."),
+            return ToolResult(True, msg("memory.delete_none", lang),
                               "recall", {"deleted": None})
-        label = item.text[:80] or _t(lang, "nagranie bez słów", "a recording with no words")
+        label = item.text[:80] or msg("memory.no_words_label", lang)
         return ToolResult(
-            True, _t(lang, f"Usunęłam: {label}.", f"Deleted: {label}."),
+            True, msg("memory.deleted", lang, label=label),
             "recall", {"deleted": item.id, "kind": item.kind})
 
     def recall_reminders(self, lang: str) -> ToolResult:
         pend = self.memory.pending()
         if not pend:
-            return ToolResult(True, _t(lang, "Nie masz żadnych przypomnień.", "You have no reminders."), "recall")
+            return ToolResult(True, msg("reminder.none", lang), "recall")
         lines = "; ".join(
             f"{datetime.fromisoformat(r.due).strftime('%H:%M')} — {r.text}" for r in pend[:10]
         )
         return ToolResult(
-            True, _t(lang, f"Twoje przypomnienia: {lines}.", f"Your reminders: {lines}."), "recall", {"count": len(pend)}
+            True, msg("reminder.list", lang, items=lines), "recall", {"count": len(pend)}
         )
 
     # -- memory writes -----------------------------------------------------
@@ -425,8 +393,8 @@ class Tools:
         handled lazily by the brain's semantic-recall backfill."""
         body = text.strip(" ,.:!")
         if not body:
-            return ToolResult(True, _t(lang, "Co mam zapamiętać?", "What should I remember?"), "wake")
-        spoken_ok = _t(lang, f"Zapamiętałam: {body}.", f"Got it, I'll remember: {body}.")
+            return ToolResult(True, msg("memory.remember_what", lang), "wake")
+        spoken_ok = msg("memory.remembered", lang, text=body)
         claimed = self.memory.claim_last_clip(body)
         if claimed is not None:
             vn = self.memory.add_voice_note(
@@ -440,12 +408,12 @@ class Tools:
         """Store the user's name (capitalised), mirroring the engine's `_set_name`."""
         name = name.strip()
         if not name:
-            return ToolResult(True, _t(lang, "Jak mam Cię nazywać?", "What should I call you?"), "wake")
+            return ToolResult(True, msg("profile.ask_name", lang), "wake")
         name = name[:1].upper() + name[1:]
         self.memory.set_profile("name", name, now=datetime.now())
         return ToolResult(
             True,
-            _t(lang, f"Miło mi, {name}! Zapamiętam.", f"Nice to meet you, {name}! I'll remember."),
+            msg("profile.name_saved", lang, name=name),
             "profile", {"name": name},
         )
 
@@ -466,20 +434,19 @@ class Tools:
         if when is None:
             return ToolResult(
                 True,
-                _t(lang, "Na kiedy? Np. „o 15:00” albo „za 10 minut”.",
-                   'When? E.g. "at 3pm" or "in 10 minutes".'),
+                msg("reminder.ask_when", lang),
                 "wake",
             )
         if not task:
-            task = {"alarm": _t(lang, "budzik", "alarm"), "event": _t(lang, "wydarzenie", "event")}.get(
-                category, _t(lang, "przypomnienie", "reminder")
-            )
+            task = table("reminder_labels", category, lang,
+                         default=table("reminder_labels", "reminder", lang))
         rem = self.memory.add_reminder(task, due=when, now=now, category=category)
         hhmm = when.strftime("%H:%M")
-        lead = {
-            "alarm": _t(lang, f"Ustawiłam budzik na {hhmm}", f"Alarm set for {hhmm}"),
-            "event": _t(lang, f"Zapisałam na {hhmm}", f"Saved for {hhmm}"),
-        }.get(category, _t(lang, f"Przypomnę Ci o {hhmm}", f"I'll remind you at {hhmm}"))
+        lead_key = {
+            "alarm": "reminder.lead_alarm",
+            "event": "reminder.lead_event",
+        }.get(category, "reminder.lead_default")
+        lead = msg(lead_key, lang, time=hhmm)
         return ToolResult(True, f"{lead}: {task}.", "reminder", {"id": rem.id, "due": rem.due, "category": category})
 
     def delete_reminder(self, text: str, lang: str) -> ToolResult:
@@ -492,15 +459,14 @@ class Tools:
         if not gone:
             return ToolResult(
                 True,
-                _t(lang, "Nie masz takiego alarmu ani przypomnienia.",
-                   "There's no such alarm or reminder."),
+                msg("reminder.delete_none", lang),
                 "reminder", {"cancelled": 0},
             )
         spoken = "; ".join(
             f"{datetime.fromisoformat(r.due).strftime('%H:%M')} — {r.text}" for r in gone
         )
         return ToolResult(
-            True, _t(lang, f"Skasowałam: {spoken}.", f"Cancelled: {spoken}."),
+            True, msg("reminder.cancelled", lang, items=spoken),
             "reminder", {"cancelled": len(gone), "ids": [r.id for r in gone]},
         )
 
@@ -517,7 +483,7 @@ class Tools:
         except WeatherError as e:
             log.warning("weather lookup failed (%s)", e)
             return ToolResult(
-                False, _t(lang, "Nie mogę teraz sprawdzić pogody.", "I can't check the weather right now."),
+                False, msg("weather.unavailable", lang),
                 "error", {"reason": "weather_failed"},
             )
         desc = describe_code(c.code, lang)
@@ -525,17 +491,14 @@ class Tools:
         rng_txt = ""
         if c.temp_max is not None and c.temp_min is not None:
             lo, hi = round(c.temp_min), round(c.temp_max)
-            rng_txt = (f", od {lo} do {hi}{c.units_temp}" if lang == "pl"
-                       else f", {lo} to {hi}{c.units_temp}")
+            rng_txt = msg("weather.range_suffix", lang, lo=lo, hi=hi, units=c.units_temp)
         # A weather answer LEADS with — and focuses on — the chance of rain; temp,
         # sky and the day's range follow. Wind / feels-like are dropped so the rain
         # number isn't buried (they stay in Conditions for callers that want them).
-        if lang == "pl":
-            rain = f"Szansa opadów {c.rain_prob}%. " if c.rain_prob is not None else ""
-            out = f"{c.place}: {rain}Teraz {temp}{c.units_temp}, {desc}{rng_txt}."
-        else:
-            rain = f"Chance of rain {c.rain_prob}%. " if c.rain_prob is not None else ""
-            out = f"{c.place}: {rain}Now {temp}{c.units_temp}, {desc}{rng_txt}."
+        rain = (msg("weather.rain_prefix", lang, prob=c.rain_prob)
+                if c.rain_prob is not None else "")
+        out = msg("weather.now", lang, place=c.place, rain=rain, temp=temp,
+                  units=c.units_temp, desc=desc, rng=rng_txt)
         return ToolResult(True, out, "weather",
                           {"place": c.place, "temp": temp, "code": c.code, "rain_prob": c.rain_prob})
 
@@ -556,50 +519,37 @@ class Tools:
             log.warning("rain lookup failed (%s)", e)
             return ToolResult(
                 False,
-                _t(lang, "Nie mam dostępu do prognozy opadów.",
-                   "I don't have access to the rain forecast."),
+                msg("rain.unavailable", lang),
                 "error", {"reason": "rain_unavailable"},
             )
         if o.today_max is None and o.tomorrow_max is None:
             return ToolResult(
                 False,
-                _t(lang, "Nie mam dostępu do prognozy opadów.",
-                   "I don't have access to the rain forecast."),
+                msg("rain.unavailable", lang),
                 "error", {"reason": "rain_unavailable"},
             )
 
         tomorrow = "tomorrow" in when.lower() or "jutro" in when.lower()
         if tomorrow and o.tomorrow_max is not None:
-            text = _t(lang, f"Jutro szansa opadów {o.tomorrow_max}%.",
-                      f"Tomorrow the chance of rain is {o.tomorrow_max}%.")
+            text = msg("rain.tomorrow", lang, prob=o.tomorrow_max)
             return ToolResult(True, text, "rain",
                               {"when": "tomorrow", "place": o.place, "tomorrow": o.tomorrow_max})
 
         # Today (default): chance first, then WHEN it peaks, then tomorrow as a tail.
         today = o.today_max if o.today_max is not None else (o.peak_prob or 0)
-        if lang == "pl":
-            text = f"Szansa opadów dziś {today}%."
-            if o.peak_hour is not None and o.peak_prob is not None and o.peak_prob >= self.weather._peak_threshold:
-                text += f" Najwięcej koło {o.peak_hour}:00."
-            if o.tomorrow_max is not None:
-                text += f" Jutro {o.tomorrow_max}%."
-        else:
-            text = f"Chance of rain today {today}%."
-            if o.peak_hour is not None and o.peak_prob is not None and o.peak_prob >= self.weather._peak_threshold:
-                text += f" Highest around {o.peak_hour}:00."
-            if o.tomorrow_max is not None:
-                text += f" Tomorrow {o.tomorrow_max}%."
+        text = msg("rain.today", lang, prob=today)
+        if o.peak_hour is not None and o.peak_prob is not None and o.peak_prob >= self.weather._peak_threshold:
+            text += msg("rain.peak_suffix", lang, hour=o.peak_hour)
+        if o.tomorrow_max is not None:
+            text += msg("rain.tomorrow_suffix", lang, prob=o.tomorrow_max)
         return ToolResult(True, text, "rain",
                           {"when": "today", "place": o.place, "today": today,
                            "peak_hour": o.peak_hour, "tomorrow": o.tomorrow_max})
 
     # -- news --------------------------------------------------------------
-    # The three tiers Jessica reads, in spoken order, with their section labels.
+    # The three tiers Jessica reads, in spoken order; their section labels
+    # live in the message catalog (tables.news_labels).
     _NEWS_TIERS = ("local", "national", "world")
-    _NEWS_LABELS = {
-        "pl": {"local": "Z Krakowa", "national": "Z kraju", "world": "Ze świata"},
-        "en": {"local": "From Kraków", "national": "Nationally", "world": "Worldwide"},
-    }
 
     def _news_composer(self) -> OpenAiClient:
         """OpenAI client that turns the collected headlines into a spoken Polish
@@ -611,30 +561,30 @@ class Tools:
 
     def _headline_block(self, tiers: dict[str, list[str]], lang: str) -> str:
         """The collected headlines as a labelled, grouped block for the composer."""
-        labels = self._NEWS_LABELS.get(lang, self._NEWS_LABELS["pl"])
         lines: list[str] = []
         for key in self._NEWS_TIERS:
             items = tiers.get(key) or []
             if not items:
                 continue
-            lines.append(f"[{labels[key]}]")
+            lines.append(f"[{table('news_labels', key, lang)}]")
             lines.extend(f"- {t}" for t in items)
         return "\n".join(lines)
 
     def _spoken_from_tiers(self, tiers: dict[str, list[str]], lang: str) -> ToolResult:
         """Keyless floor: read the tiers natively (Polish), two items each, no LLM."""
-        labels = self._NEWS_LABELS.get(lang, self._NEWS_LABELS["pl"])
         parts: list[str] = []
         counts: dict[str, int] = {}
         for key in self._NEWS_TIERS:
             items = (tiers.get(key) or [])[:2]
             counts[key] = len(items)
             if items:
-                parts.append(f"{labels[key]}: {'; '.join(items)}.")
+                parts.append(msg("news.tier_line", lang,
+                                 label=table("news_labels", key, lang),
+                                 items="; ".join(items)))
         if not parts:
             return ToolResult(
                 False,
-                _t(lang, "Nie mogę teraz sprawdzić wiadomości.", "I can't check the news right now."),
+                msg("news.unavailable", lang),
                 "error", {"reason": "news_unavailable"},
             )
         return ToolResult(True, " ".join(parts), "news", {"source": "rss", "tiers": counts})
@@ -661,31 +611,14 @@ class Tools:
     @staticmethod
     def _web_failed_preamble(lang: str) -> str:
         """Spoken state explanation for the RSS floor after a failed web search."""
-        return _t(lang,
-                  "Nie udało mi się przeszukać internetu, więc czytam nagłówki z serwisów. ",
-                  "I couldn't search the web, so I'm reading feed headlines instead. ")
+        return msg("news.web_failed_preamble", lang)
 
     def news_brief(self, lang: str) -> ToolResult:
         # Preferred: live internet research (web_search) — today's news straight
         # from the web, Kraków → kraj → świat.
         today = datetime.now().date().isoformat()
-        if lang == "pl":
-            rsys = (self.persona + " Jesteś prezenterką wiadomości. Zwykły tekst do "
-                    "przeczytania na głos — bez Markdown, gwiazdek, nagłówków i URL-i.")
-            rquery = (f"Znajdź w internecie najważniejsze DZISIEJSZE ({today}) wiadomości i "
-                      "ułóż mówiony serwis po polsku w trzech częściach, dokładnie w tej "
-                      "kolejności: „Z Krakowa”, „Z kraju” (Polska), „Ze świata” — po cztery-pięć "
-                      "wiadomości w każdej części, każda w jednym lub dwóch zdaniach z konkretami: "
-                      "kto, co, gdzie, kiedy, liczby i kwoty jeśli są znane. Tylko fakty "
-                      "znalezione w sieci.")
-        else:
-            rsys = (self.persona + " You are a news anchor. Plain text to be read aloud — "
-                    "no Markdown, asterisks, headers or URLs.")
-            rquery = (f"Search the internet for TODAY'S ({today}) top news and compose a spoken "
-                      "brief in three sections, in this exact order: From Kraków, From Poland, "
-                      "Worldwide — four-five items each, one-two sentences each with specifics: "
-                      "who, what, where, when, figures and amounts when known. Only facts found "
-                      "on the web.")
+        rsys = msg("prompts.news_research.system", lang, persona=self.persona)
+        rquery = msg("prompts.news_research.query", lang, today=today)
         web_tried, hit = self._research_brief(rquery, rsys, "news")
         if hit is not None:
             return hit
@@ -700,21 +633,8 @@ class Tools:
         composer = self._news_composer()
         block = self._headline_block(tiers, lang)
         if composer.available and block:
-            if lang == "pl":
-                sys = (self.persona + " Jesteś prezenterką wiadomości. Z podanych nagłówków ułóż "
-                       "krótki, mówiony serwis po polsku w trzech częściach: „Z Krakowa”, „Z kraju”, "
-                       "„Ze świata” — po dwie wiadomości w każdej, każda jednym zdaniem. Nagłówki "
-                       "zagraniczne przetłumacz na polski. Nie dodawaj faktów spoza nagłówków, "
-                       "bez wstępu, bez adresów URL. Zwykły tekst do przeczytania na głos — bez "
-                       "formatowania Markdown, bez gwiazdek i nagłówków.")
-                query = "Nagłówki na dziś:\n" + block
-            else:
-                sys = (self.persona + " You are a news anchor. From these headlines compose a short "
-                       "spoken brief in three sections — From Kraków, Nationally, Worldwide — two "
-                       "items each, one sentence each. Add no facts beyond the headlines, no "
-                       "preamble, no URLs. Plain text to be read aloud — no Markdown, no asterisks "
-                       "or headers.")
-                query = "Today's headlines:\n" + block
+            sys = msg("prompts.news_compose.system", lang, persona=self.persona)
+            query = msg("prompts.news_compose.query", lang, headlines=block)
             try:
                 answer = _clean_spoken(composer.chat(query, system=sys))
                 if answer:
@@ -726,15 +646,8 @@ class Tools:
         # Gemini does its own grounded Kraków+Poland search (independent of the RSS
         # block), kept as the secondary cloud path.
         if self.gemini.available:
-            if lang == "pl":
-                gquery = ("Podaj najważniejsze aktualne wiadomości z międzynarodowych agencji "
-                          "(Guardian, BBC, CNN, AP), ze szczególnym uwzględnieniem Krakowa i Polski.")
-                gsys = self.persona + (" Odpowiedz po polsku, zwięźle, 3-4 najważniejsze punkty. "
-                                       "Przetłumacz nagłówki na polski.")
-            else:
-                gquery = ("Give the top current news from international agencies "
-                          "(Guardian, BBC, CNN, AP), focusing on Kraków and Poland.")
-                gsys = self.persona + " Answer in English, briefly — 3-4 key points."
+            gquery = msg("prompts.news_gemini.query", lang)
+            gsys = msg("prompts.news_gemini.system", lang, persona=self.persona)
             try:
                 answer = self.gemini.grounded(gquery, system=gsys)
                 return ToolResult(True, answer, "news", {"grounded": True, "focus": "krakow-poland"})
@@ -758,23 +671,8 @@ class Tools:
         then the rest of sport — Kraków → Poland → world. Preferred path is live
         web research; the keyless floor reads the `sport` RSS tier."""
         today = datetime.now().date().isoformat()
-        if lang == "pl":
-            rsys = (self.persona + " Jesteś prezenterką sportową. Zwykły tekst do "
-                    "przeczytania na głos — bez Markdown, gwiazdek, nagłówków i URL-i.")
-            rquery = (f"Znajdź w internecie DZISIEJSZE ({today}) wiadomości sportowe — najpierw "
-                      "piłka nożna, potem pozostałe dyscypliny — i ułóż krótki mówiony serwis po "
-                      "polsku w trzech częściach, dokładnie w tej kolejności: „Z Krakowa” (Wisła "
-                      "Kraków, Cracovia, krakowski sport), „Z kraju” (Ekstraklasa, reprezentacja "
-                      "Polski, polscy sportowcy), „Ze świata” — po dwie-trzy wiadomości, każda "
-                      "jednym zdaniem. Tylko fakty znalezione w sieci.")
-        else:
-            rsys = (self.persona + " You are a sports anchor. Plain text to be read aloud — "
-                    "no Markdown, asterisks, headers or URLs.")
-            rquery = (f"Search the internet for TODAY'S ({today}) sports news — football first, "
-                      "then other sports — and compose a short spoken brief in three sections, in "
-                      "this exact order: From Kraków (Wisła Kraków, Cracovia), From Poland "
-                      "(Ekstraklasa, national team), Worldwide — two-three items each, one "
-                      "sentence each. Only facts found on the web.")
+        rsys = msg("prompts.sport_research.system", lang, persona=self.persona)
+        rquery = msg("prompts.sport_research.query", lang, today=today)
         web_tried, hit = self._research_brief(rquery, rsys, "sport")
         if hit is not None:
             return hit
@@ -785,73 +683,38 @@ class Tools:
         if not items:
             return ToolResult(
                 False,
-                _t(lang, "Nie mogę teraz sprawdzić wiadomości sportowych.",
-                   "I can't check the sports news right now."),
+                msg("news.sport_unavailable", lang),
                 "error", {"reason": "sport_unavailable"},
             )
-        label = _t(lang, "Ze sportu", "In sports")
+        line = msg("news.tier_line", lang, label=msg("news.sport_label", lang),
+                   items="; ".join(items))
         preamble = self._web_failed_preamble(lang) if web_tried else ""
-        return ToolResult(True, f"{preamble}{label}: {'; '.join(items)}.", "news",
+        return ToolResult(True, f"{preamble}{line}", "news",
                           {"source": "rss", "kind": "sport", "count": len(items)})
 
     # -- help ("jakie komendy") --------------------------------------------
-    # Curated, spoken walkthrough of the command surface — grouped with example
-    # phrases, because reading 80 regexes aloud is useless. Keep it in sync with
-    # configs/intents/system.yaml when commands are added ("jak sport" etc.).
-    _HELP_PL = (
-        "Rozumiem między innymi. "
-        "Sterowanie: stop, głośniej, ciszej, ustaw głośność na pięćdziesiąt, powtórz, "
-        "idź spać, obudź się. "
-        "Czas: która godzina, jaka jest data. "
-        "Pogoda: jaka pogoda w Krakowie, czy będzie padać. "
-        "Wiadomości: jakie wieści — serwis z Krakowa, z kraju i ze świata; "
-        "jak sport — wiadomości sportowe, najpierw piłka nożna. "
-        "Radio i muzyka: włącz radio Trójka, zagraj tytuł albo wykonawcę, następny, "
-        "poprzedni, co teraz gra, wyłącz radio. "
-        "Książki: jakie masz książki, włącz książkę, czytaj dalej, następny rozdział. "
-        "Notatki i pamięć: zapamiętaj że…, nagraj notatkę głosową, odtwórz notatki, "
-        "jakie mam notatki, co zapisałem o…, usuń ostatnią notatkę. "
-        "Przypomnienia: przypomnij mi o…, jakie mam przypomnienia. "
-        "Języki: mów po angielsku, mów po polsku. "
-        "A gdy zapytasz o cokolwiek innego, po prostu odpowiem."
-    )
-    _HELP_EN = (
-        "Among other things I understand. "
-        "Control: stop, louder, quieter, set volume to fifty, repeat, go to sleep, wake up. "
-        "Time: what time is it, what's the date. "
-        "Weather: what's the weather in Kraków, will it rain. "
-        "News: what's the news — a brief from Kraków, Poland and the world; "
-        "sports news — football first. "
-        "Radio and music: turn on radio, play a title or artist, next, previous, "
-        "what's playing, turn the radio off. "
-        "Books: what books do you have, play a book, keep reading, next chapter. "
-        "Notes and memory: remember that…, record a voice memo, play my memos, "
-        "what notes do I have, delete the last note. "
-        "Reminders: remind me about…, what are my reminders. "
-        "Languages: speak English, speak Polish. "
-        "And for anything else, just ask."
-    )
-
     def help_commands(self, lang: str) -> ToolResult:
-        text = self._HELP_PL if lang == "pl" else self._HELP_EN
-        return ToolResult(True, text, "help", {"kind": "commands"})
+        """Curated, spoken walkthrough of the command surface — grouped with
+        example phrases, because reading 80 regexes aloud is useless. The text
+        lives in the catalog (``help.commands``); keep it in sync with
+        configs/intents/system.yaml when commands are added ("jak sport" etc.)."""
+        return ToolResult(True, msg("help.commands", lang), "help", {"kind": "commands"})
 
     # -- web lookup --------------------------------------------------------
     def web_lookup(self, query: str, lang: str) -> ToolResult:
         if not self.gemini.available:
             return ToolResult(
                 False,
-                _t(lang, "To wymaga konta Gemini — ustaw GEMINI_API_KEY.",
-                   "That needs a Gemini account — set GEMINI_API_KEY."),
+                msg("web.needs_key", lang),
                 "news", {"needs_key": True},
             )
-        sys = self.persona + _t(lang, " Streść zwięźle, po polsku.", " Summarise briefly, in English.")
+        sys = msg("prompts.web_lookup.system", lang, persona=self.persona)
         try:
             answer = self.gemini.grounded(query, system=sys)
         except GeminiError as e:
             log.warning("site lookup via Gemini failed (%s)", e)
             return ToolResult(
-                False, _t(lang, "Nie mogę teraz tego sprawdzić.", "I can't look that up right now."),
+                False, msg("web.lookup_failed", lang),
                 "error", {"reason": "lookup_failed"},
             )
         return ToolResult(True, answer, "news", {"grounded": True})
@@ -859,26 +722,26 @@ class Tools:
     # -- radio -------------------------------------------------------------
     def radio_play(self, query: str, lang: str) -> ToolResult:
         if not self.radio.available:
-            return ToolResult(True, _t(lang, "Radio nie jest skonfigurowane.", "Radio isn't configured."), "radio_offer")
+            return ToolResult(True, msg("radio.not_configured", lang), "radio_offer")
         station = self.radio.resolve(query)
         if station is None:
             names = [s.name for s in self.radio.offer()]
             if len(names) > 1:
-                joined = ", ".join(names[:-1]) + _t(lang, f" lub {names[-1]}", f" or {names[-1]}")
+                joined = ", ".join(names[:-1]) + msg("radio.offer_last", lang, station=names[-1])
             else:
                 joined = names[0] if names else ""
             return ToolResult(
                 True,
-                _t(lang, f"Mogę włączyć: {joined}. Którą stację?", f"I can play: {joined}. Which station?"),
+                msg("radio.offer", lang, stations=joined),
                 "radio_offer", {"stations": [s.id for s in self.radio.offer()]},
             )
         return ToolResult(
-            True, _t(lang, f"Włączam stację {station.name}.", f"Playing {station.name}."),
+            True, msg("radio.station_on", lang, station=station.name),
             "radio_play", {"id": station.id, "name": station.name, "url": station.url},
         )
 
     def radio_stop(self, lang: str) -> ToolResult:
-        return ToolResult(True, _t(lang, "Wyłączam radio.", "Turning off the radio."), "radio_stop")
+        return ToolResult(True, msg("radio.off", lang), "radio_stop")
 
     # -- music (offline local library) -------------------------------------
     def _play_track(self, path: str, name: str, lang: str) -> ToolResult:
@@ -887,17 +750,17 @@ class Tools:
         self._history = self._history[: self._cursor + 1]
         self._history.append({"path": path, "name": name})
         self._cursor = len(self._history) - 1
-        return ToolResult(True, _t(lang, f"Gram {name}.", f"Playing {name}."),
+        return ToolResult(True, msg("music.playing", lang, name=name),
                           "music_play", {"path": path, "name": name})
 
     def _play_from_history(self, lang: str) -> ToolResult:
         item = self._history[self._cursor]
-        return ToolResult(True, _t(lang, f"Gram {item['name']}.", f"Playing {item['name']}."),
+        return ToolResult(True, msg("music.playing", lang, name=item["name"]),
                           "music_play", {"path": item["path"], "name": item["name"]})
 
     def music_play(self, query: str, lang: str) -> ToolResult:
         if not self.music.available:
-            return ToolResult(True, _t(lang, "Biblioteka muzyki jest pusta.", "The music library is empty."), "music_offer")
+            return ToolResult(True, msg("music.library_empty", lang), "music_offer")
         self._last_query = query  # remember context for "zagraj inny"
         # Queue ladder (decision 2026-07-27: album/artist requests play
         # EVERYTHING until "stop", not one surprise track): explicit
@@ -915,8 +778,7 @@ class Tools:
             n = len(album)
             return ToolResult(
                 True,
-                _t(lang, f"Gram album {name} — {_pl_tracks(n)}.",
-                   f"Playing the album {name} — {n} tracks."),
+                msg("music.album", lang, name=name, tracks=plural("tracks", n, lang)),
                 "music_play", {
                     "path": album[0].path, "name": name, "is_playlist": True,
                     "chapters": [t.path for t in album], "chapter": 0,
@@ -931,8 +793,7 @@ class Tools:
             n = len(queue)
             return ToolResult(
                 True,
-                _t(lang, f"Dobrze — {_pl_tracks(n)} w losowej kolejności.",
-                   f"Alright — {n} tracks, shuffled."),
+                msg("music.shuffled", lang, tracks=plural("tracks", n, lang)),
                 "music_play", {
                     "path": queue[0].path, "name": name, "is_playlist": True,
                     "chapters": [t.path for t in queue], "chapter": 0,
@@ -959,7 +820,7 @@ class Tools:
         if self._cursor > 0:
             self._cursor -= 1
             return self._play_from_history(lang)
-        return ToolResult(True, _t(lang, "To już pierwszy utwór.", "This is the first track."), "music_offer")
+        return ToolResult(True, msg("music.first_track", lang), "music_offer")
 
     # -- audiobooks (offline, from catalog.json) ---------------------------
     def _book_result(self, book: Book, lang: str) -> ToolResult:
@@ -973,8 +834,8 @@ class Tools:
         resumed = bool(prog) and (chapter > 0 or offset > 5.0)
         if chapter >= len(book.chapters):
             chapter, offset, resumed = 0, 0.0, False
-        lead = (_t(lang, f"Wznawiam: {who}.", f"Resuming: {who}.") if resumed
-                else _t(lang, f"Czytam: {who}.", f"Reading: {who}."))
+        lead = (msg("book.resuming", lang, book=who) if resumed
+                else msg("book.reading", lang, book=who))
         return ToolResult(True, lead, "music_play", {
             "path": book.chapters[chapter], "name": who,
             "is_audiobook": True, "slug": book.slug,
@@ -984,7 +845,7 @@ class Tools:
 
     def audiobook_play(self, query: str, lang: str) -> ToolResult:
         if not self.audiobooks.available:
-            return ToolResult(True, _t(lang, "Nie mam jeszcze audiobooków.", "I have no audiobooks yet."), "audiobook_offer")
+            return ToolResult(True, msg("book.none", lang), "audiobook_offer")
         book = self.audiobooks.resolve(query)
         if book is None:
             # No literal match → try MEANING; map the top book hit back to a Book
@@ -996,7 +857,7 @@ class Tools:
             titles = ", ".join(b.title for b in self.audiobooks.offer())
             return ToolResult(
                 True,
-                _t(lang, f"Nie znalazłam „{query}”. Mam: {titles}.", f"I couldn't find “{query}”. I have: {titles}."),
+                msg("book.not_found", lang, query=query, titles=titles),
                 "audiobook_offer",
             )
         return self._book_result(book, lang)
@@ -1007,15 +868,12 @@ class Tools:
         if not self.audiobooks.available:
             return ToolResult(
                 True,
-                _t(lang, "Nie mam jeszcze żadnych audiobooków.", "I don't have any audiobooks yet."),
+                msg("book.list_empty", lang),
                 "audiobook_offer",
             )
         total = len(self.audiobooks.books)
         titles = ", ".join(b.title for b in self.audiobooks.offer(limit=3))
-        if lang == "pl":
-            out = f"Mam {total} audiobooków, na przykład: {titles}. Powiedz „przeczytaj” i tytuł."
-        else:
-            out = f"I have {total} audiobooks, for example: {titles}. Say “read” and a title."
+        out = msg("book.list", lang, n=total, titles=titles)
         return ToolResult(True, out, "audiobook_offer", {"count": total})
 
     # -- semantic search (music + books BY MEANING) ------------------------
@@ -1023,10 +881,10 @@ class Tools:
         who = " — ".join(x for x in (item.get("who", ""), item.get("title", "")) if x)
         if item.get("type") == "book":
             ch = item.get("chapters") or []
-            return ToolResult(True, _t(lang, f"Czytam: {who}.", f"Reading: {who}."),
+            return ToolResult(True, msg("book.reading", lang, book=who),
                               "music_play", {"path": ch[0], "name": who}) if ch else None
         path = str(item.get("path", ""))
-        return ToolResult(True, _t(lang, f"Gram {who}.", f"Playing {who}."),
+        return ToolResult(True, msg("music.playing", lang, name=who),
                           "music_play", {"path": path, "name": who}) if path else None
 
     def library_search(self, query: str, lang: str, *, kinds: tuple[str, ...] | None = None) -> ToolResult:
@@ -1036,5 +894,4 @@ class Tools:
             played = self._play_item(item, lang)
             if played is not None:
                 return played
-        return ToolResult(True, _t(lang, f"Nie znalazłam nic pasującego do „{query}”.",
-                                   f"I found nothing matching “{query}”."), "music_offer")
+        return ToolResult(True, msg("music.search_none", lang, query=query), "music_offer")

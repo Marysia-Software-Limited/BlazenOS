@@ -69,6 +69,33 @@ enum L10n {
     static var settingsAboutVersion: String     { localized("settings.about.version") }
     static var settingsAboutIntents: String     { localized("settings.about.intents") }
 
+    // MARK: Spoken replies
+    //
+    // Resolved per-utterance by an explicit language tag, never the
+    // device locale — see `ReplyGenerator` (docs/13-LANGUAGES.md: the
+    // reply language follows the detected/pinned utterance language).
+    // There is no static `reply.time_query` entry on iOS: the time
+    // reply is formatter-built at runtime (`ReplyGenerator.timeReply`),
+    // unlike the Android twin's `reply_time_query`.
+
+    /// Canned reply for `intent` in `language`, or `nil` if the intent
+    /// has no entry in that language's table.
+    static func reply(intent: String, language: String) -> String? {
+        strings[tableLanguage(for: language)]?["reply.\(intent)"]
+    }
+
+    /// The "I don't know that yet" reply in `language`.
+    static func replyUnknown(language: String) -> String {
+        let key = "reply.unknown"
+        return strings[tableLanguage(for: language)]?[key]
+            ?? strings["en"]?[key]
+            ?? key
+    }
+
+    private static func tableLanguage(for language: String) -> String {
+        language.hasPrefix("pl") ? "pl" : "en"
+    }
+
     // MARK: - Lookup
 
     private static let strings: [String: [String: String]] = [
@@ -120,6 +147,15 @@ enum L10n {
             "settings.about.section":       "O aplikacji",
             "settings.about.version":       "Wersja",
             "settings.about.intents":       "Załadowane intencje",
+
+            "reply.volume_up":           "Robi się głośniej.",
+            "reply.volume_down":         "Robi się ciszej.",
+            "reply.language_pin_pl":     "Mówimy po polsku.",
+            "reply.language_pin_en":     "Switching to English.",
+            "reply.language_unpin":      "Słucham uważnie — wybiorę język sama.",
+            "reply.what_can_you_do":     "Mogę zmienić głośność, sprawdzić godzinę albo przeczytać wiadomości.",
+            "reply.stop":                "Zamilkam.",
+            "reply.unknown":             "Nie rozumiem jeszcze tego polecenia. Powiedz inaczej?",
         ],
         "en": [
             "home.greeting":             "Hi, I'm Jessica.",
@@ -169,6 +205,15 @@ enum L10n {
             "settings.about.section":       "About",
             "settings.about.version":       "Version",
             "settings.about.intents":       "Loaded intents",
+
+            "reply.volume_up":           "Turning it up.",
+            "reply.volume_down":         "Turning it down.",
+            "reply.language_pin_pl":     "Mówimy po polsku.",
+            "reply.language_pin_en":     "Switching to English.",
+            "reply.language_unpin":      "I'll listen and pick the language myself.",
+            "reply.what_can_you_do":     "I can change the volume, check the time, or read the news.",
+            "reply.stop":                "Going quiet.",
+            "reply.unknown":             "I don't have that one wired up yet. Try again?",
         ],
     ]
 

@@ -16,6 +16,7 @@ from pathlib import Path
 from audiobook_catalog.progress import AudiobookProgress
 
 from jessica_linux.fabric import pull_and_merge, serve
+from jessica_linux.l10n import msg
 from jessica_linux.voice import Voice
 
 # NOTE: `node.build_assistant` (the chat agent) imports the heavy `blazend` engine
@@ -87,18 +88,18 @@ def main(argv: list[str] | None = None) -> int:
         from jessica_linux import books
         cat = os.environ.get("BLAZEN_AUDIOBOOKS_CATALOG") or str(books._LIBRARY / "catalog.json")
         s = books.pull_catalog(node=_node(), local_catalog=cat)
-        print(f"katalog: {s['books']} książek ({s['merged']} z sieci) → {cat}")
+        print(msg("catalog.stats", books=s["books"], merged=s["merged"], path=cat))
         return 0
 
     if args.ingest:
         from jessica_linux import books
         book = books.resolve(args.ingest)
         if book is None:
-            print(f"nie znalazłam książki: {args.ingest!r}")
+            print(msg("book.not_found", query=args.ingest))
             return 1
         tts = Voice()
         if not tts.available:
-            print("brak TTS w mesh — nie mogę renderować")
+            print(msg("tts.missing_render"))
             return 1
         books.render_to_files(book, voice=tts, progress=_progress())
         return 0
@@ -107,18 +108,18 @@ def main(argv: list[str] | None = None) -> int:
         from jessica_linux import books
         book = books.resolve(args.read)
         if book is None:
-            print(f"nie znalazłam książki: {args.read!r}")
+            print(msg("book.not_found", query=args.read))
             return 1
         tts = Voice()
         if not tts.available:
-            print("brak TTS w mesh — nie mogę czytać")
+            print(msg("tts.missing_read"))
             return 1
         bookprog = _progress()
         saved = bookprog.get(book.slug)
         start = args.from_chunk if args.from_chunk is not None else ((saved["chapter"] + 1) if saved else 0)
         pre = books.rendered_chapters(book)
-        print(f"Czytam „{book.title}” ({book.author}) od {start}"
-              f"{' (z gotowych plików)' if pre else ''}…")
+        print(msg("book.reading_from", title=book.title, author=book.author,
+                  start=start, files=msg("book.from_files") if pre else ""))
         if pre:  # prefer kept audio (chapter files) — resumable by chapter
             books.play_files([str(p) for p in pre], voice=tts, progress=bookprog,
                              slug=book.slug, title=book.title, start=start)
@@ -160,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
         respond(agent.route(args.prompt, now=datetime.now()).text)
         return 0
 
-    print("── Jessica (Linux node) ── Ctrl-D lub „wyjdź” kończy ──")
+    print(msg("repl.banner"))
     while True:
         try:
             line = input("  ty> ")
@@ -169,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
         if line.strip() in {"exit", "quit", "wyjdź", "wyjdz"}:
             break
         respond(agent.route(line, now=datetime.now()).text, prefix="  Jessica: ")
-    print("\n  Jessica: Do usłyszenia!")
+    print(msg("repl.bye"))
     return 0
 
 

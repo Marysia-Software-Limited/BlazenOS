@@ -67,7 +67,14 @@ def _wav_to_ring_pcm(wav_bytes: bytes, dst_rate: int) -> list[int]:
 
 
 def _phrases(data: dict) -> list[tuple[str, str]]:
-    """(lang, text) for every cue + any `phrases:` list, PL + EN."""
+    """(lang, text) to pre-render, PL + EN.
+
+    Since the phrases.yaml v2 catalog (2026-08-27) the file holds ALL of
+    Jessica's messages, most of them templated ({name}, {station}) — those
+    can't be pre-rendered. What renders: every `cues:` entry (static by
+    contract), any legacy `phrases:` list, and the message keys the catalog
+    explicitly lists under `prerender:` (static messages worth caching, e.g.
+    training prompts)."""
     out: list[tuple[str, str]] = []
     for group in ("cues",):
         for _name, langs in (data.get(group) or {}).items():
@@ -77,6 +84,12 @@ def _phrases(data: dict) -> list[tuple[str, str]]:
     for item in data.get("phrases", []) or []:
         for lang, text in (item or {}).items():
             if text:
+                out.append((str(lang), str(text)))
+    messages = data.get("messages") or {}
+    for key in data.get("prerender", []) or []:
+        langs = messages.get(str(key)) or {}
+        for lang, text in (langs or {}).items():
+            if text and "{" not in str(text):  # templated → skip, can't pre-render
                 out.append((str(lang), str(text)))
     return out
 
