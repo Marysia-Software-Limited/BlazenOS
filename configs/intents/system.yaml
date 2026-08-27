@@ -414,30 +414,36 @@ intents:
       key: cloud_policy.cloud_enabled
       value: true
 
+  # Same optional-prefix fix as voice_learn below (2026-08-27).
   - name: privacy_what_do_you_know
     triggers:
       en:
-        - "(jess|jessica),? what do you know about me"
+        - "((jess|jessica|dzesika),? )?what do you know about me"
       pl:
-        - "(jess|jessico),? co (o mnie )?wiesz( o mnie)?"
+        - "((jess|jessica|jessico|d(ż|z)esik(a|o)),? )?co (o mnie )?wiesz( o mnie)?"
     action: tool_call
     tool: privacy.summarise_profile
 
+  # Wake-name prefix OPTIONAL and covering the form ASR actually writes
+  # (2026-08-27): the spoken wake is "dżesika" and whisper transcribes it as
+  # "Dżesika"/"Jessica" — a MANDATORY "(jess|jessico)" prefix meant the intent
+  # never fired ("naucz się mojego głosu" reported dead). require_wake already
+  # gates ambient speech, so the prefix adds nothing but failure modes.
   - name: voice_learn
     triggers:
       en:
-        - "(jess|jessica),? learn my voice"
+        - "((jess|jessica|dzesika),? )?learn my voice"
       pl:
-        - "(jess|jessico),? naucz si(ę|e) (mojego g(ł|l)osu)"
+        - "((jess|jessica|jessico|d(ż|z)esik(a|o)),? )?naucz si(ę|e) mojego g(ł|l)osu"
     action: tool_call
     tool: voice_id.start_training
 
   - name: register_formal
     triggers:
       en:
-        - "(jess|jessica),? be more formal"
+        - "((jess|jessica|dzesika),? )?be more formal"
       pl:
-        - "(jess|jessico),? m(ó|o)w (do mnie )?oficjalnie"
+        - "((jess|jessica|jessico|d(ż|z)esik(a|o)),? )?m(ó|o)w (do mnie )?oficjalnie"
     action: mutate
     mutate:
       key: system.persona.register
@@ -446,9 +452,9 @@ intents:
   - name: register_casual
     triggers:
       en:
-        - "(jess|jessica),? be casual"
+        - "((jess|jessica|dzesika),? )?be casual"
       pl:
-        - "(jess|jessico),? m(ó|o)w (do mnie )?po imieniu"
+        - "((jess|jessica|jessico|d(ż|z)esik(a|o)),? )?m(ó|o)w (do mnie )?po imieniu"
     action: mutate
     mutate:
       key: system.persona.register

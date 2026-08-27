@@ -400,3 +400,35 @@ def test_alarm_cancel_does_not_hijack_others():
     assert not _matches("reminder_delete", "wyłącz radio")        # radio_stop
     assert not _matches("reminder_delete", "usuń ostatnią notatkę")  # memory_delete_last
     assert not _matches("add_reminder", "obudź się")
+
+
+# -- voice_learn: the wake-name prefix is OPTIONAL and matches the form ASR
+# actually writes ("Dżesika"/"Jessica") — a mandatory "(jess|jessico)" prefix
+# made "naucz się mojego głosu" dead in practice (2026-08-27).
+@pytest.mark.parametrize("q", [
+    "naucz się mojego głosu",
+    "Dżesika, naucz się mojego głosu.",
+    "dżesika naucz się mojego głosu",
+    "Jessica, naucz się mojego głosu",
+    "jessico, naucz sie mojego glosu",
+])
+def test_voice_learn_fires_with_and_without_wake_name(q):
+    assert _matches("voice_learn", q)
+
+
+@pytest.mark.parametrize("q", ["learn my voice", "Jessica, learn my voice"])
+def test_voice_learn_english(q):
+    assert _matches("voice_learn", q, "en")
+
+
+def test_voice_learn_ignores_ambient_speech():
+    assert not _matches("voice_learn", "nauczyłem się wczoraj nowego wiersza")
+    assert not _matches("voice_learn", "ona uczy się głosek z dzieckiem")
+
+
+@pytest.mark.parametrize("q", [
+    "co o mnie wiesz",
+    "Dżesika, co wiesz o mnie?",
+])
+def test_privacy_intent_fires_without_prefix_too(q):
+    assert _matches("privacy_what_do_you_know", q)

@@ -19,7 +19,18 @@ phrase. Voice ID is a comfort feature, not an auth boundary. See
 
 ## Layer 1 — Wake-word fine-tune
 
-Triggered by: "Jess, naucz się mojego głosu" / "Jess, learn my voice".
+Triggered by: "naucz się mojego głosu" / "learn my voice" — with or without
+the wake name in front (2026-08-27: the prefix is optional and matches the
+forms ASR actually writes, "Dżesika"/"Jessica"; a mandatory "jess" prefix had
+made the intent unreachable).
+
+The implemented on-device flow (supervisor `_start_voice_training`) captures
+five wake-word samples into `voice-training/`, then finishes by asking **"A
+jak mam się do ciebie zwracać?"** — the answer is stored as the profile
+`name` (the `{name}` used in greetings/replies; never hardcoded) and its wav
+joins the training samples (the owner saying their own name is prime
+voice-ID material). Training itself still runs off-device
+(`train-wake.py`).
 
 Steps:
 

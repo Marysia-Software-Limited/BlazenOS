@@ -243,6 +243,7 @@ class _DialogStub:
         self._memo_lang = "pl"
         self._voice_train_round = 0  # voice-training dialog off (2026-08-22)
         self._voice_train_retries = 0
+        self._voice_train_stage: str | None = None  # name finale off (2026-08-27)
 
     async def _speak(self, text: str, lang: str = "pl") -> None:
         self.spoken.append(text)
@@ -333,16 +334,20 @@ def test_memo_queue_envelope_reaches_the_player():
 
 
 # -- voice training ("naucz się mojego głosu", 2026-08-22) --------------------
-def test_voice_training_rounds_collect_samples_then_thank(tmp_path):
+def test_voice_training_rounds_collect_samples_then_ask_address(tmp_path):
     """Five captures land as wavs in the training dir; rounds are narrated and
-    the dialog thanks the owner at the end (blind-first)."""
+    the dialog finishes by asking how to address the owner (2026-08-27) — the
+    answer is stored in the profile and its wav joins the samples."""
     from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import Orchestrator
 
     stub = _DialogStub()
     stub._VOICE_TRAIN_DIR = tmp_path / "voice-training"
     stub._VOICE_TRAIN_ROUNDS = Orchestrator._VOICE_TRAIN_ROUNDS
     stub._on_voice_sample = Orchestrator._on_voice_sample.__get__(stub)
+    stub._on_voice_train_name = Orchestrator._on_voice_train_name.__get__(stub)
     stub._voice_train_round = 1
+    stored: dict[str, str] = {}
+    stub_set = stored.__setitem__
 
     async def run() -> None:
         for n in range(1, 6):
@@ -353,10 +358,30 @@ def test_voice_training_rounds_collect_samples_then_thank(tmp_path):
 
     asyncio.run(run())
     assert len(list((tmp_path / "voice-training").glob("wake-*.wav"))) == 5
-    assert stub._voice_train_round == 0                       # dialog finished
-    assert stub.windows == 4                                  # reopened between rounds
-    assert any("Dziękuję" in s for s in stub.spoken)          # thanked at the end
+    assert stub._voice_train_round == 0                       # sample rounds done
+    assert stub._voice_train_stage == "name"                  # …now the address question
+    assert stub.windows == 5                                  # 4 between rounds + name window
+    assert any("Dziękuję" in s for s in stub.spoken)          # thanked before asking
+    assert any("zwracać" in s for s in stub.spoken)           # the address question
     assert any("jeszcze cztery razy" in s for s in stub.spoken)
+
+    # The spoken answer stores the profile name and closes the dialog.
+    import unittest.mock
+
+    answer = tmp_path / "answer.wav"
+    answer.write_bytes(b"RIFFxxxx")
+    with unittest.mock.patch(
+        "blazend.domains.context.adapters.rpi5.memory.MemoryStore"
+    ) as store_cls:
+        store_cls.return_value.set_profile = (
+            lambda key, value, now: stub_set(key, value))
+        asyncio.run(Orchestrator._on_memo_recorded(
+            stub, {"audio_path": str(answer), "transcript": "Mów mi Błazen.",
+                   "language": "pl"}))
+    assert stored == {"name": "Błazen"}
+    assert stub._voice_train_stage is None
+    assert len(list((tmp_path / "voice-training").glob("name-*.wav"))) == 1
+    assert any("Miło mi, Błazen" in s for s in stub.spoken)
 
 
 def test_voice_training_does_not_disturb_memo_dialog(tmp_path):

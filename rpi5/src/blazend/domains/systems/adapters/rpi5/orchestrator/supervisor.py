@@ -48,6 +48,35 @@ _SYSTEMCTL: list[str] = (
 )
 
 
+# "Jak mam się do ciebie zwracać?" (the voice-training finale): strip a spoken
+# lead-in so both a bare answer ("Błazen") and a phrased one ("mów mi Błazen")
+# yield the address form. Mirrors the engine's _NAME_SET phrases, plus
+# bare-answer acceptance the engine's intent path doesn't need.
+_ADDRESS_LEADIN = re.compile(
+    r"^(?:m(?:ó|o)w\s+(?:do\s+mnie|mi)|nazywaj\s+mnie|zwracaj\s+si(?:ę|e)\s+do\s+mnie|"
+    r"jestem|mam\s+na\s+imi(?:ę|e)|nazywam\s+si(?:ę|e)|per|call\s+me|i\s*'?a?m|"
+    r"my\s+name\s+is|address\s+me\s+as)\s+",
+    re.IGNORECASE,
+)
+
+
+def _extract_address(text: str) -> str:
+    """Spoken answer → the address to store ("Mów mi Błazen." → "Błazen").
+
+    At most four words survive — an address is short, and a rambling answer is
+    more likely a mis-capture than a name. Empty string means "couldn't tell"
+    (the caller retries or keeps the previous profile name)."""
+    body = text.strip().strip(" ,.?!„”\"")
+    # Lead-ins stack ("zwracaj się do mnie per pan doktor") — strip until fixed.
+    while (stripped := _ADDRESS_LEADIN.sub("", body).strip(" ,.?!„”\"")) != body:
+        body = stripped
+    words = body.split()
+    if not words or len(words) > 4:
+        return ""
+    name = " ".join(words)
+    return name[:1].upper() + name[1:]
+
+
 def _state_root() -> Path:
     """Persistent state root: the parent of BLAZEN_DATA_DIR (…/data) when set —
     desktop installs point it under XDG — else the appliance /var/lib/blazen."""
@@ -240,6 +269,9 @@ class Orchestrator:
         # (1..5). Shares the memo capture window machinery.
         self._voice_train_round = 0
         self._voice_train_retries = 0  # consecutive empty captures (cap 2)
+        # Final voice-training step (2026-08-27): after the wake samples she
+        # asks how to address the owner; "name" while that answer is awaited.
+        self._voice_train_stage: str | None = None
         self._memo_title = ""
         self._memo_lang = "pl"
         # "dżesika stop" mid-processing: the brain may already be generating —
@@ -682,6 +714,27 @@ class Orchestrator:
                     return
                 await self._speak("Nie usłyszałam. Powiedz jeszcze raz: dżesika.",
                                   self._memo_lang or "pl")
+                await self._wait_speech_done()
+                self._open_memo_window()
+                return
+            if self._voice_train_stage == "name":
+                # Silence on "jak mam się do ciebie zwracać?" — same bounded
+                # retry as the sample rounds, then keep the stored address.
+                self._voice_train_retries += 1
+                lang = self._memo_lang or "pl"
+                if self._voice_train_retries > 2:
+                    self._voice_train_stage = None
+                    self._voice_train_retries = 0
+                    await self._speak(
+                        "Nie usłyszałam. Zostanę przy tym, jak zwracałam się "
+                        "do tej pory." if lang != "en"
+                        else "I didn't hear you. I'll keep addressing you as "
+                             "before.", lang)
+                    return
+                await self._speak(
+                    "Nie usłyszałam. Jak mam się do ciebie zwracać?"
+                    if lang != "en" else "I didn't hear you. How should I "
+                                         "address you?", lang)
                 await self._wait_speech_done()
                 self._open_memo_window()
                 return
@@ -1235,6 +1288,8 @@ class Orchestrator:
         if self._radio.playing:
             await self._act_on_reply({"action": "music_stop"})
         self._voice_train_round = 1
+        self._voice_train_stage = None  # a stale name stage never survives a restart
+        self._voice_train_retries = 0
         self._memo_lang = lang
         await self._speak(
             "Świetnie, nauczę się twojego głosu. Powiedz teraz wyraźnie: dżesika. "
@@ -1263,11 +1318,17 @@ class Orchestrator:
                  transcript[:40])
         if n >= self._VOICE_TRAIN_ROUNDS:
             self._voice_train_round = 0
+            # Learning the voice includes learning how to address its owner
+            # (user request 2026-08-27): one more captured answer, stored in
+            # the profile ({name} in the greeting; never hardcoded).
+            self._voice_train_stage = "name"
             await self._speak(
-                "Dziękuję! Zapamiętałam próbki twojego głosu. Będę cię lepiej "
-                "rozpoznawać po najbliższej aktualizacji." if lang != "en"
-                else "Thank you! I saved your voice samples. I'll recognise you "
-                     "better after the next update.", lang)
+                "Dziękuję! Zapamiętałam próbki twojego głosu. A jak mam się "
+                "do ciebie zwracać?" if lang != "en"
+                else "Thank you! I saved your voice samples. And how should "
+                     "I address you?", lang)
+            await self._wait_speech_done()
+            self._open_memo_window()
             return
         self._voice_train_round = n + 1
         left = self._VOICE_TRAIN_ROUNDS - n
@@ -1278,6 +1339,57 @@ class Orchestrator:
             else f"Good, {left} more time{'s' if left > 1 else ''}: Jessica.", lang)
         await self._wait_speech_done()
         self._open_memo_window()
+
+    async def _on_voice_train_name(self, data: dict[str, Any]) -> None:
+        """The answer to "jak mam się do ciebie zwracać?" — the voice-training
+        finale (2026-08-27). Stores the address in the profile (the {name} the
+        greeting and replies use — never hardcoded) and keeps the wav with the
+        other training samples: it is the owner saying their own name, prime
+        voice-ID material."""
+        transcript = str(data.get("transcript", ""))
+        lang = str(data.get("language", "") or self._memo_lang or "pl")
+        path = str(data.get("audio_path", ""))
+        try:
+            if path:
+                self._VOICE_TRAIN_DIR.mkdir(parents=True, exist_ok=True)
+                Path(path).rename(
+                    self._VOICE_TRAIN_DIR / f"name-{datetime.now():%Y%m%d-%H%M%S}.wav")
+        except OSError as exc:
+            log.warning("voice-training name sample not saved: %s", exc)
+        name = _extract_address(transcript)
+        if not name:
+            # One retry, then finish politely keeping the stored address.
+            self._voice_train_retries += 1
+            if self._voice_train_retries > 1:
+                self._voice_train_stage = None
+                self._voice_train_retries = 0
+                await self._speak(
+                    "Nie zrozumiałam. Zostanę przy tym, jak zwracałam się "
+                    "do tej pory." if lang != "en"
+                    else "I didn't catch that. I'll keep addressing you as "
+                         "before.", lang)
+                return
+            await self._speak(
+                "Nie zrozumiałam. Powiedz samo imię albo formę, na przykład: "
+                "mów mi Marku." if lang != "en"
+                else "I didn't catch that. Say just the name, for example: "
+                     "call me Ben.", lang)
+            await self._wait_speech_done()
+            self._open_memo_window()
+            return
+        self._voice_train_stage = None
+        self._voice_train_retries = 0
+        from blazend.domains.context.adapters.rpi5.memory import MemoryStore
+        try:
+            MemoryStore().set_profile("name", name, now=datetime.now())
+        except OSError as exc:
+            log.warning("voice-training: profile name store failed: %s", exc)
+        log.info("voice-training: owner address stored (%r)", name)
+        await self._speak(
+            f"Miło mi, {name}! Tak będę się do ciebie zwracać. Twój głos "
+            "też już znam." if lang != "en"
+            else f"Nice to meet you, {name}! That's how I'll address you. "
+                 "And I know your voice now.", lang)
 
     async def _start_memo_capture(self, lang: str) -> None:
         """"Nagraj notatkę" — a two-step Polish dialog (user request
@@ -1314,6 +1426,9 @@ class Orchestrator:
         if self._voice_train_round:
             # A voice-training capture, not a memo — route to the trainer.
             await self._on_voice_sample(data)
+            return
+        if self._voice_train_stage == "name":
+            await self._on_voice_train_name(data)
             return
         path = str(data.get("audio_path", ""))
         transcript = str(data.get("transcript", ""))
