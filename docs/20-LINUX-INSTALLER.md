@@ -48,6 +48,18 @@ audio-consuming unit and writes `$XDG_RUNTIME_DIR/blazen/audio.env`:
 Plug the Jabra in → `systemctl --user restart blazend.target` → profile
 switches. No reinstall, no config edit.
 
+**Headless rigs (no logind seat, e.g. SSH-only):** logind grants device ACLs
+only to an active seat session, so on a headless machine neither PipeWire nor
+the user units can open any sound card — PipeWire showing only the null sink
+is expected there. Desktop-mode install therefore drops
+`/etc/udev/rules.d/89-blazen-jabra.rules` (rendered from
+`installer/templates/udev/89-blazen-jabra.rules.in`), which sets
+`OWNER=<installing user>` on the **Jabra card only** (usb `0b0e:0410`); every
+other card stays `root:audio` and regular desktop audio is untouched. This is
+the one desktop-mode step needing root beyond package installs; without sudo
+it degrades to a warning. `--uninstall` removes the rule (it is root-owned,
+so it lives outside the unprivileged install manifest).
+
 ## GPU profile (`--profile cuda`)
 
 - **ASR**: faster-whisper **large-v3-turbo** on CUDA fp16 (site `asr.yaml`).

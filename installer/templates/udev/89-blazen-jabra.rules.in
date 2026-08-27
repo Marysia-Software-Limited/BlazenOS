@@ -1,0 +1,7 @@
+# Blazen: dedicate the Jabra SPEAK 410 to the Jessica pipeline user.
+# Headless rigs (no logind seat) get no uaccess ACLs on /dev/snd, so without
+# this the user units cannot open the card at all. Only the Jabra is handed
+# over; every other sound card stays root:audio and desktop audio is
+# untouched (the wireplumber rule keeps PipeWire off the Jabra either way).
+# Installed by installer/install.sh (desktop mode).
+SUBSYSTEM=="sound", ATTRS{idVendor}=="0b0e", ATTRS{idProduct}=="0410", OWNER="@INSTALL_USER@"

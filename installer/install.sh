@@ -92,6 +92,12 @@ if [ "$UNINSTALL" = 1 ]; then
   "${SYSCTL[@]}" disable --now blazend.target blazend-pull-catalog.timer 2>/dev/null || true
   while IFS= read -r p; do run rm -f "$p"; done < "$MANIFEST"
   run rm -f "$MANIFEST"
+  # Root-owned pieces live outside the manifest (its rm runs unprivileged).
+  if [ -f /etc/udev/rules.d/89-blazen-jabra.rules ]; then
+    run sudo rm -f /etc/udev/rules.d/89-blazen-jabra.rules \
+      || warn "remove /etc/udev/rules.d/89-blazen-jabra.rules by hand"
+    run sudo udevadm control --reload-rules 2>/dev/null || true
+  fi
   "${SYSCTL[@]}" daemon-reload || true
   log "uninstalled (data/models under $STATE_DIR left in place; remove by hand)"
   exit 0
@@ -204,6 +210,22 @@ if [ "$MODE" = desktop ]; then
     "$HOME/.config/wireplumber/wireplumber.conf.d/51-blazen-jabra.conf"
   manifest_add "$HOME/.config/wireplumber/wireplumber.conf.d/51-blazen-jabra.conf"
   run systemctl --user restart wireplumber 2>/dev/null || true
+  # Headless rigs (no logind seat) get no uaccess ACLs on /dev/snd, so the
+  # user units cannot open the Jabra at all. Hand the Jabra card — and only
+  # it — to the installing user via udev. This is the one desktop-mode step
+  # that needs root beyond package installs; degrade to a warning without it.
+  # (Not manifest-tracked: the manifest rm runs unprivileged — see uninstall.)
+  udev_rule=/etc/udev/rules.d/89-blazen-jabra.rules
+  udev_tmp="$(mktemp)"
+  sed "s|@INSTALL_USER@|${USER:-$(id -un)}|g" \
+    "$INSTALLER_DIR/templates/udev/89-blazen-jabra.rules.in" > "$udev_tmp"
+  if run sudo install -C -m 0644 "$udev_tmp" "$udev_rule"; then
+    run sudo udevadm control --reload-rules 2>/dev/null || true
+    run sudo udevadm trigger --subsystem-match=sound 2>/dev/null || true
+  else
+    warn "could not install $udev_rule (no sudo?) — on a headless rig the Jabra stays root-only"
+  fi
+  rm -f "$udev_tmp"
 fi
 
 # ---- 9. systemd units -------------------------------------------------------
