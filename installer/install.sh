@@ -61,7 +61,11 @@ if [ "$MODE" = desktop ]; then
   CPU_PINNING=""
   HARDENING_BLOCK="NoNewPrivileges=yes"
   TARGET_WANTEDBY="default.target"
-  SYSTEMCTL_ENV="Environment=BLAZEN_SYSTEMCTL=systemctl --user"
+  # Quotes matter: unquoted, systemd splits the value on spaces and reads it
+  # as BLAZEN_SYSTEMCTL=systemctl plus an invalid "--user" it ignores — the
+  # half-duplex hand-off then hits the SYSTEM bus and polkit prompts the GUI
+  # for auth on every audio-out toggle (observed on paul 2026-08-27).
+  SYSTEMCTL_ENV="Environment=\"BLAZEN_SYSTEMCTL=systemctl --user\""
   AUDIO_GROUP=""
 else
   LIB_DIR="/usr/lib/blazen"
@@ -78,7 +82,7 @@ else
   CPU_PINNING=""
   HARDENING_BLOCK="NoNewPrivileges=yes\nProtectSystem=strict\nReadWritePaths=$RUNTIME_DIR $STATE_DIR\nProtectHome=yes"
   TARGET_WANTEDBY="multi-user.target"
-  SYSTEMCTL_ENV="Environment=BLAZEN_SYSTEMCTL=sudo -n systemctl"
+  SYSTEMCTL_ENV="Environment=\"BLAZEN_SYSTEMCTL=sudo -n systemctl\""
   AUDIO_GROUP="SupplementaryGroups=audio"
 fi
 CONFIG_ROOT="$DEFAULTS_DIR:$SITE_DIR"
