@@ -34,6 +34,13 @@ struct Args {
     /// Wake score threshold.
     #[arg(long, default_value_t = 0.5)]
     threshold: f32,
+    /// Wake threshold while a stream plays (the orchestrator's `speaker-busy`
+    /// marker exists). Talk radio through the room mic false-fires the idle
+    /// threshold all night — 18 wakes over one night (2026-08-28) kept
+    /// reloading whisper onto the GPU. A stricter playing threshold keeps
+    /// "dżesika over the radio" working while ambient radio speech stays out.
+    #[arg(long, default_value_t = 0.8)]
+    threshold_playing: f32,
     /// Minimum gap between wakes (ms).
     #[arg(long, default_value_t = 1500)]
     cooldown_ms: u64,
@@ -92,6 +99,7 @@ async fn run_real(publisher: &Publisher, args: &Args) -> Result<()> {
     let mut last_pos = ring.write_pos();
     let mut cooldown_until = Instant::now();
     let mut near_miss_until = Instant::now();
+    let speaker_busy = runtime_dir().join("speaker-busy");
 
     loop {
         tokio::time::sleep(Duration::from_millis(200)).await;
@@ -108,23 +116,25 @@ async fn run_real(publisher: &Publisher, args: &Args) -> Result<()> {
         }
         let score = model.score(&buffer)?;
         tracing::debug!(score, "scored window");
+        // Stricter threshold while a stream plays: the marker is maintained by
+        // the orchestrator for the whole playback (set on play, removed on
+        // stop), so ambient radio speech doesn't wake her at the quiet-room
+        // sensitivity.
+        let threshold = if speaker_busy.exists() {
+            args.threshold_playing.max(args.threshold)
+        } else {
+            args.threshold
+        };
         // Near-misses at info: a real "dżesika" landing just under the
         // threshold is otherwise invisible in the journal, which makes the
         // threshold impossible to calibrate per room/mic. Its own cooldown —
         // NEVER the wake one: the score climbs as the word completes, and a
         // near-miss tick must not lock out the real detection right behind it.
-        if score >= args.threshold * 0.6
-            && score < args.threshold
-            && Instant::now() >= near_miss_until
-        {
+        if score >= threshold * 0.6 && score < threshold && Instant::now() >= near_miss_until {
             near_miss_until = Instant::now() + Duration::from_millis(args.cooldown_ms);
-            tracing::info!(
-                score,
-                threshold = args.threshold,
-                "wake near-miss (below threshold)"
-            );
+            tracing::info!(score, threshold, "wake near-miss (below threshold)");
         }
-        if score >= args.threshold && Instant::now() >= cooldown_until {
+        if score >= threshold && Instant::now() >= cooldown_until {
             cooldown_until = Instant::now() + Duration::from_millis(args.cooldown_ms);
             near_miss_until = cooldown_until; // decaying tail ≠ a fresh near-miss
             let ts = last_pos * 1000 / SR as u64;

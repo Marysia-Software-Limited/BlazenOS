@@ -14,9 +14,13 @@ Environment=BLAZEN_RUNTIME_DIR=@RUNTIME_DIR@
 # in blazen.env — rooms/mics differ, and near-miss journal lines (blazend-wake)
 # show where YOUR utterances actually land.
 Environment=BLAZEN_WAKE_THRESHOLD=0.8
+# Stricter threshold while a stream plays (speaker-busy marker): talk radio
+# through the mic false-fires the idle threshold (18 wakes/night observed
+# 2026-08-28, each reloading whisper onto the GPU).
+Environment=BLAZEN_WAKE_THRESHOLD_PLAYING=0.8
 WorkingDirectory=@STATE_DIR@
 EnvironmentFile=-@ENV_FILE@
-ExecStart=@BIN_DIR@/blazend-wake --threshold ${BLAZEN_WAKE_THRESHOLD} --cooldown-ms 3000
+ExecStart=@BIN_DIR@/blazend-wake --threshold ${BLAZEN_WAKE_THRESHOLD} --threshold-playing ${BLAZEN_WAKE_THRESHOLD_PLAYING} --cooldown-ms 3000
 Restart=on-failure
 RestartSec=2
 @HARDENING_BLOCK@

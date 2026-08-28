@@ -27,8 +27,11 @@ Environment=ORT_DYLIB_PATH=/usr/lib/blazen/.venv/lib/python3.13/site-packages/on
 # where real utterances land. NOTE: clap flag is --cooldown-ms (hyphen), not _ms.
 # Live capture LEVEL (Jabra DSP) is the limiter, not the score.
 Environment=BLAZEN_WAKE_THRESHOLD=0.8
+# Stricter threshold while a stream plays (speaker-busy marker) — ambient
+# radio speech must not wake her at the quiet-room sensitivity.
+Environment=BLAZEN_WAKE_THRESHOLD_PLAYING=0.8
 EnvironmentFile=-/etc/blazen/blazen.env
-ExecStart=/usr/lib/blazen/bin/blazend-wake --threshold ${BLAZEN_WAKE_THRESHOLD} --cooldown-ms 3000
+ExecStart=/usr/lib/blazen/bin/blazend-wake --threshold ${BLAZEN_WAKE_THRESHOLD} --threshold-playing ${BLAZEN_WAKE_THRESHOLD_PLAYING} --cooldown-ms 3000
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=yes
