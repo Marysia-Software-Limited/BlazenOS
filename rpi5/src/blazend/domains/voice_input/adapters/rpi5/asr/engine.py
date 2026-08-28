@@ -137,12 +137,17 @@ class _FasterWhisperBackend:
 
     def __init__(
         self, model: str, compute_type: str, beam_size: int, initial_prompt: str = "",
-        device: str = "cpu", hotwords: str = "",
+        device: str = "cpu", hotwords: str = "", cpu_threads: int = 0,
     ) -> None:
         from faster_whisper import WhisperModel
 
+        # cpu_threads: faster-whisper defaults to 4, which starves big CPUs —
+        # large-v3-turbo int8 on paul drops from 4.1 s to 2.7 s per 4 s
+        # utterance at 8 threads (asr.yaml `cpu_threads`; 0 keeps the default,
+        # the right call on the 4-core Pi).
         self._model = WhisperModel(
-            _resolve_model_dir(model), device=device, compute_type=compute_type
+            _resolve_model_dir(model), device=device, compute_type=compute_type,
+            cpu_threads=cpu_threads,
         )
         self._beam_size = beam_size
         # A short domain prompt biases the decoder toward the vocabulary the
@@ -185,6 +190,8 @@ class Transcriber:
         self.compute_type: str = str(cfg.get("compute_type", "int8"))
         # cpu (appliance contract) | cuda (GPU desktop, asr.yaml device:).
         self.device: str = str(cfg.get("device", "cpu"))
+        # CPU decode threads (0 = library default of 4; raise on big desktops).
+        self.cpu_threads: int = int(cfg.get("cpu_threads", 0))
         # Power saving (2026-08-23): drop the loaded model after this many idle
         # seconds so the GPU can reach its low-power state between commands;
         # the next wake reloads it (~1.4 s on a desktop GPU). 0 = never unload
@@ -236,7 +243,7 @@ class Transcriber:
                 hotwords = get_lexicon().hotwords(self.hotwords_max_chars)
             self._backend = _FasterWhisperBackend(
                 self.model, self.compute_type, self.beam_size, self.initial_prompt,
-                device=self.device, hotwords=hotwords,
+                device=self.device, hotwords=hotwords, cpu_threads=self.cpu_threads,
             )
         return self._backend
 
