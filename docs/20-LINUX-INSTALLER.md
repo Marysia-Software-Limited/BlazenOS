@@ -44,8 +44,14 @@ audio-consuming unit and writes `$XDG_RUNTIME_DIR/blazen/audio.env`:
   (direct hw capture dies if PipeWire holds the card). The detector also maxes
   the Jabra **capture** gain (control `Headset`, ships at 5/7 ≈ 71%;
   2026-08-27) — more mic signal for the wake model, the ASR RMS floor and
-  whisper alike. (`BLAZEN_MIXER_CONTROL=PCM` is playback; capture is
-  `Headset`.)
+  whisper alike. **Playback volume is a softvol** (2026-08-29): desktop
+  kernels expose no hardware playback volume on the SPEAK 410 (its `PCM`
+  control is a bare mute switch — voice volume commands confirmed percentages
+  while nothing changed), so `jabra_out` routes through an ALSA softvol whose
+  `Jessica` control (created at first playback, default 85%) is what
+  `BLAZEN_MIXER_CONTROL` now points at. Media (radio/music/books/beeps) obey
+  it; TTS speech via cpal deliberately bypasses it — her voice stays at a
+  constant level.
 - **No Jabra**: ALSA `default` through pipewire-alsa for capture and playback,
   adaptive VAD, no dedicated mixer (voice volume commands no-op).
 

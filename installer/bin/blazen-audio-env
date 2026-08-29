@@ -40,16 +40,24 @@ tmp="$(mktemp)"
 if [ -n "$jabra_card" ]; then
   # Max out the Jabra capture gain (control 'Headset'; ships at 5/7 ≈ 71%).
   # More mic signal helps the wake model, the ASR RMS floor and whisper alike.
-  # (BLAZEN_MIXER_CONTROL=PCM below is PLAYBACK — capture is 'Headset'.)
   # Best-effort: a missing control must never break profile detection.
   amixer -c "$jabra_card" sset Headset 7 >/dev/null 2>&1 || true
+  # Instantiate the softvol 'Jessica' playback volume (jabra-asound.conf):
+  # the SPEAK 410 has NO hardware playback volume on desktop kernels (its
+  # 'PCM' control is a mute switch), so media volume lives in this softvol.
+  # The control only exists after the PCM is first opened — poke it with a
+  # second of silence, then set a sane default level.
+  ALSA_CONFIG_PATH="/usr/share/alsa/alsa.conf:$SITE_DIR/jabra-asound.conf" \
+    timeout 2 aplay -q -D jabra_out -f S16_LE -r 48000 -c 1 /dev/zero \
+    >/dev/null 2>&1 || true
+  amixer -c "$jabra_card" sset Jessica 85% >/dev/null 2>&1 || true
   cat > "$tmp" <<EOF
 BLAZEN_AUDIO_PROFILE=jabra
 BLAZEN_INPUT_DEVICE=plughw:CARD=$jabra_card,DEV=0
 BLAZEN_OUTPUT_DEVICE=$jabra_card
 BLAZEN_AUDIO_OUT_ARGS=--device $jabra_card
 BLAZEN_MIXER_CARD=$jabra_card
-BLAZEN_MIXER_CONTROL=PCM
+BLAZEN_MIXER_CONTROL=Jessica
 BLAZEN_BEEP_DEVICE=jabra_out
 BLAZEN_PLAYBACK_DEVICE=jabra_out
 ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$SITE_DIR/jabra-asound.conf
