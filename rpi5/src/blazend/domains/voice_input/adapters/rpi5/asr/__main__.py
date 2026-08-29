@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import wave
 from datetime import UTC, datetime
 from pathlib import Path
@@ -49,6 +50,23 @@ _HARVEST_KEEP = 200  # newest clips kept; ~160 KB each → ~32 MB cap
 # memory as sound + text. Unclaimed clips just age out of the ring; nothing
 # leaves the device.
 _CLIPS_KEEP = 50
+
+# Wake-like tokens (folded), shared shape with scripts/screen-wake-harvest.py.
+# A wake-triggered capture window starts 2 s BEFORE the detection, so a REAL
+# wake's transcript contains the wake word (possibly mangled — hence fuzzy
+# spellings). A window that transcribes to fluent speech WITHOUT any such
+# token is ambient/radio talk that fooled the model — the most valuable kind
+# of wake negative, which the empty/notext harvest branches never see
+# (radio speech transcribes fine; observed 2026-08-29: a 20-minute storm
+# left ONE harvested clip).
+_WAKE_LIKE = re.compile(r"(dzesik|dziesik|jessic|jessik|jesik|dzesic|czesik|gesik)")
+
+
+def _wake_like(text: str) -> bool:
+    """True if the transcript plausibly contains the wake word."""
+    from audiobook_catalog.text_norm import _fold
+
+    return bool(_WAKE_LIKE.search(_fold(text)))
 
 
 def _write_wav(pcm: np.typing.ArrayLike, sample_rate: int, path: Path) -> None:
@@ -405,6 +423,13 @@ async def _real_loop(pub: Publisher) -> None:
             log.info(
                 "asr.final %s %r (conf=%.2f)", result.language, text, result.confidence
             )
+            # Speech-kind harvest: publishing above is UNCHANGED — this only
+            # keeps the audio of a speech window with no wake-like token for
+            # the next `train-wake.py --neg-dir` retrain (screened there, not
+            # auto-ingested: a mis-transcribed real command stays a suspect).
+            if harvest and not _wake_like(text):
+                if saved := _save_false_wake(pcm, ring.sample_rate, "speech"):
+                    log.info("harvested speech false-wake clip %s", saved.name)
         else:
             # Passed the level gate but whisper found no words (too quiet/garbled,
             # or a non-speech peak like a cough). Log it — otherwise the trace goes

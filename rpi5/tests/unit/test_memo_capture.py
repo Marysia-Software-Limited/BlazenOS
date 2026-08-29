@@ -430,3 +430,17 @@ def test_guided_dialog_suppresses_wake_until_done_or_timeout():
         assert stub._memo_stage is None
 
     asyncio.run(check())
+
+
+def test_wake_like_transcripts_detected_fuzzily():
+    """Speech-kind harvest gate: a wake window's transcript contains the wake
+    word (possibly mangled by whisper); pure ambient/radio speech does not."""
+    from blazend.domains.voice_input.adapters.rpi5.asr.__main__ import _wake_like
+
+    for text in ("Dżesika, która godzina?", "dziesika stop", "Jessica, play",
+                 "Czesika włącz radio"):
+        assert _wake_like(text), text
+    for text in ("W poniedziałek premier wykorzysta spotkanie koalicji",
+                 "energetyka, gaz 20%. Rosyjski biznes próbuje się",
+                 "i konfliktu zbrojnego, to jednak zwiększa"):
+        assert not _wake_like(text), text
