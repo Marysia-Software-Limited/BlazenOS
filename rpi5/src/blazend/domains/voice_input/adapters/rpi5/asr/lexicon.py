@@ -51,6 +51,24 @@ _TIER_MUSIC = 4
 # Wake forms lead every tier ("dżesika" is the single most misheard word).
 _WAKE_FORMS = ("Dżesika", "Jessica")
 
+# Common words that must NEVER be "repaired" into an entity. Live incident
+# 2026-08-29 15:04: ambient speech "…to jednak zwiększa…" had "jednak"
+# corrected to the station "Jedynka" (ratio 0.83 — clears any sane cutoff)
+# and, arriving inside a false-wake window, started the radio unasked.
+# Fuzzy repair is for near-miss ENTITY words; everyday function words are
+# never a misheard entity. Folded+stemmed forms, single tokens only.
+_STOPWORDS = frozenset(
+    _stem_phrase(w).strip() for w in (
+        # pl — frequent function/filler words near entity names
+        "jednak", "jutro", "teraz", "dobra", "dobrze", "jeszcze", "tylko",
+        "trzeba", "chyba", "zaraz", "wcale", "przecież", "właśnie", "całkiem",
+        "dzisiaj", "wczoraj", "bardzo", "trochę", "gdzie", "kiedy", "czemu",
+        # en counterparts
+        "just", "still", "today", "tomorrow", "really", "maybe", "where",
+        "which", "there",
+    )
+)
+
 # Regex-trigger expansion: only patterns built from plain words + alternation
 # groups are expanded; anything with other regex syntax is skipped (regexes
 # stay the matcher's job — the lexicon only wants example phrases).
@@ -243,6 +261,10 @@ class Lexicon:
                     continue
                 key = _stem_phrase(window).strip()
                 if len(key) < 3:
+                    continue
+                # Never repair a bare common word into an entity ("jednak" is
+                # not a misheard "Jedynka" — see _STOPWORDS).
+                if size == 1 and key in _STOPWORDS:
                     continue
                 match = self._closest(key, fuzzy_ratio)
                 if match is None:

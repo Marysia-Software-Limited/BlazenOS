@@ -126,3 +126,21 @@ def test_hotwords_lead_with_wake_and_respect_cap():
 def test_hotwords_tiny_budget_is_safe():
     hw = Lexicon.build().hotwords(10)
     assert hw == "Dżesika"
+
+
+def test_common_words_never_repaired_into_entities():
+    # Live incident 2026-08-29 15:04: ambient "…to jednak zwiększa…" had
+    # "jednak" repaired to the station "Jedynka" (ratio 0.83) inside a
+    # false-wake window — and the radio started unasked. Function words are
+    # never a misheard entity.
+    lex = Lexicon.build()
+    for text in ("to jednak zwiększa", "jutro będzie lepiej", "no dobra",
+                 "jeszcze chwila", "przecież wiesz"):
+        out, hits = lex.correct(text)
+        assert out == text, f"{text!r} got repaired: {hits}"
+
+
+def test_genuine_station_typo_still_repaired():
+    # The stoplist must not kill real entity repairs.
+    out, _ = Lexicon.build().correct("włącz jedynkie")
+    assert "Jedynka" in out
