@@ -103,7 +103,15 @@ async def serve(
                 break
             env = next_task.result()
             if env is None:
-                break
+                # NLU restarted (its socket rebound) → this subscription hit
+                # EOF. RECONNECT instead of exiting: a clean exit here left
+                # the brain dead after a routine blazend-asr→nlu restart —
+                # exit 0 means Restart=on-failure never revives it, and the
+                # pipeline loses every non-fast-path reply (2026-08-28).
+                await sub.close()
+                sub = await _connect_nlu(rt)
+                log.info("brain re-subscribed to nlu.miss (nlu restarted)")
+                continue
             if env.topic == "nlu.miss":
                 text = env.data.get("transcript", "")
                 # Thinking cue: routing may block on the LLM for many seconds; tell
