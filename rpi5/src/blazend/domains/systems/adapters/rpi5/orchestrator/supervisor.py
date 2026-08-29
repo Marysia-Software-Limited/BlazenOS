@@ -96,7 +96,11 @@ _JABRA_MIXER = os.environ.get("BLAZEN_MIXER_CONTROL", "PCM")  # playback control
 _DUCK_PCT = 2             # Jabra output % while listening over a playing stream
 _DUCK_WINDOW_S = 7.0      # restore volume if no command follows the wake (covers the ~5 s ASR window)
 _DUCK_MIN_VOLUME_PCT = 15  # only duck when playback is above this — quiet music doesn't gate the mic
-_DEFAULT_VOLUME_PCT = 30  # startup output volume (kept low: less speaker→mic echo)
+# Startup output volume. The appliance default stays LOW (30 — less
+# speaker→mic echo on the Pi's hardware control); desktop installs override
+# via BLAZEN_VOLUME_PCT — on a softvol the percentage maps linearly onto a
+# dB range, so 30% there is near-silence (2026-08-29, paul runs 80).
+_DEFAULT_VOLUME_PCT = int(os.environ.get("BLAZEN_VOLUME_PCT", "30"))
 # Min gap between "Słucham?" prompts, so the over-firing wake model can't turn an
 # empty-capture cue into a chant on repeated false wakes.
 _LISTENING_CUE_COOLDOWN_S = 12.0
