@@ -51,7 +51,11 @@ def _reply_envelope(reply: Reply) -> Envelope:
 
 async def _connect_nlu(rt: Path) -> Subscriber:
     """Connect to the NLU publisher (nlu.miss / nlu.intent), retrying."""
-    sock = rt / "nlu.sock"
+    return await _connect_sock(rt / "nlu.sock")
+
+
+async def _connect_sock(sock: Path) -> Subscriber:
+    """Connect to a publisher socket, retrying until it binds."""
     while True:
         if sock.exists():
             try:
@@ -61,6 +65,26 @@ async def _connect_nlu(rt: Path) -> Subscriber:
             except (FileNotFoundError, ConnectionRefusedError, OSError):
                 pass
         await asyncio.sleep(0.2)
+
+
+async def _watch_wake(engine: Assistant, rt: Path, stop: asyncio.Event) -> None:
+    """Feed REAL ``wake.detected`` events into the engine's awake window.
+
+    Text-only wake detection misses every wake whisper mangles ("dżesika" →
+    "Jeszcze karp…"), which made the engine answer its sleep notice right
+    after the user said the wake word (2026-08-29). Reconnects when
+    blazend-wake restarts — same recover-by-reconnect as the NLU
+    subscription."""
+    while not stop.is_set():
+        sub = await _connect_sock(rt / "wake.sock")
+        log.info("brain subscribed to wake.detected")
+        while not stop.is_set():
+            env = await sub.next()
+            if env is None:  # wake restarted — reconnect
+                break
+            if env.topic == "wake.detected":
+                engine.notify_wake(datetime.now())
+        await sub.close()
 
 
 async def _reminder_ticker(engine: Assistant, pub: Publisher, stop: asyncio.Event) -> None:
@@ -86,6 +110,7 @@ async def serve(
     log.info("brain online at %s", rt / "brain.sock")
 
     ticker = asyncio.create_task(_reminder_ticker(engine, pub, stop))
+    wake_watch = asyncio.create_task(_watch_wake(engine, rt, stop))
     sub = await _connect_nlu(rt)
     log.info("brain subscribed to nlu.miss")
     try:
@@ -129,6 +154,7 @@ async def serve(
     finally:
         stop.set()
         ticker.cancel()
+        wake_watch.cancel()
         await sub.close()
         await pub.close()
 
@@ -163,9 +189,11 @@ async def run(mock: bool) -> None:
     # that contain the wake word ("Jessica" / "Hej Jessico") and stays awake for
     # follow-ups (engine.route → wake.is_wake). always_awake disables that.
     try:
-        require_wake = bool(load("wake-word").get("require_wake", True))
+        _wake_cfg = load("wake-word")
+        require_wake = bool(_wake_cfg.get("require_wake", True))
+        window_s = float(_wake_cfg.get("conversation_window_s", 20))
     except Exception:  # noqa: BLE001
-        require_wake = True
+        require_wake, window_s = True, 20.0
     # Task-based model router: COMMAND→Bielik 1.5B, RECOMMEND→Bielik 4.5B,
     # OPEN_QA→gpt-5.5, all preferring the LAN Ollama 11B when reachable. It owns
     # backend selection + graceful fallback; the engine degrades to Gemini/canned
@@ -176,7 +204,7 @@ async def run(mock: bool) -> None:
     # reached the LLM prompts.
     wiring = notes_context_wiring()
     await serve(Assistant(
-        always_awake=not require_wake, router=router,
+        always_awake=not require_wake, wake_window_s=window_s, router=router,
         embedder=wiring.embedder,
         notes_top_k=wiring.top_k, notes_min_score=wiring.min_score,
         notes_rel_margin=wiring.rel_margin, notes_max_chars=wiring.max_chars,

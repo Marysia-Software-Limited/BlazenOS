@@ -104,10 +104,11 @@ def test_engine_requires_wake(tmp_path):
 
 def test_asleep_brushoff_speaks_only_for_command_like_utterances(tmp_path):
     # Short wake-less utterance while asleep — plausibly the user with the wake
-    # word dropped by whisper — still gets the audible "Śpię…" brush-off…
+    # word dropped by whisper — still gets the audible not-activated notice
+    # (reworded 2026-08-29: states the situation + the real wake word)…
     a = _assistant(tmp_path)
     short = a.route("włącz trójkę", now=NOW)
-    assert short.action == "asleep" and "Śpię" in short.text
+    assert short.action == "asleep" and "dżesika" in short.text
 
     # …but ambient prose (overheard TV after a false wake; live captures
     # 2026-07-13) is answered with SILENCE — empty text is never spoken.
@@ -851,3 +852,20 @@ def test_openai_does_not_retry_other_errors():
         raise AssertionError("expected OpenAiError")
     except OpenAiError as e:
         assert "401" in str(e)
+
+
+def test_notify_wake_opens_and_expires_conversation_window(tmp_path):
+    """The REAL wake signal (wake.detected via the brain) wakes the engine even
+    when whisper mangles the wake word out of the transcript — the fix for the
+    absurd "I'm asleep — say Jessica" right after the user said it
+    (2026-08-29). The window expires like the orchestrator's."""
+    from datetime import timedelta
+
+    a = _assistant(tmp_path)
+    assert a.route("włącz trójkę", now=NOW).action == "asleep"
+    # Real wake fired; the mangled transcript carries no wake word — routes anyway.
+    a.notify_wake(NOW)
+    assert a.route("włącz trójkę", now=NOW).action != "asleep"
+    # Window long expired → asleep again (acted-on turns extended it, so jump far).
+    late = NOW + timedelta(minutes=10)
+    assert a.route("włącz trójkę", now=late).action == "asleep"

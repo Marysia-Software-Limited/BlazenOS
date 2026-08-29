@@ -12,7 +12,7 @@ import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant import wake
@@ -291,6 +291,7 @@ class Assistant:
         prompts: PromptLibrary | None = None,
         persona: str | None = None,
         always_awake: bool = False,
+        wake_window_s: float = 20.0,
         notes_top_k: int = 4,
         notes_min_score: float = 0.82,
         notes_rel_margin: float = 0.06,
@@ -332,6 +333,15 @@ class Assistant:
         self.persona = persona if persona is not None else msg("prompts.persona", "pl")
         self.awake = always_awake
         self._always_awake = always_awake
+        # Conversation window (mirrors wake-word.yaml conversation_window_s):
+        # the engine is awake until this deadline; every wake — REAL
+        # (notify_wake, from wake.detected) or textual — re-arms it, and every
+        # acted-on utterance extends it for follow-ups. Before 2026-08-29 the
+        # engine woke ONLY on the wake word appearing verbatim in the
+        # transcript, so whisper mangling "dżesika" ("Jeszcze karp…") produced
+        # an absurd "I'm asleep — say Jessica" right after the user said it.
+        self._wake_window_s = wake_window_s
+        self._awake_until: datetime | None = None
         # Book/music recommendation RAG (semantic + ontology). Injected in tests;
         # built lazily otherwise (loads the semantic index only on first use).
         self._recommender = recommender
@@ -424,6 +434,27 @@ class Assistant:
         return header + "".join(parts) if parts else ""
 
     # -- top-level -----------------------------------------------------
+    def notify_wake(self, now: datetime) -> None:
+        """The REAL wake fired (a ``wake.detected`` event) — open/extend the
+        conversation window regardless of what whisper later makes of the
+        audio. The brain feeds these from ``wake.sock``."""
+        if self._always_awake:
+            return
+        self.awake = True
+        self._awake_until = now + timedelta(seconds=self._wake_window_s)
+
+    def _extend_awake(self, now: datetime) -> None:
+        if not self._always_awake:
+            self.awake = True
+            self._awake_until = now + timedelta(seconds=self._wake_window_s)
+
+    def _expire_awake(self, now: datetime) -> None:
+        if self._always_awake:
+            return
+        if self._awake_until is not None and now > self._awake_until:
+            self.awake = False
+            self._awake_until = None
+
     def engages(self, text: str) -> bool:
         """True when :meth:`route` would reach a real command handler (possibly a
         slow LLM call) — i.e. not asleep, not empty, not a bare wake. Pure probe
@@ -435,6 +466,7 @@ class Assistant:
         if wake.is_wake(text):
             command = wake.strip_wake(text)
             return bool(command) and not (command == text and wake.is_wake(command))
+        self._expire_awake(datetime.now())
         return self.awake
 
     def route(
@@ -450,9 +482,10 @@ class Assistant:
         if not text:
             return Reply("", lang, "asleep")
 
+        self._expire_awake(now)
         named = wake.is_wake(text)
         if named:
-            self.awake = True
+            self._extend_awake(now)
             command = wake.strip_wake(text)
             if not command or command == text and wake.is_wake(command):
                 command = ""
@@ -460,8 +493,8 @@ class Assistant:
             command = text
         else:
             if _looks_ambient(text):
-                # Overheard TV/radio after a false wake — answering "Śpię…" to a
-                # television is noise. Stay silent (empty text is never spoken).
+                # Overheard TV/radio after a false wake — answering the sleep
+                # notice to a television is noise. Stay silent.
                 return Reply("", lang, "asleep")
             return Reply(msg("wake.asleep", lang), lang, "asleep")
 
@@ -471,7 +504,12 @@ class Assistant:
                 return Reply(msg("wake.greet_name", lang, name=name), lang, "wake")
             return Reply(msg("wake.greet", lang), lang, "wake")
 
-        return self._handle(command, lang, now=now, on_sentence=on_sentence, on_token=on_token)
+        reply = self._handle(command, lang, now=now, on_sentence=on_sentence, on_token=on_token)
+        # An acted-on utterance re-opens the follow-up window (mirrors the
+        # orchestrator's conversation-window semantics).
+        if reply.action != "asleep":
+            self._extend_awake(now)
+        return reply
 
     # -- command handling ----------------------------------------------
     def _handle(

@@ -429,9 +429,14 @@ messages:
     en: "Reading: {book}."
 
   # -- engine: wake / sleep gating ------------------------------------------
+  # Reworded 2026-08-29 (user: the old "Śpię — powiedz Jessica, żeby mnie
+  # obudzić" was nonsense — it played right after the user HAD said the wake
+  # word, and named the wrong spoken form). States the actual situation and
+  # the actual wake word. Rare since the brain tracks real wake.detected
+  # events; fires only when a transcript truly arrives outside any window.
   wake.asleep:
-    pl: "Śpię — powiedz „Jessica”, żeby mnie obudzić."
-    en: "I'm asleep — say \"Jessica\" to wake me."
+    pl: "Chyba nie usłyszałam swojego imienia. Jeśli mówisz do mnie, powiedz „dżesika” i powtórz."
+    en: "I don't think I heard my name. If you're talking to me, say \"Jessica\" and repeat."
   wake.greet_name:
     pl: "Tak, {name}? Słucham."
     en: "Yes, {name}? I'm listening."
