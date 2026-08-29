@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -40,7 +41,17 @@ _TOOL_INTENTS: frozenset[str] = frozenset({
 })
 
 # Sensible defaults for delta-based mutations when nothing is stored yet.
-_DEFAULTS: dict[str, Any] = {"audio.volume": 30}  # low default: less speaker→mic echo
+# audio.volume follows BLAZEN_VOLUME_PCT so the first "głośniej" steps from
+# the level the orchestrator actually applied at startup (paul: 80 on the
+# softvol; the appliance default stays 30 — less speaker→mic echo).
+_DEFAULTS: dict[str, Any] = {
+    "audio.volume": int(os.environ.get("BLAZEN_VOLUME_PCT", "30")),
+}
+# The floor a USER volume command may reach (request 2026-08-29: "nigdy nie
+# ściszaj bardziej niż do 10%") — below that the media is effectively gone and
+# only max-volume rescues it. Internal ducking bypasses dispatch, so it may
+# still dip lower (it restores itself).
+_VOLUME_FLOOR = 10
 _CONFIRMS_NEEDED = {"never": 0, "single": 1, "loud": 1, "double_loud": 2}
 
 # Spoken language tokens (PL + EN trigger captures) → ISO code. Only pl/en are
@@ -171,7 +182,7 @@ class IntentDispatcher:
             cur = self._settings.get(mut["key"], 0)
             val = cur + int(mut["delta"])
             if mut["key"] == "audio.volume":
-                val = max(0, min(100, val))
+                val = max(_VOLUME_FLOOR, min(100, val))
             return val
         return None
 
@@ -182,6 +193,10 @@ class IntentDispatcher:
         value = self._resolve_value(mut, params)
         if value is None:
             return DispatchResult(msg("settings.bad_value", lang), lang, "denied")
+        if key == "audio.volume" and isinstance(value, int):
+            # The user floor applies to EVERY spoken path — "ciszej" and an
+            # explicit "ustaw głośność na 5%" alike.
+            value = max(_VOLUME_FLOOR, min(100, value))
         pol = self._allow.get(key, {})
         allowed = pol.get("allowed_values")
         if allowed is not None and value not in allowed:

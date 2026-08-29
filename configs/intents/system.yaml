@@ -47,7 +47,11 @@ intents:
     action: mutate
     mutate:
       key: audio.volume
-      delta: +10
+      # ±30 (was ±10; user request 2026-08-29): on the desktop softvol the
+      # percentage maps linearly onto -30..0 dB, so a 10% step was a barely
+      # audible 3 dB — one spoken "głośniej" must be an OBVIOUS change (9 dB).
+      # volume_down never lands below 10% (dispatch _VOLUME_FLOOR).
+      delta: +30
 
   - name: volume_down
     triggers:
@@ -61,7 +65,7 @@ intents:
     action: mutate
     mutate:
       key: audio.volume
-      delta: -10
+      delta: -30
 
   - name: volume_set
     triggers:
