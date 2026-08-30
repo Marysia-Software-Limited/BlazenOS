@@ -160,6 +160,16 @@ _RADIO_KW = re.compile(
     r"\bczwórk\w*|\bczwork\w*|\brmf\b|\bnowy\s+świat\b|\bnowy\s+swiat\b",
     re.IGNORECASE,
 )
+# Radio requires INTENT, not just a station name: overnight 2026-08-30 01:11 a
+# garbled ambient transcript ("Dmyt, Trójka, Wojkowe, Ciachowe…") inside a
+# false-wake window matched the bare station stem and started Trójka unasked.
+# A play happens only with an action verb, or when the whole utterance is a
+# short direct ask ("dżesika, trójka" ≤ 3 words).
+_RADIO_VERB = re.compile(
+    r"\b(w(ł|l)(ą|a)cz\w*|pu(ś|s)(ć|c)|zagraj|graj|prze(ł|l)(ą|a)cz\w*|nastaw|"
+    r"daj|pos(ł|l)ucham\w*|play|turn\s+on|switch|put\s+on|tune)\b",
+    re.IGNORECASE,
+)
 _SITE = re.compile(
     r"\b(stron[aęy]|otwórz|otworz|sprawdź\s+na|sprawdz\s+na|site|open|summari[sz]e|streść|stresc)\b|https?://",
     re.IGNORECASE,
@@ -554,7 +564,11 @@ class Assistant:
         if _RADIO_STOP.search(text):
             return self._radio_stop(lang)
         if _RADIO_KW.search(text) or self.radio.resolve(text) is not None:
-            return self._radio(text, lang)
+            # Intent gate (see _RADIO_VERB): an action verb, or a short direct
+            # ask. Ambient babble that merely CONTAINS a station name falls
+            # through to the normal routes instead of starting a stream.
+            if _RADIO_VERB.search(text) or len(text.split()) <= 3:
+                return self._radio(text, lang)
         # A short bare phrase that maps to library signals ("francuska klasyka",
         # "baśń dla dzieci", "poezja") is a recommendation ask, not open chat —
         # route it to the RAG so the model picks from the shelf instead of rambling.

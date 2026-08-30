@@ -339,8 +339,16 @@ async def _real_loop(pub: Publisher) -> None:
             continue
         if not got_frame:
             continue
-        if env is None:  # publisher EOF — exit like the old async-for did
-            return
+        if env is None:
+            # blazend-wake restarted (its socket rebound) → EOF on the
+            # subscription. RECONNECT instead of exiting: a clean exit left
+            # the ASR dead after a lone wake restart — exit 0 means
+            # Restart=on-failure never revives it (same bug as the brain's
+            # NLU subscription, fixed 2026-08-29/30).
+            await sub.close()
+            sub = await _connect(rt / "wake.sock")
+            log.info("asr re-subscribed to wake.detected (wake restarted)")
+            continue
         if env.topic != "wake.detected":
             continue
         # Ignore wakes that fire while Jessica is speaking her own reply: the TTS

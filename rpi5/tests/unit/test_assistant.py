@@ -869,3 +869,18 @@ def test_notify_wake_opens_and_expires_conversation_window(tmp_path):
     # Window long expired → asleep again (acted-on turns extended it, so jump far).
     late = NOW + timedelta(minutes=10)
     assert a.route("włącz trójkę", now=late).action == "asleep"
+
+
+def test_radio_needs_intent_not_just_a_station_name(tmp_path):
+    """Overnight 2026-08-30 01:11: garbled ambient speech containing "Trójka"
+    (no verb, 6 words) started the radio inside a false-wake window. A play
+    needs an action verb or a short direct ask; babble falls through."""
+    a = _assistant(tmp_path)
+    a.notify_wake(NOW)
+    babble = a.route("Dmyt, Trójka, Wojkowe, Ciachowe, Nowotrichka, Nowo-Azutka.",
+                     now=NOW)
+    assert babble.action != "radio_play"
+    # Real asks still play: verb…
+    assert a.route("włącz trójkę", now=NOW).action == "radio_play"
+    # …and the short direct form.
+    assert a.route("trójka", now=NOW).action == "radio_play"
