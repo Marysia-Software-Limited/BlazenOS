@@ -207,3 +207,26 @@ def test_arm_followup_skips_when_radio_grabbed_speaker(tmp_path):
     asyncio.run(Orchestrator._arm_followup(stub))
     assert stub.beeped == 0
     assert not (tmp_path / "followup-capture").exists()
+
+
+def test_first_turn_ambient_prose_after_false_wake_is_silent(tmp_path):
+    """Live 2026-08-30 18:44: a false wake let overheard room conversation
+    reach the LLM, which replied and armed a follow-up chain into a private
+    talk. The FIRST turn after a wake with no wake token and ambient-looking
+    prose gets silence; an established conversation is exempt."""
+    b = _HistBackend()
+    a = Assistant(memory=MemoryStore(tmp_path / "memory.json"),
+                  router=_OneBackendRouter(b), always_awake=False)
+    a._notes_context = lambda text, lang: ""
+    a.notify_wake(NOW)
+    babble = ("To tak jak z Iką, słucham, to jestem tak jak z Iką "
+              "rozmawiam i mówię jej, że nie mają racji")
+    r = a.route(babble, now=NOW)
+    assert r.action == "asleep" and r.text == ""
+    assert b.calls == []  # the LLM never saw it
+    # Real conversation established → long follow-up answers still route.
+    a.route("Dżesika, opowiedz mi o kotach", now=NOW)
+    long_answer = ("a powiedz mi jeszcze proszę dokładnie jak wygląda "
+                   "sprawa z kotami perskimi w polskich domach")
+    r2 = a.route(long_answer, now=NOW)
+    assert r2.action == "chat"

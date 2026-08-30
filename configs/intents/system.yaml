@@ -418,13 +418,16 @@ intents:
       key: cloud_policy.cloud_enabled
       value: true
 
-  # Same optional-prefix fix as voice_learn below (2026-08-27).
+  # Optional wake prefix (2026-08-27) but ANCHORED (2026-08-30): unanchored,
+  # "co wiesz" buried in overheard prose fired the privacy summary into a
+  # room conversation (live incident 18:45, follow-up window after a false
+  # wake). The whole utterance must BE the question.
   - name: privacy_what_do_you_know
     triggers:
       en:
-        - "((jess|jessica|dzesika),? )?what do you know about me"
+        - "^((jess|jessica|dzesika),? )?what do you know about me\\??$"
       pl:
-        - "((jess|jessica|jessico|d(ż|z)esik(a|o)),? )?co (o mnie )?wiesz( o mnie)?"
+        - "^((jess|jessica|jessico|d(ż|z)esik(a|o)),? )?co (o mnie )?wiesz( o mnie)?\\??$"
     action: tool_call
     tool: privacy.summarise_profile
 

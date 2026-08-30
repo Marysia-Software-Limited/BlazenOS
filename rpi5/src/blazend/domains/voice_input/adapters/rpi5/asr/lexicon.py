@@ -61,6 +61,7 @@ _STOPWORDS = frozenset(
     _stem_phrase(w).strip() for w in (
         # pl — frequent function/filler words near entity names
         "jednak", "jutro", "teraz", "dobra", "dobrze", "jeszcze", "tylko",
+        "wiesz", "jest", "słuchaj", "mamy", "chcesz", "może", "moze",
         "trzeba", "chyba", "zaraz", "wcale", "przecież", "właśnie", "całkiem",
         "dzisiaj", "wczoraj", "bardzo", "trochę", "gdzie", "kiedy", "czemu",
         # en counterparts
@@ -262,9 +263,13 @@ class Lexicon:
                 key = _stem_phrase(window).strip()
                 if len(key) < 3:
                     continue
-                # Never repair a bare common word into an entity ("jednak" is
-                # not a misheard "Jedynka" — see _STOPWORDS).
-                if size == 1 and key in _STOPWORDS:
+                # Never repair common words into an entity ("jednak" is not a
+                # misheard "Jedynka"; "to wiesz" is not "co wiesz" — live
+                # incidents 2026-08-29/30). Applies to a bare stopword AND to
+                # any window built ONLY of stopwords.
+                window_keys = [_stem_phrase(t).strip()
+                               for t in re.findall(r"\w+", window)]
+                if window_keys and all(k in _STOPWORDS for k in window_keys):
                     continue
                 match = self._closest(key, fuzzy_ratio)
                 if match is None:

@@ -521,6 +521,15 @@ class Assistant:
             if not command or command == text and wake.is_wake(command):
                 command = ""
         elif self.awake:
+            if not self._chat_history and _looks_ambient(text):
+                # A false wake opened this window: the first thing heard is
+                # mid-stream prose with no wake token — overheard room talk,
+                # not the user (live 2026-08-30 18:44: a private conversation
+                # got an LLM reply and a follow-up chain). Stay silent; the
+                # window keeps waiting for a real command. Established
+                # conversations (non-empty history) are exempt — long answers
+                # are legitimate there.
+                return Reply("", lang, "asleep")
             command = text
         else:
             if _looks_ambient(text):
