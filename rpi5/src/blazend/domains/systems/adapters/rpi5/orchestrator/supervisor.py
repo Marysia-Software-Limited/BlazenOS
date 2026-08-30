@@ -132,6 +132,9 @@ _WAKE_REFRACTORY_S = 4.0
 # capture before the orchestrator declares it abandoned and re-enables wake
 # activation. Must exceed the longest capture (memo max_s 60) + prompts.
 _DIALOG_TIMEOUT_S = 90.0
+# Conversation follow-up: how long after a spoken chat reply the wake-less
+# answer window stays armed (capture max 12 s + margin).
+_FOLLOWUP_TIMEOUT_S = 25.0
 
 DEFAULT_PEERS: tuple[str, ...] = (
     "audio-in",
@@ -281,6 +284,17 @@ class Orchestrator:
         # Final voice-training step (2026-08-27): after the wake samples she
         # asks how to address the owner; "name" while that answer is awaited.
         self._voice_train_stage: str | None = None
+        # Conversation mode (2026-08-30): after a spoken LLM reply a wake-less
+        # follow-up window opens (chime → followup-capture marker); while it
+        # is armed, wake events are suppressed like in guided dialogs — the
+        # user's speech is captured anyway, and a "stop" in it still acts.
+        self._followup_until = 0.0
+        self._followup_task: asyncio.Task[None] | None = None
+        try:
+            self._followup_enabled = bool(
+                load_config("wake-word").get("conversation.followup", True))
+        except Exception:  # noqa: BLE001
+            self._followup_enabled = True
         # Guided-dialog deadline: while voice training / memo dictation waits
         # for a capture, wake activation is SUPPRESSED (saying "dżesika" as a
         # training sample must not beep + open a command window mid-dialog).
@@ -949,6 +963,20 @@ class Orchestrator:
                 log.info("reminder fired over playback — stream stopped, re-spoken")
             else:
                 await self._act_on_reply(env.data)
+                # Conversation mode (2026-08-30): after an LLM chat reply, arm
+                # a wake-less follow-up window so the user can answer in one
+                # breath. Runs as its own task — waiting for the speech to
+                # finish must not stall this envelope loop.
+                if (self._followup_enabled and str(env.data.get("action")) == "chat"
+                        and env.data.get("text") and not self._radio.playing):
+                    if self._followup_task is not None and not self._followup_task.done():
+                        self._followup_task.cancel()
+                    self._followup_task = asyncio.create_task(self._arm_followup())
+        if env.topic == "error" and env.data.get("code") == "asr.followup_empty":
+            # Silence after the reply — the exchange is over. Close quietly:
+            # nagging "Słucham?" after every answer would be noise.
+            self._followup_until = 0.0
+            log.info("follow-up window closed (silence)")
         # State cue: heard a sound after "dżesika" but no intelligible words. Tell
         # the (blind) user rather than going silent — but only when we were awake
         # (a wake fired, a command was expected) and nothing is playing over the
@@ -1401,13 +1429,37 @@ class Orchestrator:
         await self._wait_speech_done()
         self._open_memo_window()
 
+    async def _arm_followup(self) -> None:
+        """Open the conversation follow-up window once the spoken reply has
+        actually played out: soft chime ("I'm still listening"), then the
+        followup-capture marker for the ASR. Blind-first: the chime is the
+        only cue, so it reuses the familiar wake chime."""
+        try:
+            await self._wait_speech_done()
+            if self._radio.playing:
+                return  # a stream took the speaker meanwhile — no follow-up
+            if self._wake_chime_armed():
+                await self._play_wake_beep()
+            now = asyncio.get_running_loop().time()
+            self._followup_until = now + _FOLLOWUP_TIMEOUT_S
+            self._awake_until = max(self._awake_until, now + self._wake_window_s)
+            try:
+                (self._runtime_dir / "followup-capture").touch()
+            except OSError as exc:
+                log.warning("could not open follow-up window: %s", exc)
+                self._followup_until = 0.0
+        except asyncio.CancelledError:
+            pass
+
     def _dialog_active(self) -> bool:
         """True while a guided dialog (voice training rounds, the address
-        question, memo title/content dictation) is awaiting a capture — wake
-        activation is suppressed for its duration. Past ``_dialog_until`` the
-        dialog is declared abandoned (ASR never answered): its state is
-        dropped so Jessica goes back to normal listening instead of staying
-        deaf to her own name."""
+        question, memo title/content dictation) OR a conversation follow-up
+        window is awaiting a capture — wake activation is suppressed for its
+        duration. Past ``_dialog_until`` the dialog is declared abandoned
+        (ASR never answered): its state is dropped so Jessica goes back to
+        normal listening instead of staying deaf to her own name."""
+        if asyncio.get_running_loop().time() < self._followup_until:
+            return True
         if not (self._voice_train_round or self._voice_train_stage
                 or self._memo_stage is not None):
             return False

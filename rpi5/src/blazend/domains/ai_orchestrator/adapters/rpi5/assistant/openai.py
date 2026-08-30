@@ -17,7 +17,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from typing import Any
 
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -79,14 +79,35 @@ class OpenAiClient:
         """True when an OpenAI call can actually be made (key present)."""
         return bool(self.api_key)
 
-    def chat(self, user: str, *, system: str | None = None) -> str:
-        """Freeform reply to ``user`` (OpenAI replies in the user's language)."""
-        if not self.available:
-            raise OpenAiError("OPENAI_API_KEY is not set")
+    def _messages(
+        self,
+        user: str,
+        system: str | None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> list[dict[str, str]]:
+        # Conversation mode (2026-08-30): ``history`` is (user, assistant) turns,
+        # oldest first, spliced between the system message and the current user
+        # message. Falsy history → exactly the same messages as before.
         messages: list[dict[str, str]] = []
         if system:
             messages.append({"role": "system", "content": system})
+        for prev_user, prev_assistant in history or ():
+            messages.append({"role": "user", "content": prev_user})
+            messages.append({"role": "assistant", "content": prev_assistant})
         messages.append({"role": "user", "content": user})
+        return messages
+
+    def chat(
+        self,
+        user: str,
+        *,
+        system: str | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> str:
+        """Freeform reply to ``user`` (OpenAI replies in the user's language)."""
+        if not self.available:
+            raise OpenAiError("OPENAI_API_KEY is not set")
+        messages = self._messages(user, system, history)
         body: dict[str, Any] = {"model": self.model, "messages": messages}
         # Web-search models (e.g. gpt-4o-search-preview, used for live news) reject
         # `temperature`; omit it when None so those models are callable.
@@ -139,11 +160,17 @@ class OpenAiClient:
             raise OpenAiError("OpenAI research returned no text")
         return text
 
-    def chat_stream(self, user: str, *, system: str | None = None) -> Iterator[str]:
+    def chat_stream(
+        self,
+        user: str,
+        *,
+        system: str | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> Iterator[str]:
         """Satisfy the ``Llm`` protocol: yield the whole reply as one chunk (no
         token streaming from the completions transport). The engine's sentence
         slicer still splits it for TTS."""
-        yield self.chat(user, system=system)
+        yield self.chat(user, system=system, history=history)
 
 
 def _extract_text(resp: dict[str, Any]) -> str:

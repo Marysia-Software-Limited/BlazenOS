@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 
 from blazend.domains.local_ai.adapters.rpi5.localllm import LlmError
 
@@ -56,16 +56,38 @@ class MeshOpenAiLlm:
         except (urllib.error.URLError, OSError):
             return False
 
-    def _messages(self, user: str, system: str | None) -> list[dict[str, str]]:
+    def _messages(
+        self,
+        user: str,
+        system: str | None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> list[dict[str, str]]:
+        # Conversation mode (2026-08-30): ``history`` is (user, assistant) turns,
+        # oldest first, spliced between the system message and the current user
+        # message. Falsy history → exactly the same messages as before.
         msgs: list[dict[str, str]] = []
         if system:
             msgs.append({"role": "system", "content": system})
+        for prev_user, prev_assistant in history or ():
+            msgs.append({"role": "user", "content": prev_user})
+            msgs.append({"role": "assistant", "content": prev_assistant})
         msgs.append({"role": "user", "content": user})
         return msgs
 
-    def _request(self, *, stream: bool, user: str, system: str | None) -> urllib.request.Request:
+    def _request(
+        self,
+        *,
+        stream: bool,
+        user: str,
+        system: str | None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> urllib.request.Request:
         body = json.dumps(
-            {"model": self.model, "messages": self._messages(user, system), "stream": stream}
+            {
+                "model": self.model,
+                "messages": self._messages(user, system, history),
+                "stream": stream,
+            }
         ).encode("utf-8")
         return urllib.request.Request(
             f"{self.url}/v1/chat/completions",
@@ -73,11 +95,18 @@ class MeshOpenAiLlm:
             headers={"Content-Type": "application/json"},
         )
 
-    def chat(self, user: str, *, system: str | None = None) -> str:
+    def chat(
+        self,
+        user: str,
+        *,
+        system: str | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> str:
         """One-shot reply (non-streaming)."""
         try:
             with urllib.request.urlopen(
-                self._request(stream=False, user=user, system=system), timeout=self.timeout
+                self._request(stream=False, user=user, system=system, history=history),
+                timeout=self.timeout,
             ) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
@@ -87,7 +116,13 @@ class MeshOpenAiLlm:
         except (KeyError, IndexError, TypeError) as exc:
             raise MeshOpenAiError(f"unexpected response shape: {data!r}"[:200]) from exc
 
-    def chat_stream(self, user: str, *, system: str | None = None) -> Iterator[str]:
+    def chat_stream(
+        self,
+        user: str,
+        *,
+        system: str | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> Iterator[str]:
         """Satisfy the ``Llm`` protocol: yield the whole reply as one chunk. The
         engine's sentence slicer still splits it for TTS."""
-        yield self.chat(user, system=system)
+        yield self.chat(user, system=system, history=history)

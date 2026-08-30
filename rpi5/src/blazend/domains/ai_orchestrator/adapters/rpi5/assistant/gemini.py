@@ -18,7 +18,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 DEFAULT_MODEL = "gemini-2.0-flash"
@@ -82,9 +82,23 @@ class GeminiClient:
         resp = self._transport(url, body)
         return _extract_text(resp)
 
-    def chat(self, user: str, *, system: str | None = None) -> str:
+    def chat(
+        self,
+        user: str,
+        *,
+        system: str | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> str:
         """Freeform reply to ``user`` (Gemini replies in the user's language)."""
-        return self._generate([{"role": "user", "parts": [{"text": user}]}], system=system)
+        # Conversation mode (2026-08-30): ``history`` is (user, assistant) turns,
+        # oldest first, placed before the current message (Gemini's assistant role
+        # is "model"). Falsy history → exactly the same contents as before.
+        contents: list[dict[str, Any]] = []
+        for prev_user, prev_assistant in history or ():
+            contents.append({"role": "user", "parts": [{"text": prev_user}]})
+            contents.append({"role": "model", "parts": [{"text": prev_assistant}]})
+        contents.append({"role": "user", "parts": [{"text": user}]})
+        return self._generate(contents, system=system)
 
     def grounded(self, query: str, *, system: str | None = None) -> str:
         """Answer ``query`` with Google Search grounding (fresh info)."""

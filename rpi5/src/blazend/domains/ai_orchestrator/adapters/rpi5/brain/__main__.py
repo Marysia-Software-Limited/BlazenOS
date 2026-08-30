@@ -192,8 +192,9 @@ async def run(mock: bool) -> None:
         _wake_cfg = load("wake-word")
         require_wake = bool(_wake_cfg.get("require_wake", True))
         window_s = float(_wake_cfg.get("conversation_window_s", 20))
+        history_turns = int(_wake_cfg.get("conversation.history_turns", 6))
     except Exception:  # noqa: BLE001
-        require_wake, window_s = True, 20.0
+        require_wake, window_s, history_turns = True, 20.0, 6
     # Task-based model router: COMMAND→Bielik 1.5B, RECOMMEND→Bielik 4.5B,
     # OPEN_QA→gpt-5.5, all preferring the LAN Ollama 11B when reachable. It owns
     # backend selection + graceful fallback; the engine degrades to Gemini/canned
@@ -204,7 +205,8 @@ async def run(mock: bool) -> None:
     # reached the LLM prompts.
     wiring = notes_context_wiring()
     await serve(Assistant(
-        always_awake=not require_wake, wake_window_s=window_s, router=router,
+        always_awake=not require_wake, wake_window_s=window_s,
+        history_turns=history_turns, router=router,
         embedder=wiring.embedder,
         notes_top_k=wiring.top_k, notes_min_score=wiring.min_score,
         notes_rel_margin=wiring.rel_margin, notes_max_chars=wiring.max_chars,

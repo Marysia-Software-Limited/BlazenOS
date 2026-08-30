@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -35,9 +35,21 @@ class Llm(Protocol):
     @property
     def available(self) -> bool: ...
 
-    def chat(self, user: str, *, system: str | None = None) -> str: ...
+    def chat(
+        self,
+        user: str,
+        *,
+        system: str | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> str: ...
 
-    def chat_stream(self, user: str, *, system: str | None = None) -> Iterator[str]: ...
+    def chat_stream(
+        self,
+        user: str,
+        *,
+        system: str | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> Iterator[str]: ...
 
 
 def models_root() -> Path:
@@ -83,7 +95,9 @@ class LlmBackend(Protocol):
     a single :meth:`generate` chunk for backends that don't implement it.
     """
 
-    def generate(self, *, system: str, user: str) -> str: ...
+    def generate(
+        self, *, system: str, user: str, history: Sequence[tuple[str, str]] | None = None
+    ) -> str: ...
 
 
 class _LlamaCppBackend:
@@ -134,17 +148,26 @@ class _LlamaCppBackend:
         if callable(close):
             close()
 
-    def _messages(self, system: str, user: str) -> list[dict[str, str]]:
-        return [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ]
+    def _messages(
+        self, system: str, user: str, history: Sequence[tuple[str, str]] | None = None
+    ) -> list[dict[str, str]]:
+        # Conversation mode (2026-08-30): ``history`` is (user, assistant) turns,
+        # oldest first, spliced between the system message and the current user
+        # message. Falsy history → exactly the two-message shape used before.
+        msgs = [{"role": "system", "content": system}]
+        for prev_user, prev_assistant in history or ():
+            msgs.append({"role": "user", "content": prev_user})
+            msgs.append({"role": "assistant", "content": prev_assistant})
+        msgs.append({"role": "user", "content": user})
+        return msgs
 
-    def generate(self, *, system: str, user: str) -> str:
+    def generate(
+        self, *, system: str, user: str, history: Sequence[tuple[str, str]] | None = None
+    ) -> str:
         # create_chat_completion applies the model's own chat template from the
         # GGUF metadata (e.g. Bielik or Qwen2.5 ChatML) — no manual formatting.
         out = self._llm.create_chat_completion(
-            messages=self._messages(system, user),
+            messages=self._messages(system, user, history),
             temperature=self._temperature,
             top_p=self._top_p,
             top_k=self._top_k,
@@ -154,10 +177,12 @@ class _LlamaCppBackend:
         )
         return str(out["choices"][0]["message"]["content"]).strip()
 
-    def generate_stream(self, *, system: str, user: str) -> Iterator[str]:
+    def generate_stream(
+        self, *, system: str, user: str, history: Sequence[tuple[str, str]] | None = None
+    ) -> Iterator[str]:
         """Yield reply token text as llama.cpp produces it (``stream=True``)."""
         stream = self._llm.create_chat_completion(
-            messages=self._messages(system, user),
+            messages=self._messages(system, user, history),
             temperature=self._temperature,
             top_p=self._top_p,
             top_k=self._top_k,
@@ -233,13 +258,29 @@ class LocalLlm:
             )
         return self._backend
 
-    def chat(self, user: str, *, system: str | None = None) -> str:
+    def chat(
+        self,
+        user: str,
+        *,
+        system: str | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> str:
         """Freeform reply to ``user`` (the model replies in the user's language)."""
+        # Conversation mode (2026-08-30): forward ``history`` only when truthy so
+        # backends with a bare generate(*, system, user) — e.g. test fakes —
+        # keep working unchanged, and falsy history behaves exactly as before.
+        kwargs: dict[str, Any] = {"history": history} if history else {}
         return self._ensure_backend().generate(
-            system=system or self.system_prompt, user=user
+            system=system or self.system_prompt, user=user, **kwargs
         )
 
-    def chat_stream(self, user: str, *, system: str | None = None) -> Iterator[str]:
+    def chat_stream(
+        self,
+        user: str,
+        *,
+        system: str | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> Iterator[str]:
         """Stream the reply as token-text chunks (for sentence-sliced TTS).
 
         Falls back to a single chunk (the whole reply) for backends without a
@@ -247,11 +288,13 @@ class LocalLlm:
         """
         backend = self._ensure_backend()
         sys = system or self.system_prompt
+        # Same conditional forwarding as chat() — see the comment there.
+        kwargs: dict[str, Any] = {"history": history} if history else {}
         stream = getattr(backend, "generate_stream", None)
         if stream is None:
-            yield backend.generate(system=sys, user=user)
+            yield backend.generate(system=sys, user=user, **kwargs)
             return
-        yield from stream(system=sys, user=user)
+        yield from stream(system=sys, user=user, **kwargs)
 
     def close(self) -> None:
         """Free the loaded model's RAM. The :class:`ModelRouter` calls this to

@@ -165,6 +165,16 @@ odwołaj/wyłącz alarm [o 6:30]" to cancel by time or the next upcoming one
 reminder due while a stream owns the Jabra stops the stream first — a budzik
 outranks the radio.
 
+- `wake-word.yaml conversation:` (2026-08-30) — **conversation mode**. With
+  `followup: true` (default), after Jessica speaks an LLM chat reply she
+  plays the familiar wake chime ("I'm still listening" — the blind-first
+  cue) and opens a wake-less answer window (`asr.yaml followup_capture:`,
+  silence-terminated, default 12 s max / 1.2 s silence / 5 s lead-in).
+  Quiet simply closes the exchange — she never nags. `history_turns`
+  (default 6) is how many chat exchanges the engine feeds back to the LLM
+  so multi-turn talk keeps its thread; history clears when the conversation
+  window expires. Wake events are suppressed while the answer window is
+  armed (speech lands as the follow-up anyway — "stop" in it still acts).
 - `wake-word.yaml capture_window_s` (default `4.5`) — the post-wake capture
   length in seconds. Env override: `BLAZEN_CAPTURE_S`.
 - `BLAZEN_WAKE_THRESHOLD` (unit env, default `0.8`) — the wake score threshold,

@@ -302,6 +302,7 @@ class Assistant:
         persona: str | None = None,
         always_awake: bool = False,
         wake_window_s: float = 20.0,
+        history_turns: int = 6,
         notes_top_k: int = 4,
         notes_min_score: float = 0.82,
         notes_rel_margin: float = 0.06,
@@ -352,6 +353,12 @@ class Assistant:
         # an absurd "I'm asleep — say Jessica" right after the user said it.
         self._wake_window_s = wake_window_s
         self._awake_until: datetime | None = None
+        # Conversation history (2026-08-30): rolling (user, assistant) CHAT
+        # turns fed back to the LLM so multi-turn talk keeps its thread. Tool
+        # commands (radio/time/notes) never enter it, and it clears when the
+        # conversation window expires — a new wake is a new topic.
+        self._history_turns = max(1, history_turns)
+        self._chat_history: list[tuple[str, str]] = []
         # Book/music recommendation RAG (semantic + ontology). Injected in tests;
         # built lazily otherwise (loads the semantic index only on first use).
         self._recommender = recommender
@@ -464,6 +471,20 @@ class Assistant:
         if self._awake_until is not None and now > self._awake_until:
             self.awake = False
             self._awake_until = None
+            self._chat_history.clear()  # expired conversation = fresh thread
+
+    _HISTORY_MAX_CHARS = 2400
+
+    def _remember_turn(self, user: str, assistant: str) -> None:
+        """Append one chat exchange and trim oldest-first to the turn cap and
+        a hard character budget (small local models choke on huge prompts)."""
+        self._chat_history.append((user, assistant))
+        while len(self._chat_history) > self._history_turns:
+            self._chat_history.pop(0)
+        while (len(self._chat_history) > 1
+               and sum(len(u) + len(a) for u, a in self._chat_history)
+               > self._HISTORY_MAX_CHARS):
+            self._chat_history.pop(0)
 
     def engages(self, text: str) -> bool:
         """True when :meth:`route` would reach a real command handler (possibly a
@@ -912,6 +933,27 @@ class Assistant:
         on_sentence: OnSentence | None = None,
         on_token: OnToken | None = None,
     ) -> Reply:
+        """One chat turn WITH conversation memory: delegates to `_chat_once`
+        and, on a real answer, records the exchange so the next turn carries
+        the thread (conversation mode, 2026-08-30)."""
+        reply = self._chat_once(text, lang, task=task,
+                                on_sentence=on_sentence, on_token=on_token)
+        if reply.action == "chat" and reply.text and not reply.data.get("needs_key"):
+            self._remember_turn(text, reply.text)
+        return reply
+
+    def _chat_once(
+        self,
+        text: str,
+        lang: str,
+        *,
+        task: Task = Task.COMMAND,
+        on_sentence: OnSentence | None = None,
+        on_token: OnToken | None = None,
+    ) -> Reply:
+        # Prior turns for the LLM. Passed only when non-empty so single-turn
+        # callers (and test fakes without the kwarg) stay byte-identical.
+        hist = {"history": list(self._chat_history)} if self._chat_history else {}
         # Personalise with the user's name when known.
         system = self.persona
         name = self.memory.get_profile("name")
@@ -929,7 +971,7 @@ class Assistant:
         # preferring the 11B-Ollama when reachable. Falls through to Gemini/canned.
         if self.router is not None:
             reply = self._route_chat(text, system_local, system_cloud, lang, task,
-                                     on_sentence, on_token)
+                                     on_sentence, on_token, hist=hist)
             if reply is not None:
                 return reply
         else:
@@ -938,19 +980,22 @@ class Assistant:
             # policy reserves the cloud for OPEN_QA, which the router handles.
             if self.llm is not None and self.llm.available:
                 if on_sentence is not None:
-                    return self._chat_stream_backend(self.llm, "local", text, system_local, lang, on_sentence, on_token)
+                    return self._chat_stream_backend(
+                        self.llm, "local", text, system_local, lang, on_sentence, on_token, hist=hist)
                 try:
-                    return Reply(self.llm.chat(text, system=system_local), lang, "chat", {"engine": "local"})
+                    return Reply(self.llm.chat(text, system=system_local, **hist),
+                                 lang, "chat", {"engine": "local"})
                 except LlmError as e:
                     log.warning("local model failed (%s) — trying OpenAI/Gemini", e)
             if self.openai is not None and self.openai.available:
                 try:
-                    return Reply(self.openai.chat(text, system=system_cloud), lang, "chat", {"engine": "openai"})
+                    return Reply(self.openai.chat(text, system=system_cloud, **hist),
+                                 lang, "chat", {"engine": "openai"})
                 except OpenAiError as e:
                     log.warning("OpenAI fallback failed (%s)", e)
         if self.gemini.available:
             try:
-                answer = self.gemini.chat(text, system=system_cloud)
+                answer = self.gemini.chat(text, system=system_cloud, **hist)
             except GeminiError as e:
                 return Reply(msg("error.chat_failed", lang, error=e), lang, "error")
             return Reply(answer, lang, "chat", {"engine": "gemini"})
@@ -968,6 +1013,7 @@ class Assistant:
         task: Task,
         on_sentence: OnSentence | None,
         on_token: OnToken | None,
+        hist: dict[str, list[tuple[str, str]]] | None = None,
     ) -> Reply | None:
         """Try each available backend for ``task`` in order; return the first
         success, or ``None`` so ``_chat`` falls through to Gemini/canned. A
@@ -979,8 +1025,9 @@ class Assistant:
             try:
                 if on_sentence is not None:
                     return self._chat_stream_backend(
-                        backend, name, text, sys_for, lang, on_sentence, on_token, task=task)
-                answer = backend.chat(text, system=sys_for)
+                        backend, name, text, sys_for, lang, on_sentence, on_token,
+                        task=task, hist=hist)
+                answer = backend.chat(text, system=sys_for, **(hist or {}))
                 return Reply(answer, lang, "chat", {"engine": name, "task": task.value})
             except (LlmError, OpenAiError) as e:
                 log.warning("backend %s failed for %s (%s) — trying next", name, task.value, e)
@@ -998,6 +1045,7 @@ class Assistant:
         on_token: OnToken | None,
         *,
         task: Task | None = None,
+        hist: dict[str, list[tuple[str, str]]] | None = None,
     ) -> Reply:
         """Stream ``backend``, slicing into sentences for immediate TTS.
 
@@ -1011,7 +1059,7 @@ class Assistant:
         parts: list[str] = []
         seen_token = False
         try:
-            for chunk in backend.chat_stream(text, system=system):
+            for chunk in backend.chat_stream(text, system=system, **(hist or {})):
                 if not seen_token:
                     seen_token = True
                     if on_token is not None:

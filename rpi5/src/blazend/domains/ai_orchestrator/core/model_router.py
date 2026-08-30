@@ -32,7 +32,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
@@ -76,13 +76,30 @@ class _LocalSlot:
     def available(self) -> bool:
         return bool(self._llm.available)
 
-    def chat(self, user: str, *, system: str | None = None) -> str:
+    # Conversation mode (2026-08-30): pure forwarders — ``history`` ((user,
+    # assistant) turns, oldest first) passes through to the wrapped Llm, but only
+    # when truthy so pre-history fakes/backends keep working unchanged.
+    def chat(
+        self,
+        user: str,
+        *,
+        system: str | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> str:
         self._router._activate_local(self._name)
-        return self._llm.chat(user, system=system)
+        kwargs: dict[str, Any] = {"history": history} if history else {}
+        return self._llm.chat(user, system=system, **kwargs)
 
-    def chat_stream(self, user: str, *, system: str | None = None) -> Iterator[str]:
+    def chat_stream(
+        self,
+        user: str,
+        *,
+        system: str | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> Iterator[str]:
         self._router._activate_local(self._name)
-        yield from self._llm.chat_stream(user, system=system)
+        kwargs: dict[str, Any] = {"history": history} if history else {}
+        yield from self._llm.chat_stream(user, system=system, **kwargs)
 
 
 class ModelRouter:

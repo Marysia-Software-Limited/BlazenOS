@@ -158,6 +158,9 @@ class _OneShotSub:
         except StopIteration:
             return None
 
+    async def close(self) -> None:  # reconnect contract (2026-08-29/30)
+        return None
+
 
 @pytest.mark.asyncio
 async def test_asr_real_loop_transcribes_and_publishes(monkeypatch, tmp_path):
@@ -176,14 +179,25 @@ async def test_asr_real_loop_transcribes_and_publishes(monkeypatch, tmp_path):
 
     monkeypatch.setattr(asr_main.asyncio, "sleep", fast_sleep)
 
+    # First connect yields one wake then EOF; the loop now RECONNECTS on EOF
+    # (2026-08-30) instead of returning, so the second connect ends the test.
+    connects = 0
+
     async def fake_connect(_sock):  # noqa: ANN001
-        return _OneShotSub([Envelope(topic="wake.detected", source="wake", data={}, ts_ms=3000)])
+        nonlocal connects
+        connects += 1
+        if connects == 1:
+            return _OneShotSub(
+                [Envelope(topic="wake.detected", source="wake", data={}, ts_ms=3000)])
+        raise asyncio.CancelledError  # stop the loop after the re-subscribe
 
     monkeypatch.setattr(asr_main, "_open_ring", fake_open_ring)
     monkeypatch.setattr(asr_main, "_connect", fake_connect)
 
     pub = FakePublisher(tmp_path / "asr.sock")
-    await asr_main._real_loop(pub)
+    with pytest.raises(asyncio.CancelledError):
+        await asr_main._real_loop(pub)
+    assert connects == 2  # EOF triggered the reconnect
 
     topics = [e.topic for e in pub.published]
     assert "asr.final" in topics
@@ -238,14 +252,25 @@ async def test_asr_real_loop_no_text_emits_error(monkeypatch, tmp_path):
 
     monkeypatch.setattr(asr_main.asyncio, "sleep", fast_sleep)
 
+    # First connect yields one wake then EOF; the loop now RECONNECTS on EOF
+    # (2026-08-30) instead of returning, so the second connect ends the test.
+    connects = 0
+
     async def fake_connect(_sock):  # noqa: ANN001
-        return _OneShotSub([Envelope(topic="wake.detected", source="wake", data={}, ts_ms=3000)])
+        nonlocal connects
+        connects += 1
+        if connects == 1:
+            return _OneShotSub(
+                [Envelope(topic="wake.detected", source="wake", data={}, ts_ms=3000)])
+        raise asyncio.CancelledError  # stop the loop after the re-subscribe
 
     monkeypatch.setattr(asr_main, "_open_ring", fake_open_ring)
     monkeypatch.setattr(asr_main, "_connect", fake_connect)
 
     pub = FakePublisher(tmp_path / "asr.sock")
-    await asr_main._real_loop(pub)
+    with pytest.raises(asyncio.CancelledError):
+        await asr_main._real_loop(pub)
+    assert connects == 2  # EOF triggered the reconnect
     assert [e.topic for e in pub.published] == ["error"]
 
 

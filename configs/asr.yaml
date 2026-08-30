@@ -24,6 +24,14 @@ memo_capture:
   max_s: 60
   silence_s: 1.5
   lead_in_s: 8
+# Conversation follow-up capture (2026-08-30): opened by the orchestrator
+# right after a spoken LLM reply (wake-word.yaml conversation.followup) so
+# the user answers without the wake word. Short by design — quiet closes
+# the exchange (asr.followup_empty), it never nags.
+followup_capture:
+  max_s: 12
+  silence_s: 1.2
+  lead_in_s: 5
 backend: faster-whisper
 compute_type: int8                     # int8 | int8_float32 | float16 (Hailo path overrides)
 device: cpu                            # cpu (appliance CONTRACT) | cuda (GPU desktop installs)

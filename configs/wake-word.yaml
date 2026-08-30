@@ -31,6 +31,16 @@ require_wake: true
 # loaded box inside the window; anchored intents + require_wake cover the risk.
 conversation_window_s: 20
 
+# Conversation mode (2026-08-30): after Jessica speaks an LLM chat reply she
+# chimes softly and LISTENS for the answer — no wake word needed for the next
+# turn (the follow-up capture is silence-terminated; quiet closes the
+# exchange). The engine also carries the last `history_turns` chat exchanges
+# to the LLM so the thread survives across turns; history clears when the
+# conversation window expires.
+conversation:
+  followup: true
+  history_turns: 6
+
 # Hands-free capture (S5 `blazend.voice.runner`). After a wake fires and the
 # acknowledgement plays, the runner records a FIXED window straight from the
 # Rust audio ring — no energy VAD, because the quiet WM8960 HAT fragments

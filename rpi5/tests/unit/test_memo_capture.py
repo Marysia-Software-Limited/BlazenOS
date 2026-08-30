@@ -244,6 +244,7 @@ class _DialogStub:
         self._voice_train_round = 0  # voice-training dialog off (2026-08-22)
         self._voice_train_retries = 0
         self._voice_train_stage: str | None = None  # name finale off (2026-08-27)
+        self._followup_until = 0.0  # conversation follow-up off (2026-08-30)
 
     async def _speak(self, text: str, lang: str = "pl") -> None:
         self.spoken.append(text)

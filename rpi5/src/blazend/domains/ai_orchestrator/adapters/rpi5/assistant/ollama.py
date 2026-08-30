@@ -17,7 +17,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 
 from blazend.domains.local_ai.adapters.rpi5.localllm import LlmError
 
@@ -59,16 +59,37 @@ class OllamaLlm:
         except (urllib.error.URLError, OSError):
             return False
 
-    def _messages(self, user: str, system: str | None) -> list[dict[str, str]]:
+    def _messages(
+        self,
+        user: str,
+        system: str | None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> list[dict[str, str]]:
+        # Conversation mode (2026-08-30): ``history`` is (user, assistant) turns,
+        # oldest first, spliced between the system message and the current user
+        # message. Falsy history → exactly the same messages as before.
         msgs: list[dict[str, str]] = []
         if system:
             msgs.append({"role": "system", "content": system})
+        for prev_user, prev_assistant in history or ():
+            msgs.append({"role": "user", "content": prev_user})
+            msgs.append({"role": "assistant", "content": prev_assistant})
         msgs.append({"role": "user", "content": user})
         return msgs
 
-    def _request(self, *, stream: bool, user: str, system: str | None) -> urllib.request.Request:
+    def _request(
+        self,
+        *,
+        stream: bool,
+        user: str,
+        system: str | None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> urllib.request.Request:
         payload: dict[str, object] = {
-            "model": self.model, "messages": self._messages(user, system), "stream": stream}
+            "model": self.model,
+            "messages": self._messages(user, system, history),
+            "stream": stream,
+        }
         # Power saving (2026-08-23): how long Ollama keeps the model in VRAM
         # after a reply — the GPU can't reach its idle P-state while loaded.
         # Ollama's own default is 5m; BLAZEN_LLM_KEEP_ALIVE overrides ("2m",
@@ -82,22 +103,36 @@ class OllamaLlm:
             headers={"Content-Type": "application/json"},
         )
 
-    def chat(self, user: str, *, system: str | None = None) -> str:
+    def chat(
+        self,
+        user: str,
+        *,
+        system: str | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> str:
         """One-shot reply (non-streaming)."""
         try:
             with urllib.request.urlopen(
-                self._request(stream=False, user=user, system=system), timeout=self.timeout
+                self._request(stream=False, user=user, system=system, history=history),
+                timeout=self.timeout,
             ) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
             raise OllamaError(f"ollama chat failed: {exc}") from exc
         return str(data.get("message", {}).get("content", "")).strip()
 
-    def chat_stream(self, user: str, *, system: str | None = None) -> Iterator[str]:
+    def chat_stream(
+        self,
+        user: str,
+        *,
+        system: str | None = None,
+        history: Sequence[tuple[str, str]] | None = None,
+    ) -> Iterator[str]:
         """Token/sentence chunks as they arrive (newline-delimited JSON)."""
         try:
             with urllib.request.urlopen(
-                self._request(stream=True, user=user, system=system), timeout=self.timeout
+                self._request(stream=True, user=user, system=system, history=history),
+                timeout=self.timeout,
             ) as resp:
                 for raw in resp:
                     line = raw.strip()

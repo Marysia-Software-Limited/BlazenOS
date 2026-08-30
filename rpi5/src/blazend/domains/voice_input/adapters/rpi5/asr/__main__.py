@@ -176,23 +176,19 @@ async def _connect(sock: Path) -> Subscriber:
         await asyncio.sleep(0.2)
 
 
-async def _capture_memo(
-    pub: Publisher,
+async def _record_until_silence(
     ring: RingReader,
-    transcriber: object,
     *,
     speech_rms: float,
-    max_s: float = 60.0,
-    silence_s: float = 1.5,
-    lead_in_s: float = 8.0,
-) -> None:
-    """Dictation capture for a voice memo: record from NOW until ``silence_s``
-    of quiet after speech was heard (hard cap ``max_s``; abort if nothing is
-    said within ``lead_in_s``), transcribe the SAME pcm, persist the wav next
-    to memory.json and publish ``system.event kind=memo_recorded``.
-
-    The ring holds only a few seconds, so audio is accumulated incrementally —
-    reading the whole minute at the end would find it overwritten."""
+    max_s: float,
+    silence_s: float,
+    lead_in_s: float,
+) -> tuple[bool, list[np.ndarray]]:
+    """Record from NOW until ``silence_s`` of quiet after speech (hard cap
+    ``max_s``; give up after ``lead_in_s`` with no speech). Accumulates
+    incrementally — the ring only holds a few seconds. Returns
+    ``(heard_speech, chunks)``. Shared by memo dictation and the
+    conversation follow-up capture (2026-08-30)."""
     sr = ring.sample_rate
     tick_s = 0.2
     chunks: list[np.ndarray] = []
@@ -221,6 +217,79 @@ async def _capture_memo(
             break
         if not heard and total_s >= lead_in_s:
             break
+    return heard, chunks
+
+
+async def _capture_followup(
+    pub: Publisher,
+    ring: RingReader,
+    transcriber: object,
+    lexicon: object | None,
+    lex_ratio: float,
+    clips_dir: Path,
+    *,
+    speech_rms: float,
+    max_s: float = 12.0,
+    silence_s: float = 1.2,
+    lead_in_s: float = 5.0,
+) -> None:
+    """Conversation-mode follow-up (2026-08-30): after Jessica speaks an LLM
+    reply the orchestrator opens this window so the user can answer WITHOUT
+    the wake word. A caught utterance flows down the normal command path
+    (published as ``asr.final``, with the lexicon repair); silence ends the
+    exchange with ``asr.followup_empty`` — the orchestrator just closes the
+    conversation, no nagging."""
+    heard, chunks = await _record_until_silence(
+        ring, speech_rms=speech_rms, max_s=max_s, silence_s=silence_s,
+        lead_in_s=lead_in_s)
+    if not heard or not chunks:
+        await pub.publish(Envelope(
+            topic="error", source="blazend-asr",
+            data={"code": "asr.followup_empty", "message": "follow-up window empty"}))
+        return
+    pcm = np.concatenate(chunks)
+    result = await asyncio.to_thread(
+        transcriber.transcribe, pcm, ring.sample_rate)  # type: ignore[attr-defined]
+    text = result.text
+    if text and lexicon is not None:
+        text, hits = lexicon.correct(text, fuzzy_ratio=lex_ratio)  # type: ignore[attr-defined]
+        if hits:
+            log.info("asr corrected (follow-up): %s", "; ".join(hits))
+    if not text:
+        await pub.publish(Envelope(
+            topic="error", source="blazend-asr",
+            data={"code": "asr.followup_empty", "message": "no words in follow-up"}))
+        return
+    _save_clip(pcm, ring.sample_rate, text, clips_dir)
+    await pub.publish(Envelope(
+        topic="asr.final", source="blazend-asr",
+        data={"language": result.language, "text": text,
+              "confidence": round(result.confidence, 3)}))
+    log.info("asr.final (follow-up) %s %r (conf=%.2f)",
+             result.language, text, result.confidence)
+
+
+async def _capture_memo(
+    pub: Publisher,
+    ring: RingReader,
+    transcriber: object,
+    *,
+    speech_rms: float,
+    max_s: float = 60.0,
+    silence_s: float = 1.5,
+    lead_in_s: float = 8.0,
+) -> None:
+    """Dictation capture for a voice memo: record from NOW until ``silence_s``
+    of quiet after speech was heard (hard cap ``max_s``; abort if nothing is
+    said within ``lead_in_s``), transcribe the SAME pcm, persist the wav next
+    to memory.json and publish ``system.event kind=memo_recorded``.
+
+    The ring holds only a few seconds, so audio is accumulated incrementally —
+    reading the whole minute at the end would find it overwritten."""
+    sr = ring.sample_rate
+    heard, chunks = await _record_until_silence(
+        ring, speech_rms=speech_rms, max_s=max_s, silence_s=silence_s,
+        lead_in_s=lead_in_s)
     if not heard or not chunks:
         log.info("memo capture: no speech within %.0fs — aborting", lead_in_s)
         # Distinct code: the orchestrator answers with a memo-specific retry
@@ -273,6 +342,7 @@ async def _real_loop(pub: Publisher) -> None:
     min_rms = float(_cfg.get("min_capture_rms", 200.0))
     min_rms_playing = float(_cfg.get("min_capture_rms_playing", 40.0))
     memo_cfg = _cfg.get("memo_capture", {}) or {}
+    fu_cfg = _cfg.get("followup_capture", {}) or {}
     # Post-ASR lexicon repair (asr.yaml `lexicon:`): fuzzy-match transcript
     # spans against the domain vocabulary (commands, stations, titles) so one
     # whisper slip ("Top!" for "stop!") doesn't kill the command. Commands
@@ -284,6 +354,8 @@ async def _real_loop(pub: Publisher) -> None:
     speaker_busy = rt / "speaker-busy"
     memo_marker = rt / "memo-capture"
     memo_marker.unlink(missing_ok=True)  # stale marker from a crash mid-memo
+    followup_marker = rt / "followup-capture"
+    followup_marker.unlink(missing_ok=True)
     clips_dir = data_dir() / "clips"
     transcriber = Transcriber()
     log.info("asr real path: model=%s ring=%dHz fixed-window=%.1fs",
@@ -325,6 +397,18 @@ async def _real_loop(pub: Publisher) -> None:
             env = await asyncio.wait_for(sub.next(), timeout=0.2)
         except TimeoutError:
             got_frame = False  # just a poll tick
+        if followup_marker.exists():
+            followup_marker.unlink(missing_ok=True)
+            await _capture_followup(
+                pub, ring, transcriber, lexicon, lex_ratio, clips_dir,
+                # The reply just finished playing and the stream (if any) is
+                # ducked — the playing floor is the right speech threshold.
+                speech_rms=min_rms_playing if speaker_busy.exists() else min_rms,
+                max_s=float(fu_cfg.get("max_s", 12.0)),
+                silence_s=float(fu_cfg.get("silence_s", 1.2)),
+                lead_in_s=float(fu_cfg.get("lead_in_s", 5.0)),
+            )
+            continue
         if memo_marker.exists():
             memo_marker.unlink(missing_ok=True)
             await _capture_memo(
