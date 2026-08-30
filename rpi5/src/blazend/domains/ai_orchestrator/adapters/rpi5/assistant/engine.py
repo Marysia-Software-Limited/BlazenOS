@@ -521,15 +521,6 @@ class Assistant:
             if not command or command == text and wake.is_wake(command):
                 command = ""
         elif self.awake:
-            if not self._chat_history and _looks_ambient(text):
-                # A false wake opened this window: the first thing heard is
-                # mid-stream prose with no wake token — overheard room talk,
-                # not the user (live 2026-08-30 18:44: a private conversation
-                # got an LLM reply and a follow-up chain). Stay silent; the
-                # window keeps waiting for a real command. Established
-                # conversations (non-empty history) are exempt — long answers
-                # are legitimate there.
-                return Reply("", lang, "asleep")
             command = text
         else:
             if _looks_ambient(text):
@@ -544,7 +535,8 @@ class Assistant:
                 return Reply(msg("wake.greet_name", lang, name=name), lang, "wake")
             return Reply(msg("wake.greet", lang), lang, "wake")
 
-        reply = self._handle(command, lang, now=now, on_sentence=on_sentence, on_token=on_token)
+        reply = self._handle(command, lang, now=now, on_sentence=on_sentence,
+                             on_token=on_token, named=named)
         # An acted-on utterance re-opens the follow-up window (mirrors the
         # orchestrator's conversation-window semantics).
         if reply.action != "asleep":
@@ -560,6 +552,7 @@ class Assistant:
         now: datetime,
         on_sentence: OnSentence | None = None,
         on_token: OnToken | None = None,
+        named: bool = True,
     ) -> Reply:
         if _NAME_GET.search(text):
             return self._get_name(lang)
@@ -606,6 +599,13 @@ class Assistant:
         if (rec is not None and not _OPEN_QA.search(text) and len(text.split()) <= 5
                 and rec.ontology.parse(text).any):
             return self._recommend(text, lang)
+        if not named and not self._chat_history and _looks_ambient(text):
+            # Chat-fallback ambient guard (live 2026-08-30 18:44): a false
+            # wake let overheard room conversation reach the LLM, which
+            # replied into a private talk and armed a follow-up chain. Prose
+            # with no wake token and no established conversation never seeds
+            # a chat; real commands (notes, radio, time…) routed above.
+            return Reply("", lang, "asleep")
         return self._chat(text, lang, task=self._task_for(text),
                           on_sentence=on_sentence, on_token=on_token)
 
