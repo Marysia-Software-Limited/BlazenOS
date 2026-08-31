@@ -460,10 +460,18 @@ class Assistant:
         self.awake = True
         self._awake_until = now + timedelta(seconds=self._wake_window_s)
 
-    def _extend_awake(self, now: datetime) -> None:
+    # Extra window granted after a spoken reply: the window is counted from
+    # route ENTRY (the injected `now` keeps the engine clock-free and
+    # testable), but the follow-up answer can only start once generation AND
+    # TTS finish — tens of seconds later. Without this allowance her OWN
+    # follow-up got the sleep notice (live 2026-08-31 08:42). 90 s covers a
+    # slow generation (~60 s) + speech (~20 s) + the capture lead-in.
+    _REPLY_ALLOWANCE_S = 90.0
+
+    def _extend_awake(self, now: datetime, extra_s: float = 0.0) -> None:
         if not self._always_awake:
             self.awake = True
-            self._awake_until = now + timedelta(seconds=self._wake_window_s)
+            self._awake_until = now + timedelta(seconds=self._wake_window_s + extra_s)
 
     def _expire_awake(self, now: datetime) -> None:
         if self._always_awake:
@@ -538,9 +546,10 @@ class Assistant:
         reply = self._handle(command, lang, now=now, on_sentence=on_sentence,
                              on_token=on_token, named=named)
         # An acted-on utterance re-opens the follow-up window (mirrors the
-        # orchestrator's conversation-window semantics).
+        # orchestrator's conversation-window semantics) with the reply
+        # allowance on top — see _REPLY_ALLOWANCE_S.
         if reply.action != "asleep":
-            self._extend_awake(now)
+            self._extend_awake(now, extra_s=self._REPLY_ALLOWANCE_S)
         return reply
 
     # -- command handling ----------------------------------------------

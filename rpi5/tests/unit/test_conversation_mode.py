@@ -230,3 +230,33 @@ def test_first_turn_ambient_prose_after_false_wake_is_silent(tmp_path):
                    "sprawa z kotami perskimi w polskich domach")
     r2 = a.route(long_answer, now=NOW)
     assert r2.action == "chat"
+
+
+def test_reply_extends_window_from_real_clock_with_allowance(tmp_path):
+    """Live 2026-08-31 08:42: the window counted from route ENTRY expired
+    during a long LLM generation, so Jessica's own follow-up got the sleep
+    notice. After a reply the window must survive speaking + the answer."""
+    b = _HistBackend()
+    a = Assistant(memory=MemoryStore(tmp_path / "memory.json"),
+                  router=_OneBackendRouter(b), always_awake=False,
+                  wake_window_s=20.0)
+    a._notes_context = lambda text, lang: ""
+    a.notify_wake(NOW)
+    a.route("Dżesika, opowiedz o kotach", now=NOW)
+    # The deadline sits wake_window+allowance past route entry — enough for
+    # generation + speech + the follow-up capture.
+    remaining = (a._awake_until - NOW).total_seconds()
+    assert remaining > 60.0
+    # A follow-up arriving a minute later (slow gen + long reply) still routes.
+    late_followup = NOW + timedelta(seconds=75)
+    assert a.route("a co z kotami perskimi?", now=late_followup).action == "chat"
+
+
+def test_followup_hallucination_treated_as_empty(tmp_path):
+    from blazend.domains.voice_input.adapters.rpi5.asr.__main__ import (
+        _looks_hallucinated,
+    )
+
+    assert _looks_hallucinated("Kraków " * 19 + "Jedynka")
+    assert not _looks_hallucinated("chcę zarejestrować w Polsce samochód z Niemiec")
+    assert not _looks_hallucinated("tak tak")  # short affirmations untouched

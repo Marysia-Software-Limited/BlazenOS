@@ -62,6 +62,18 @@ _CLIPS_KEEP = 50
 _WAKE_LIKE = re.compile(r"(dzesik|dziesik|jessic|jessik|jesik|dzesic|czesik|gesik)")
 
 
+def _looks_hallucinated(text: str) -> bool:
+    """Whisper repetition loop on noise/silence — seeded by the hotwords list
+    (live 2026-08-31 08:44: a follow-up on room noise transcribed to
+    "…Kraków" repeated nineteen times). One token dominating a longish
+    transcript is a hallucination, not speech."""
+    toks = text.lower().split()
+    if len(toks) < 6:
+        return False
+    top = max(toks.count(t) for t in set(toks))
+    return top >= 5 and top / len(toks) > 0.5
+
+
 def _wake_like(text: str) -> bool:
     """True if the transcript plausibly contains the wake word."""
     from audiobook_catalog.text_norm import _fold
@@ -255,7 +267,7 @@ async def _capture_followup(
         text, hits = lexicon.correct(text, fuzzy_ratio=lex_ratio)  # type: ignore[attr-defined]
         if hits:
             log.info("asr corrected (follow-up): %s", "; ".join(hits))
-    if not text:
+    if not text or _looks_hallucinated(text):
         await pub.publish(Envelope(
             topic="error", source="blazend-asr",
             data={"code": "asr.followup_empty", "message": "no words in follow-up"}))
