@@ -75,19 +75,32 @@ def test_history_trims_to_turn_cap(tmp_path):
     assert [u for u, _ in b.calls[3][1]] == ["tura 1", "tura 2"]
 
 
-def test_history_clears_when_conversation_window_expires(tmp_path):
+def test_history_survives_window_expiry_but_not_its_ttl(tmp_path):
+    """Live 2026-08-31 08:53: an expletive aside hit an expired window and the
+    old expiry-clears-history rule wiped the topic — the very next question
+    lost its context. The thread now survives window expiry (a re-wake within
+    the TTL continues the topic) and clears only when stale."""
     b = _HistBackend()
     a = Assistant(memory=MemoryStore(tmp_path / "memory.json"),
                   router=_OneBackendRouter(b), always_awake=False,
                   wake_window_s=20.0)
     a._notes_context = lambda text, lang: ""
     a.notify_wake(NOW)
-    a.route("opowiedz mi coś o kotach", now=NOW)
-    assert a._chat_history  # the exchange was recorded
-    # Window long gone → next route is asleep AND the thread is dropped.
-    late = NOW + timedelta(minutes=10)
-    a.route("a psy?", now=late)
-    assert a._chat_history == []
+    a.route("opowiedz mi coś o Jadźwingach", now=NOW)
+    assert a._chat_history
+    # A stray utterance three minutes later hits an expired window → asleep…
+    aside = NOW + timedelta(minutes=3)
+    assert a.route("oh nieważne", now=aside).action == "asleep"
+    assert a._chat_history  # …but the thread SURVIVES
+    # Re-wake shortly after → the follow-up carries the Jadźwingowie context.
+    a.notify_wake(aside)
+    a.route("a gdzie znajdowały się ich siedziby?", now=aside)
+    assert b.calls[-1][1] and "Jadźwingach" in b.calls[-1][1][0][0]
+    # …but a topic left alone past the TTL starts fresh.
+    stale = aside + timedelta(minutes=15)
+    a.notify_wake(stale)
+    a.route("Dżesika, opowiedz o psach", now=stale)
+    assert b.calls[-1][1] is None  # no history reached the LLM
 
 
 def test_tool_commands_do_not_enter_history(tmp_path):

@@ -359,6 +359,7 @@ class Assistant:
         # conversation window expires — a new wake is a new topic.
         self._history_turns = max(1, history_turns)
         self._chat_history: list[tuple[str, str]] = []
+        self._history_until: datetime | None = None
         # Book/music recommendation RAG (semantic + ontology). Injected in tests;
         # built lazily otherwise (loads the semantic index only on first use).
         self._recommender = recommender
@@ -479,9 +480,16 @@ class Assistant:
         if self._awake_until is not None and now > self._awake_until:
             self.awake = False
             self._awake_until = None
-            self._chat_history.clear()  # expired conversation = fresh thread
+            # NOTE: the chat history deliberately SURVIVES window expiry —
+            # clearing it here wiped the thread when a stray utterance hit an
+            # expired window mid-conversation (live 2026-08-31 08:53: an
+            # expletive aside cleared the topic and the next question got
+            # "what organisation do you mean?"). History has its own TTL.
 
     _HISTORY_MAX_CHARS = 2400
+    # The thread outlives the awake window: a re-wake within this TTL
+    # continues the topic; longer silence starts fresh.
+    _HISTORY_TTL_S = 600.0
 
     def _remember_turn(self, user: str, assistant: str) -> None:
         """Append one chat exchange and trim oldest-first to the turn cap and
@@ -522,6 +530,11 @@ class Assistant:
             return Reply("", lang, "asleep")
 
         self._expire_awake(now)
+        if (self._history_until is not None and now > self._history_until
+                and self._chat_history):
+            self._chat_history.clear()  # topic went stale — fresh thread
+        if self._chat_history:
+            self._history_until = now + timedelta(seconds=self._HISTORY_TTL_S)
         named = wake.is_wake(text)
         if named:
             self._extend_awake(now)
@@ -550,6 +563,8 @@ class Assistant:
         # allowance on top — see _REPLY_ALLOWANCE_S.
         if reply.action != "asleep":
             self._extend_awake(now, extra_s=self._REPLY_ALLOWANCE_S)
+            if self._chat_history:
+                self._history_until = now + timedelta(seconds=self._HISTORY_TTL_S)
         return reply
 
     # -- command handling ----------------------------------------------
