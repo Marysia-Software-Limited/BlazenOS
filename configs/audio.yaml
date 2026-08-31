@@ -55,6 +55,26 @@ volume:
   step: 10
   voice_mutable: true                 # see voice-policy.yaml
 
+# Secondary sensor mic (2026-08-31): a machine with an unused BUILT-IN mic
+# (paul: the internal ALC269VC) can dedicate it to Jessica as a room sensor —
+# ambient-loudness measurement, closed-loop speaker tests (the Jabra's AEC
+# removes its own speaker from its own mic, so the speaker was unverifiable
+# without a second ear), and optional ambient-driven media volume. Feature is
+# OFF unless `device` is set (the Pi ships no such mic). Measurements run only
+# while the speaker is idle; auto_volume nudges the media level between
+# playbacks (linear between the quiet/loud RMS anchors, ≤step_pct per cycle).
+ambient_mic:
+  device: ""                 # e.g. "plughw:CARD=Generic,DEV=0"; "" = off
+  interval_s: 30
+  sample_s: 2
+  auto_volume:
+    enabled: false
+    min_pct: 40
+    max_pct: 100
+    quiet_rms: 40
+    loud_rms: 800
+    step_pct: 10
+
 earcons:
   # ON again (2026-08-04, user request "I want to know the state by sound"):
   # the retrained wake model brought false wakes down to ~2/h, so the instant

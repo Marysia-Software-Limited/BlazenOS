@@ -242,6 +242,10 @@ installer-check: ## Lint + cross-distro smoke of installer/ (shellcheck, dry-run
 audio-fixtures: venv ## Synthesise all WAV inputs from scenario YAMLs (via Piper)
 	$(PY) rpi5/tests/tools/synth-audio.py --scenarios rpi5/tests/scenarios --out rpi5/tests/fixtures/audio
 
+.PHONY: speaker-check
+speaker-check: ## Closed-loop speaker test: tones on the Jabra, heard by the sensor mic (paul)
+	python3 scripts/speaker-check.py --levels 50 100
+
 # -------- safety / hygiene --------
 
 # Static hygiene gate, enforced as a prerequisite of `test-fast` so formatting /

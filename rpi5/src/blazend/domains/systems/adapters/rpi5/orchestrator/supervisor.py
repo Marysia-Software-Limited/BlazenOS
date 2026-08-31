@@ -78,6 +78,21 @@ def _extract_address(text: str) -> str:
     return name[:1].upper() + name[1:]
 
 
+def _ambient_target_pct(
+    rms: float, current: int, *, quiet_rms: float, loud_rms: float,
+    min_pct: int, max_pct: int, step_pct: int,
+) -> int:
+    """Map an ambient-noise RMS to a media volume target (linear between the
+    quiet/loud anchors), moving at most ``step_pct`` per cycle (no pumping)
+    and ignoring nudges under 5 points. Pure — unit-tested without audio."""
+    span = max(1.0, float(loud_rms - quiet_rms))
+    frac = min(1.0, max(0.0, (rms - quiet_rms) / span))
+    target = min_pct + frac * (max_pct - min_pct)
+    delta = max(float(-step_pct), min(float(step_pct), target - current))
+    proposed = int(round(current + delta))
+    return proposed if abs(proposed - current) >= 5 else current
+
+
 def _state_root() -> Path:
     """Persistent state root: the parent of BLAZEN_DATA_DIR (…/data) when set —
     desktop installs point it under XDG — else the appliance /var/lib/blazen."""
@@ -290,6 +305,7 @@ class Orchestrator:
         # user's speech is captured anyway, and a "stop" in it still acts.
         self._followup_until = 0.0
         self._followup_task: asyncio.Task[None] | None = None
+        self._ambient_rms: float | None = None  # secondary-mic room level
         try:
             self._followup_enabled = bool(
                 load_config("wake-word").get("conversation.followup", True))
@@ -666,6 +682,7 @@ class Orchestrator:
         # Own audio-out for half-duplex (keeps the Jabra mic un-ducked while idle).
         asyncio.create_task(self._speaker_manager())
         asyncio.create_task(self._book_watcher())  # auto-advance audiobook chapters
+        asyncio.create_task(self._ambient_monitor())  # secondary-mic room sensor
 
         # Connect to every peer (idempotent; missing peers are retried lazily).
         for name in self._peers:
@@ -1450,6 +1467,71 @@ class Orchestrator:
                 self._followup_until = 0.0
         except asyncio.CancelledError:
             pass
+
+    async def _ambient_monitor(self) -> None:
+        """Secondary-mic room sensor (2026-08-31, paul: the built-in ALC269VC
+        dedicated to Jessica). Config-gated by ``audio.yaml ambient_mic.device``
+        — absent/empty (the Pi has no such mic) the task exits immediately.
+        Measures the room ONLY while the speaker is idle and no dialog is
+        pending (never her own voice/stream), keeps ``ambient.rms`` in
+        state.json, and optionally nudges the media volume toward the room
+        level (auto_volume; applied between playbacks, never mid-stream)."""
+        try:
+            cfg = load_config("audio").data.get("ambient_mic", {}) or {}
+        except Exception:  # noqa: BLE001
+            return
+        dev = str(cfg.get("device", "") or "")
+        if not dev:
+            return
+        interval = float(cfg.get("interval_s", 30))
+        sample_s = float(cfg.get("sample_s", 2))
+        av = cfg.get("auto_volume", {}) or {}
+        log.info("ambient monitor on %s (every %.0fs)", dev, interval)
+        while not self._stop.is_set():
+            await asyncio.sleep(interval)
+            if (self._speaker_busy.exists()
+                    or (self._runtime_dir / "speaking").exists()
+                    or self._radio.playing or self._dialog_active()):
+                continue  # her own audio would poison the room measurement
+            rms = await asyncio.to_thread(self._measure_ambient, dev, sample_s)
+            if rms is None:
+                continue
+            self._ambient_rms = rms
+            await self._state.update({"ambient": {"rms": round(rms, 1)}})
+            if bool(av.get("enabled", False)) and not self._radio.playing:
+                new = _ambient_target_pct(
+                    rms, self._volume_pct,
+                    quiet_rms=float(av.get("quiet_rms", 40)),
+                    loud_rms=float(av.get("loud_rms", 800)),
+                    min_pct=int(av.get("min_pct", 40)),
+                    max_pct=int(av.get("max_pct", 100)),
+                    step_pct=int(av.get("step_pct", 10)))
+                if new != self._volume_pct:
+                    self._volume_pct = new
+                    await asyncio.to_thread(self._amixer, f"{new}%")
+                    log.info("ambient auto-volume → %d%% (room rms %.0f)", new, rms)
+
+    @staticmethod
+    def _measure_ambient(device: str, seconds: float) -> float | None:
+        """One room sample: record ``seconds`` of mono 16 kHz from ``device``
+        and return the MEDIAN of 200 ms block RMS values — the median rides
+        out keyboard clicks and other transients that wreck a plain RMS."""
+        import numpy as np
+
+        try:
+            out = subprocess.run(
+                ["arecord", "-q", "-D", device, "-f", "S16_LE", "-r", "16000",
+                 "-c", "1", "-d", str(max(1, int(seconds))), "-t", "raw", "-"],
+                capture_output=True, timeout=seconds + 5, check=True)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        pcm = np.frombuffer(out.stdout, dtype=np.int16).astype(np.float64)
+        if len(pcm) < 3200:
+            return None
+        block = 3200  # 200 ms @ 16 kHz
+        blocks = [pcm[i:i + block] for i in range(0, len(pcm) - block + 1, block)]
+        rms = sorted(float(np.sqrt((b ** 2).mean())) for b in blocks)
+        return rms[len(rms) // 2]
 
     def _dialog_active(self) -> bool:
         """True while a guided dialog (voice training rounds, the address

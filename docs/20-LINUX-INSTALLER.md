@@ -58,6 +58,18 @@ audio-consuming unit and writes `$XDG_RUNTIME_DIR/blazen/audio.env`:
 Plug the Jabra in → `systemctl --user restart blazend.target` → profile
 switches. No reinstall, no config edit.
 
+**Secondary sensor mic (paul-only, 2026-08-31):** a machine with an unused
+built-in mic can dedicate it to Jessica as a room sensor — site
+`audio.yaml ambient_mic:` names the ALSA device (paul: the internal ALC269VC,
+udev rule `88-blazen-intmic.rules` matches its PCI parent `0000:c6:00.6` and
+hands it to the pipeline user; a wireplumber conf keeps PipeWire off it). The
+orchestrator then measures room loudness while the speaker is idle
+(`ambient.rms` in state.json), optionally follows it with the media volume
+(`auto_volume`), and `make speaker-check` runs a closed-loop speaker test —
+tones on the Jabra detected on the sensor mic via FFT bins (the Jabra's own
+AEC makes its speaker inaudible to its own mic, so this second ear is the
+only objective playback check; measured: volume step 50→100% = +12.4 dB).
+
 The wake threshold is per-site too (2026-08-27): the unit defaults
 `BLAZEN_WAKE_THRESHOLD=0.8`; set it in the site `blazen.env` when the room/mic
 needs a laxer or stricter wake (paul runs `0.65`). `blazend-wake` logs

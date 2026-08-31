@@ -84,6 +84,18 @@ two ways:
 Every downstream resolver (radio/music/books) matches exact stems only, so
 this layer is what makes a one-character ASR slip survivable.
 
+## Secondary sensor mic (`audio.yaml ambient_mic:`) — 2026-08-31
+
+A dedicated second microphone (not the voice mic) as Jessica's room sensor.
+OFF unless `device` names an ALSA capture (the Pi ships none; paul uses its
+built-in ALC269VC). Every `interval_s` the orchestrator — only while the
+speaker is idle and no dialog is pending — records `sample_s`, keeps the
+MEDIAN 200 ms-block RMS as `ambient.rms` in state.json, and with
+`auto_volume.enabled` walks the media volume toward the room level (linear
+between `quiet_rms`→`min_pct` and `loud_rms`→`max_pct`, at most `step_pct`
+per cycle, applied between playbacks — never mid-stream). The same mic powers
+`make speaker-check` (closed-loop speaker verification via FFT tone bins).
+
 ## Output loudness leveling + speech compression (`audio.yaml`)
 
 `blazend-player` (radio / music / audiobooks) runs an output-side dynamics chain
