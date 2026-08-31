@@ -271,5 +271,10 @@ def test_followup_hallucination_treated_as_empty(tmp_path):
     )
 
     assert _looks_hallucinated("Kraków " * 19 + "Jedynka")
+    # Live 2026-08-31: a real "Dżesika, włącz trójkę" transcribed as the wake
+    # word looping — the guard now also covers the main post-wake path.
+    assert _looks_hallucinated("Dżesika, " * 8)
+    assert _looks_hallucinated("Dżesika, Dwójka, " * 27)
     assert not _looks_hallucinated("chcę zarejestrować w Polsce samochód z Niemiec")
     assert not _looks_hallucinated("tak tak")  # short affirmations untouched
+    assert not _looks_hallucinated("Dżesika, włącz radio Trójka proszę")

@@ -70,8 +70,12 @@ def _looks_hallucinated(text: str) -> bool:
     toks = text.lower().split()
     if len(toks) < 6:
         return False
-    top = max(toks.count(t) for t in set(toks))
-    return top >= 5 and top / len(toks) > 0.5
+    counts = sorted((toks.count(t) for t in set(toks)), reverse=True)
+    top = counts[0]
+    # Two-token alternating loops ("Dżesika, Dwójka," ×27, live 2026-08-30)
+    # split the count 50/50, so the single-token share alone misses them.
+    top2 = top + (counts[1] if len(counts) > 1 else 0)
+    return top >= 5 and (top / len(toks) > 0.5 or top2 / len(toks) > 0.8)
 
 
 def _wake_like(text: str) -> bool:
@@ -505,6 +509,20 @@ async def _real_loop(pub: Publisher) -> None:
             continue
         result = await asyncio.to_thread(transcriber.transcribe, pcm, ring.sample_rate)
         text = result.text
+        if text and _looks_hallucinated(text):
+            # Same repetition-loop guard as the follow-up path (live 2026-08-31
+            # 14:22: a real "włącz trójkę" came back as "Dżesika," ×8 and fell
+            # through to the LLM chat fallback). Ask again instead of routing
+            # garbage; no harvest — the window holds a REAL wake word.
+            log.info("asr: hallucinated transcript dropped %r", text[:80])
+            await pub.publish(
+                Envelope(
+                    topic="error",
+                    source="blazend-asr",
+                    data={"code": "asr.no_text", "message": "hallucinated transcript"},
+                )
+            )
+            continue
         if text and lexicon is not None:
             text, hits = lexicon.correct(text, fuzzy_ratio=lex_ratio)
             if hits:
