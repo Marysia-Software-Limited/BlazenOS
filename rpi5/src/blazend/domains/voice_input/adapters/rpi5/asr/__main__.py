@@ -62,11 +62,28 @@ _CLIPS_KEEP = 50
 _WAKE_LIKE = re.compile(r"(dzesik|dziesik|jessic|jessik|jesik|dzesic|czesik|gesik)")
 
 
+# Stock whisper hallucinations on silence/noise — YouTube-outro phrases burned
+# into the model (live 2026-08-31 18:15-18:20: "Dziękuje za oglądanie." over
+# and over kept a wake-less conversation loop alive for 12+ minutes). Folded
+# substring match; a real command never contains these.
+_SILENCE_PHRASES = (
+    "dziekuje za ogladanie", "dziekuje za obejrzenie", "dziekuje za uwage",
+    "napisy stworzone przez", "amara.org", "zapraszam na kolejny",
+    "do zobaczenia w kolejnym", "zasubskrybuj", "thanks for watching",
+)
+
+
 def _looks_hallucinated(text: str) -> bool:
     """Whisper repetition loop on noise/silence — seeded by the hotwords list
     (live 2026-08-31 08:44: a follow-up on room noise transcribed to
     "…Kraków" repeated nineteen times). One token dominating a longish
-    transcript is a hallucination, not speech."""
+    transcript is a hallucination, not speech. Also matches the model's
+    stock silence phrases (_SILENCE_PHRASES)."""
+    from audiobook_catalog.text_norm import _fold
+
+    folded = _fold(text)
+    if any(p in folded for p in _SILENCE_PHRASES):
+        return True
     toks = text.lower().split()
     if len(toks) < 6:
         return False
@@ -248,6 +265,7 @@ async def _capture_followup(
     max_s: float = 12.0,
     silence_s: float = 1.2,
     lead_in_s: float = 5.0,
+    min_conf: float = 0.6,
 ) -> None:
     """Conversation-mode follow-up (2026-08-30): after Jessica speaks an LLM
     reply the orchestrator opens this window so the user can answer WITHOUT
@@ -275,6 +293,20 @@ async def _capture_followup(
         await pub.publish(Envelope(
             topic="error", source="blazend-asr",
             data={"code": "asr.followup_empty", "message": "no words in follow-up"}))
+        return
+    # A follow-up continues a conversation WITHOUT a wake word, so it must
+    # clear a confidence bar a wake-gated command never needed: room babble
+    # that whisper "understood" at conf 0.42-0.55 kept a wake-less loop
+    # talking for 12+ minutes (2026-08-31 18:07-18:20, no human in the
+    # exchange). Below the bar the conversation just closes; a real user
+    # re-opens it with the wake word.
+    if result.confidence < min_conf:
+        log.info("follow-up below min_conf %.2f: %r (conf=%.2f) — closing",
+                 min_conf, text[:60], result.confidence)
+        await pub.publish(Envelope(
+            topic="error", source="blazend-asr",
+            data={"code": "asr.followup_empty",
+                  "message": "follow-up below confidence floor"}))
         return
     _save_clip(pcm, ring.sample_rate, text, clips_dir)
     await pub.publish(Envelope(
@@ -423,6 +455,7 @@ async def _real_loop(pub: Publisher) -> None:
                 max_s=float(fu_cfg.get("max_s", 12.0)),
                 silence_s=float(fu_cfg.get("silence_s", 1.2)),
                 lead_in_s=float(fu_cfg.get("lead_in_s", 5.0)),
+                min_conf=float(fu_cfg.get("min_conf", 0.6)),
             )
             continue
         if memo_marker.exists():

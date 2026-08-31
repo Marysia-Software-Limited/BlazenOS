@@ -167,6 +167,26 @@ def test_followup_publishes_asr_final(tmp_path):
     assert env.data["text"] == "a co z kotami perskimi?"
 
 
+def test_followup_low_confidence_closes_conversation(tmp_path):
+    # Room babble whisper "understood" at conf 0.42-0.55 kept a wake-less
+    # loop talking for 12 minutes (2026-08-31) — below min_conf the follow-up
+    # must close the conversation, not feed the LLM.
+    class _LowConf(_FakeTranscriber):
+        def transcribe(self, pcm, sample_rate):
+            t = super().transcribe(pcm, sample_rate)
+            t.confidence = 0.5
+            return t
+
+    pub = _FakePub()
+    asyncio.run(_capture_followup(
+        pub, _FakeRing(speech_s=2), _LowConf(), None, 0.78,
+        tmp_path / "clips", speech_rms=200.0, max_s=12.0, silence_s=1.2,
+        lead_in_s=5.0, min_conf=0.6))
+    assert len(pub.published) == 1
+    env = pub.published[0]
+    assert env.topic == "error" and env.data["code"] == "asr.followup_empty"
+
+
 def test_followup_silence_publishes_followup_empty(tmp_path):
     pub = _FakePub()
     asyncio.run(_capture_followup(
@@ -278,3 +298,7 @@ def test_followup_hallucination_treated_as_empty(tmp_path):
     assert not _looks_hallucinated("chcę zarejestrować w Polsce samochód z Niemiec")
     assert not _looks_hallucinated("tak tak")  # short affirmations untouched
     assert not _looks_hallucinated("Dżesika, włącz radio Trójka proszę")
+    # Stock whisper silence phrases (the 2026-08-31 wake-less loop fuel).
+    assert _looks_hallucinated("Dziękuje za oglądanie.")
+    assert _looks_hallucinated("Napisy stworzone przez społeczność Amara.org")
+    assert not _looks_hallucinated("dziękuję, to wszystko")
