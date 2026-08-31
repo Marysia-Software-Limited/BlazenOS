@@ -229,8 +229,14 @@ async def _record_until_silence(
     heard = False
     quiet_s = 0.0
     total_s = 0.0
+    wall_s = 0.0
     while True:
         await asyncio.sleep(tick_s)
+        # Wall-clock bound: total_s advances only with fresh ring frames, so a
+        # stalled ring (audio-in died mid-capture) would otherwise spin forever.
+        wall_s += tick_s
+        if wall_s >= max_s + silence_s + 2.0:
+            break
         end = ring.write_pos
         if end > last:
             chunk = np.asarray(ring.read_range(last, end), dtype=np.int16)
@@ -502,7 +508,35 @@ async def _real_loop(pub: Publisher) -> None:
         # Wait for the command to be spoken after the wake word, then read from
         # just-before-wake up to the CURRENT write head — so the window contains
         # the command regardless of the pause length or the wake's report latency.
-        await asyncio.sleep(min(cap_s, 3.0))
+        # Track the ring until speech-then-silence instead of a fixed sleep
+        # (2026-08-31): the correct flow is word → chime → command, and after
+        # ~1 s of chime wait a fixed 3 s window cut longer commands mid-word —
+        # "włącz trójkę" lost its tail and the truncated audio fed a whisper
+        # repetition loop. A silent window still falls through after lead_in_s
+        # (same worst case as the old sleep); a short command now transcribes
+        # SOONER (silence ends the wait early).
+        # 0.5 s settle first: detection fires near the END of the wake word,
+        # but its trailing syllable would count as "speech" and the chime
+        # pause as its "silence", closing the window before the command.
+        await asyncio.sleep(0.5)
+        cmd_heard, _ = await _record_until_silence(
+            ring,
+            speech_rms=min_rms_playing if speaker_busy.exists() else min_rms,
+            max_s=cap_s, silence_s=1.0, lead_in_s=3.0)
+        if not cmd_heard:
+            # Wake word with NO command after it: transcribing the window
+            # would hand whisper just the wake word's tail ("zika"), which
+            # then rode the chat fallback into an LLM greeting. Say so
+            # instead — the orchestrator prompts "Słucham?" on this code.
+            log.info("asr: no command after wake — prompting instead of transcribing")
+            await pub.publish(
+                Envelope(
+                    topic="error",
+                    source="blazend-asr",
+                    data={"code": "asr.no_speech", "message": "no command after wake"},
+                )
+            )
+            continue
         end = ring.write_pos
         begin = max(wake_pos - pre, end - ring.capacity + ring.sample_rate)
         pcm = ring.read_range(begin, end)

@@ -111,15 +111,24 @@ async def test_asr_open_ring_timeout(monkeypatch, tmp_path):
 class _FakeRing:
     sample_rate = 16_000
     capacity = 16_000 * 10  # 10 s ring
+    level = 4000  # loud: the speech-tracked capture hears a command
 
     def __init__(self) -> None:
-        self.write_pos = 16_000 * 5  # 5 s of audio written
+        self._pos = 16_000 * 5  # 5 s of audio written
+
+    @property
+    def write_pos(self) -> int:
+        # The real ring always flows (audio-in writes continuously); the
+        # speech-tracked capture (2026-08-31) polls this between ticks.
+        self._pos += 3200  # 0.2 s per poll
+        return self._pos
 
     def read_range(self, start, end):  # noqa: ANN001
         import numpy as np
 
-        # Loud constant tone so the post-wake capture clears the RMS/peak floor.
-        return np.full(max(0, end - start), 4000, dtype=np.int16)
+        # Constant tone; `level` above the RMS/peak floor means "command
+        # spoken", a quiet level means "wake word then silence".
+        return np.full(max(0, end - start), self.level, dtype=np.int16)
 
 
 class _FakeTranscript:
@@ -272,6 +281,54 @@ async def test_asr_real_loop_no_text_emits_error(monkeypatch, tmp_path):
         await asr_main._real_loop(pub)
     assert connects == 2  # EOF triggered the reconnect
     assert [e.topic for e in pub.published] == ["error"]
+
+
+@pytest.mark.asyncio
+async def test_asr_real_loop_silent_wake_skips_whisper(monkeypatch, tmp_path):
+    """Wake word with no command after it → asr.no_speech, no transcription
+    (the wake word's tail alone used to reach whisper and then the LLM)."""
+    import blazend.domains.voice_input.adapters.rpi5.asr.engine as engine
+
+    calls = 0
+
+    class _Counting(_FakeTranscriber):
+        def transcribe(self, pcm, sample_rate):  # noqa: ANN001
+            nonlocal calls
+            calls += 1
+            return _FakeTranscript("Dżesika")
+
+    class _QuietRing(_FakeRing):
+        level = 50  # below every speech floor: silence after the wake word
+
+    monkeypatch.setattr(engine, "Transcriber", _Counting)
+    monkeypatch.setattr(asr_main, "runtime_dir", lambda: tmp_path)
+
+    async def fake_open_ring(_path, timeout=30.0):  # noqa: ANN001
+        return _QuietRing()
+
+    async def fast_sleep(_s: float) -> None:
+        return None
+
+    monkeypatch.setattr(asr_main.asyncio, "sleep", fast_sleep)
+    connects = 0
+
+    async def fake_connect(_sock):  # noqa: ANN001
+        nonlocal connects
+        connects += 1
+        if connects == 1:
+            return _OneShotSub(
+                [Envelope(topic="wake.detected", source="wake", data={}, ts_ms=3000)])
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(asr_main, "_open_ring", fake_open_ring)
+    monkeypatch.setattr(asr_main, "_connect", fake_connect)
+
+    pub = FakePublisher(tmp_path / "asr.sock")
+    with pytest.raises(asyncio.CancelledError):
+        await asr_main._real_loop(pub)
+    assert calls == 0  # whisper never ran
+    errors = [e for e in pub.published if e.topic == "error"]
+    assert errors and errors[0].data["code"] == "asr.no_speech"
 
 
 # ---------------------------------------------------------------------------
