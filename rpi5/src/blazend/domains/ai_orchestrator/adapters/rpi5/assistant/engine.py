@@ -185,6 +185,16 @@ _OPEN_QA = re.compile(
     r"explain|tell\s+me\s+about|who\s+(is|was|were))\b",
     re.IGNORECASE,
 )
+# The one explicit door into the LLM (closed-command-list decision 2026-09-08):
+# "sprawdź / zapytaj / spytaj / dowiedz się <pytanie>" (EN assets: check / ask /
+# look up / find out). Everything after the verb is the query, verbatim. Note
+# "sprawdź na stronie…" is caught EARLIER by _SITE — the ladder order protects
+# the site tool.
+_AI_QUERY = re.compile(
+    r"^(sprawd(ź|z)|zapytaj|spytaj|dowiedz\s+si(ę|e)|poszukaj|"
+    r"check|ask|look\s+up|find\s+out)\b[,:]?\s*(?P<q>.*)$",
+    re.IGNORECASE,
+)
 # Recommendation ("poleć coś", "co warto przeczytać") vs direct play ("zagraj X",
 # fast-path). A recommendation reaches the brain (nlu.miss) and runs the RAG.
 _RECOMMEND = re.compile(
@@ -277,6 +287,29 @@ _STOP_ORDERS = frozenset({
     # EN asset parity (docs/13): retained though runtime is PL-only.
     "quiet", "silence", "enough", "shut up", "be quiet",
 })
+
+
+# Invitation tails an LLM reply ends with when it EXPECTS an answer (beyond a
+# literal "?"). Folded lowercase substrings; PL first, EN assets retained.
+_AWAIT_PHRASES = (
+    "daj znac", "powiedz mi", "chcesz wiedziec", "chcesz zebym", "mam kontynuowac",
+    "cos jeszcze", "w czym jeszcze", "let me know", "would you like", "tell me",
+    "anything else", "shall i",
+)
+
+
+def llm_awaits_reply(reply_text: str) -> bool:
+    """True when a spoken LLM reply is WAITING for the user — it ends with a
+    question or an inviting tail. The orchestrator then arms the HOT follow-up
+    (longer window, more sensitive capture); a closing statement gets the
+    normal one. Pure text heuristic, unit-tested."""
+    from audiobook_catalog.text_norm import _fold
+
+    tail = reply_text.strip()[-160:]
+    if tail.rstrip("…").rstrip().endswith("?"):
+        return True
+    folded = _fold(tail)
+    return any(p in folded for p in _AWAIT_PHRASES)
 
 
 def _is_stop_order(text: str) -> bool:
@@ -380,6 +413,9 @@ class Assistant:
         self._history_turns = max(1, history_turns)
         self._chat_history: list[tuple[str, str]] = []
         self._history_until: datetime | None = None
+        # "sprawdź" with no query asks "Co mam sprawdzić?" and arms this
+        # one-shot window: the NEXT utterance routes to the LLM prefix-free.
+        self._ai_query_until: datetime | None = None
         # Book/music recommendation RAG (semantic + ontology). Injected in tests;
         # built lazily otherwise (loads the semantic index only on first use).
         self._recommender = recommender
@@ -488,6 +524,8 @@ class Assistant:
     # follow-up got the sleep notice (live 2026-08-31 08:42). 90 s covers a
     # slow generation (~60 s) + speech (~20 s) + the capture lead-in.
     _REPLY_ALLOWANCE_S = 90.0
+    # "Sprawdź" with no query: how long the follow-up ask window stays open.
+    _AI_ASK_WINDOW_S = 40.0
 
     def _extend_awake(self, now: datetime, extra_s: float = 0.0) -> None:
         if not self._always_awake:
@@ -651,14 +689,32 @@ class Assistant:
                 and rec.ontology.parse(text).any):
             return self._recommend(text, lang)
         if not named and not self._chat_history and _looks_ambient(text):
-            # Chat-fallback ambient guard (live 2026-08-30 18:44): a false
-            # wake let overheard room conversation reach the LLM, which
-            # replied into a private talk and armed a follow-up chain. Prose
-            # with no wake token and no established conversation never seeds
-            # a chat; real commands (notes, radio, time…) routed above.
+            # Ambient guard (live 2026-08-30 18:44): a false wake let
+            # overheard room conversation reach the LLM, which replied into a
+            # private talk and armed a follow-up chain. Prose with no wake
+            # token and no established conversation is silently dropped.
             return Reply("", lang, "asleep")
-        return self._chat(text, lang, task=self._task_for(text),
-                          on_sentence=on_sentence, on_token=on_token)
+        # CLOSED COMMAND LIST (2026-09-08 decision): an LLM conversation is
+        # opened ONLY by an explicit query command ("sprawdź / zapytaj …") —
+        # random unmatched speech no longer falls through to the chat. An
+        # ESTABLISHED conversation keeps flowing prefix-free (the follow-up
+        # answers below), and "sprawdź" alone arms a one-shot ask window.
+        if (m := _AI_QUERY.match(text)) is not None:
+            query = m.group("q").strip()
+            if not query:
+                self._ai_query_until = now + timedelta(seconds=self._AI_ASK_WINDOW_S)
+                return Reply(msg("ai.what", lang), lang, "chat")
+            return self._chat(query, lang, task=self._task_for(query),
+                              on_sentence=on_sentence, on_token=on_token)
+        if self._chat_history or (
+                self._ai_query_until is not None and now <= self._ai_query_until):
+            self._ai_query_until = None
+            return self._chat(text, lang, task=self._task_for(text),
+                              on_sentence=on_sentence, on_token=on_token)
+        # Not a known command, not a conversation: say so (the orchestrator
+        # rate-limits the cue) instead of guessing. This utterance is a
+        # learning-loop candidate, not a chat prompt.
+        return Reply("", lang, "not_understood")
 
     def _task_for(self, text: str) -> Task:
         """Pick the routing task for a freeform utterance. Open knowledge

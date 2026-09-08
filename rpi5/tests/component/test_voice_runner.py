@@ -243,7 +243,7 @@ async def test_runner_speaks_streamed_sentences_as_they_complete(tmp_path):
     )
     runner = VoiceRunner(
         brain=brain,
-        transcriber=FakeTranscriber("jak się masz"),  # routes to freeform chat
+        transcriber=FakeTranscriber("sprawdź jak się masz"),  # routes to freeform chat
         capturer=RingSliceCapturer(ring),
         sink=sink,
         capture_s=0.01,
@@ -335,7 +335,7 @@ async def test_held_button_titled_note_then_context_injected(tmp_path):
     # 2) A later question retrieves that note into the LLM's system prompt.
     chat_runner = VoiceRunner(
         brain=brain,
-        transcriber=FakeTranscriber("co planuję w weekend?"),
+        transcriber=FakeTranscriber("sprawdź co planuję w weekend?"),
         capturer=RingSliceCapturer(ring),
         sink=sink,
         capture_s=0.01,
@@ -501,7 +501,7 @@ async def test_streamed_path_survives_tts_failure_midstream(tmp_path):
     sink = _OneBoomSink()
     runner = VoiceRunner(
         brain=brain,
-        transcriber=FakeTranscriber("jak się masz"),
+        transcriber=FakeTranscriber("sprawdź jak się masz"),
         capturer=RingSliceCapturer(ring),
         sink=sink,
         capture_s=0.01,

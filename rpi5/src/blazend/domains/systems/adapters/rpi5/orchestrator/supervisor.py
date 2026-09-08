@@ -161,6 +161,9 @@ _DIALOG_TIMEOUT_S = 90.0
 # Conversation follow-up: how long after a spoken chat reply the wake-less
 # answer window stays armed (capture max 12 s + margin).
 _FOLLOWUP_TIMEOUT_S = 25.0
+# When the LLM reply explicitly AWAITS an answer (question / invitation), the
+# user is composing one — keep the window open noticeably longer (2026-09-08).
+_FOLLOWUP_HOT_TIMEOUT_S = 40.0
 
 DEFAULT_PEERS: tuple[str, ...] = (
     "audio-in",
@@ -1002,7 +1005,20 @@ class Orchestrator:
                         and env.data.get("text") and not self._radio.playing):
                     if self._followup_task is not None and not self._followup_task.done():
                         self._followup_task.cancel()
-                    self._followup_task = asyncio.create_task(self._arm_followup())
+                    # HOT follow-up (2026-09-08): when the LLM reply awaits an
+                    # answer, listen longer and more sensitively.
+                    self._followup_task = asyncio.create_task(self._arm_followup(
+                        hot=bool(env.data.get("awaits_reply"))))
+                # Closed command list (2026-09-08): the brain says it did not
+                # understand — speak the cue with the same rate limit as the
+                # asr.no_text path, then stop; no LLM guessing.
+                if (str(env.data.get("action")) == "not_understood"
+                        and self._earcons.get("error_tone")
+                        and not self._radio.playing):
+                    now = asyncio.get_running_loop().time()
+                    if now - self._not_understood_cue_at >= _NOT_UNDERSTOOD_CUE_COOLDOWN_S:
+                        self._not_understood_cue_at = now
+                        await self._speak(self._cues["not_understood"])
         if env.topic == "error" and env.data.get("code") == "asr.followup_empty":
             # Silence after the reply — the exchange is over. Close quietly:
             # nagging "Słucham?" after every answer would be noise.
@@ -1484,11 +1500,16 @@ class Orchestrator:
         await self._wait_speech_done()
         self._open_memo_window()
 
-    async def _arm_followup(self) -> None:
+    async def _arm_followup(self, *, hot: bool = False) -> None:
         """Open the conversation follow-up window once the spoken reply has
         actually played out: soft chime ("I'm still listening"), then the
         followup-capture marker for the ASR. Blind-first: the chime is the
-        only cue, so it reuses the familiar wake chime."""
+        only cue, so it reuses the familiar wake chime.
+
+        ``hot`` (2026-09-08): the LLM reply ends in a question / invitation —
+        it AWAITS the user. Listen longer (the user is composing an answer)
+        and tell the ASR to capture more sensitively (hot marker: lower
+        confidence floor, longer lead-in)."""
         try:
             await self._wait_speech_done()
             if self._radio.playing:
@@ -1496,10 +1517,12 @@ class Orchestrator:
             if self._wake_chime_armed():
                 await self._play_wake_beep()
             now = asyncio.get_running_loop().time()
-            self._followup_until = now + _FOLLOWUP_TIMEOUT_S
+            self._followup_until = now + (
+                _FOLLOWUP_HOT_TIMEOUT_S if hot else _FOLLOWUP_TIMEOUT_S)
             self._awake_until = max(self._awake_until, now + self._wake_window_s)
+            marker = "followup-capture-hot" if hot else "followup-capture"
             try:
-                (self._runtime_dir / "followup-capture").touch()
+                (self._runtime_dir / marker).touch()
             except OSError as exc:
                 log.warning("could not open follow-up window: %s", exc)
                 self._followup_until = 0.0

@@ -33,6 +33,10 @@ log = logging.getLogger("blazend.domains.ai_orchestrator.adapters.rpi5.brain")
 
 
 def _reply_envelope(reply: Reply) -> Envelope:
+    from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import (
+        llm_awaits_reply,
+    )
+
     return Envelope(
         topic="brain.reply",
         source="blazend-brain",
@@ -45,6 +49,11 @@ def _reply_envelope(reply: Reply) -> Envelope:
             # Carry the action payload (e.g. radio stream url + name) so the
             # orchestrator can actually execute it, not just speak the reply.
             "payload": reply.data,
+            # Conversation steering (2026-09-08): does this chat reply WAIT
+            # for the user? The orchestrator arms the hot (more sensitive)
+            # follow-up window when it does.
+            "awaits_reply": (reply.action == "chat"
+                             and llm_awaits_reply(reply.text)),
         },
     )
 
@@ -148,7 +157,9 @@ async def serve(
                         system_event(source="blazend-brain", kind="thinking")
                     )
                 reply = engine.route(text, now=datetime.now())
-                if reply.text:
+                # not_understood carries no text but the orchestrator speaks
+                # its cue (closed command list, 2026-09-08) — publish it too.
+                if reply.text or reply.action == "not_understood":
                     log.info("reply (%s/%s): %s", reply.language, reply.action, reply.text)
                     await pub.publish(_reply_envelope(reply))
     finally:

@@ -444,6 +444,11 @@ messages:
     pl: "Tak? Słucham."
     en: "Yes? I'm listening."
 
+  # -- engine: explicit AI query ("sprawdź" with no question) -----------------
+  ai.what:
+    pl: "Co mam sprawdzić?"
+    en: "What should I check?"
+
   # -- engine: clock / calendar ---------------------------------------------
   # {time} is pre-rendered per language in code: Polish words via plnum (so
   # Piper says "dwudziesta trzecia szesnaście" naturally), EN "h:mm AM/PM".

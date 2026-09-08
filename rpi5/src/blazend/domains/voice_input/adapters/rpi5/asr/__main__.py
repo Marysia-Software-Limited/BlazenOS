@@ -473,6 +473,8 @@ async def _real_loop(pub: Publisher) -> None:
     memo_marker.unlink(missing_ok=True)  # stale marker from a crash mid-memo
     followup_marker = rt / "followup-capture"
     followup_marker.unlink(missing_ok=True)
+    followup_hot_marker = rt / "followup-capture-hot"
+    followup_hot_marker.unlink(missing_ok=True)
     stopcheck_marker = rt / "stopcheck-capture"
     stopcheck_marker.unlink(missing_ok=True)
     clips_dir = data_dir() / "clips"
@@ -516,8 +518,15 @@ async def _real_loop(pub: Publisher) -> None:
             env = await asyncio.wait_for(sub.next(), timeout=0.2)
         except TimeoutError:
             got_frame = False  # just a poll tick
-        if followup_marker.exists():
+        if followup_marker.exists() or followup_hot_marker.exists():
+            # HOT variant (2026-09-08): the LLM reply awaits an answer — the
+            # user IS about to speak, so capture more sensitively: longer
+            # lead-in, lower confidence floor.
+            hot = followup_hot_marker.exists()
             followup_marker.unlink(missing_ok=True)
+            followup_hot_marker.unlink(missing_ok=True)
+            base_lead = float(fu_cfg.get("lead_in_s", 5.0))
+            base_conf = float(fu_cfg.get("min_conf", 0.6))
             await _capture_followup(
                 pub, ring, transcriber, lexicon, lex_ratio, clips_dir,
                 # The reply just finished playing and the stream (if any) is
@@ -525,8 +534,8 @@ async def _real_loop(pub: Publisher) -> None:
                 speech_rms=min_rms_playing if speaker_busy.exists() else min_rms,
                 max_s=float(fu_cfg.get("max_s", 12.0)),
                 silence_s=float(fu_cfg.get("silence_s", 1.2)),
-                lead_in_s=float(fu_cfg.get("lead_in_s", 5.0)),
-                min_conf=float(fu_cfg.get("min_conf", 0.6)),
+                lead_in_s=base_lead + 2.0 if hot else base_lead,
+                min_conf=max(0.0, base_conf - 0.1) if hot else base_conf,
             )
             continue
         if stopcheck_marker.exists():

@@ -87,7 +87,7 @@ def test_history_survives_window_expiry_but_not_its_ttl(tmp_path):
                   wake_window_s=20.0)
     a._notes_context = lambda text, lang: ""
     a.notify_wake(NOW)
-    a.route("opowiedz mi coś o Jadźwingach", now=NOW)
+    a.route("sprawdź opowiedz mi coś o Jadźwingach", now=NOW)
     assert a._chat_history
     # A stray utterance three minutes later hits an expired window → asleep…
     aside = NOW + timedelta(minutes=3)
@@ -100,7 +100,7 @@ def test_history_survives_window_expiry_but_not_its_ttl(tmp_path):
     # …but a topic left alone past the TTL starts fresh.
     stale = aside + timedelta(minutes=15)
     a.notify_wake(stale)
-    a.route("Dżesika, opowiedz o psach", now=stale)
+    a.route("Dżesika, sprawdź opowiedz o psach", now=stale)
     assert b.calls[-1][1] is None  # no history reached the LLM
 
 
@@ -197,6 +197,62 @@ def test_followup_silence_publishes_followup_empty(tmp_path):
     assert len(pub.published) == 1
     env = pub.published[0]
     assert env.topic == "error" and env.data["code"] == "asr.followup_empty"
+
+
+# ----- closed command list + "sprawdź" + hot follow-up (2026-09-08) -----------
+
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import (  # noqa: E402
+    llm_awaits_reply,
+)
+
+
+def test_ai_query_command_opens_chat(tmp_path):
+    b = _HistBackend()
+    a = _assistant(tmp_path, b)
+    r = a.route("sprawdź kim byli Jadźwingowie", now=NOW)
+    assert r.action == "chat"
+    assert b.calls[-1][0] == "kim byli Jadźwingowie"  # verb stripped
+    r2 = a.route("zapytaj jaka będzie zima", now=NOW)
+    assert r2.action == "chat"
+
+
+def test_unmatched_speech_is_not_understood_not_chat(tmp_path):
+    """Closed command list: random speech no longer falls through to the LLM."""
+    b = _HistBackend()
+    a = _assistant(tmp_path, b)
+    r = a.route("kupiłem wczoraj nowe buty w galerii", now=NOW)
+    assert r.action == "not_understood" and r.text == ""
+    assert b.calls == []  # the LLM never saw it
+
+
+def test_bare_ai_query_arms_one_shot_ask_window(tmp_path):
+    b = _HistBackend()
+    a = _assistant(tmp_path, b)
+    r = a.route("sprawdź", now=NOW)
+    assert r.action == "chat" and "sprawdzić" in r.text  # "Co mam sprawdzić?"
+    assert b.calls == []
+    # The NEXT utterance routes to the LLM prefix-free…
+    r2 = a.route("ile ludzi mieszka w Krakowie", now=NOW + timedelta(seconds=10))
+    assert r2.action == "chat" and b.calls[-1][0].startswith("ile ludzi")
+    # …and the window is one-shot + time-bound.
+    a2 = _assistant(tmp_path, _HistBackend())
+    a2.route("sprawdź", now=NOW)
+    r3 = a2.route("cokolwiek innego", now=NOW + timedelta(seconds=60))
+    assert r3.action == "not_understood"
+
+
+def test_llm_awaits_reply_detector():
+    assert llm_awaits_reply("Bitwa odbyła się w 1410 roku. Czy chcesz wiedzieć więcej?")
+    assert llm_awaits_reply("Mogę to rozwinąć — daj znać.")
+    assert not llm_awaits_reply("Bitwa pod Grunwaldem odbyła się w 1410 roku.")
+    assert not llm_awaits_reply("Do zobaczenia!")
+
+
+def test_arm_followup_hot_touches_hot_marker(tmp_path):
+    stub = _FollowupStub(tmp_path)
+    asyncio.run(Orchestrator._arm_followup(stub, hot=True))
+    assert (tmp_path / "followup-capture-hot").exists()
+    assert not (tmp_path / "followup-capture").exists()
 
 
 # ----- wake-less stop sentinel (2026-09-08) -----------------------------------
@@ -358,7 +414,7 @@ def test_first_turn_ambient_prose_after_false_wake_is_silent(tmp_path):
     assert r.action == "asleep" and r.text == ""
     assert b.calls == []  # the LLM never saw it
     # Real conversation established → long follow-up answers still route.
-    a.route("Dżesika, opowiedz mi o kotach", now=NOW)
+    a.route("Dżesika, sprawdź opowiedz mi o kotach", now=NOW)
     long_answer = ("a powiedz mi jeszcze proszę dokładnie jak wygląda "
                    "sprawa z kotami perskimi w polskich domach")
     r2 = a.route(long_answer, now=NOW)
@@ -375,7 +431,7 @@ def test_reply_extends_window_from_real_clock_with_allowance(tmp_path):
                   wake_window_s=20.0)
     a._notes_context = lambda text, lang: ""
     a.notify_wake(NOW)
-    a.route("Dżesika, opowiedz o kotach", now=NOW)
+    a.route("Dżesika, sprawdź opowiedz o kotach", now=NOW)
     # The deadline sits wake_window+allowance past route entry — enough for
     # generation + speech + the follow-up capture.
     remaining = (a._awake_until - NOW).total_seconds()

@@ -297,7 +297,7 @@ def test_engine_weather_does_not_reach_llm(tmp_path):
 def test_engine_chat_with_key(tmp_path):
     a = _assistant(tmp_path, gemini_reply="Mam się dobrze, dziękuję!")
     a.awake = True
-    r = a.route("jak się masz?", now=NOW)
+    r = a.route("sprawdź jak się masz?", now=NOW)
     assert r.action == "chat" and "dziękuję" in r.text
 
 
@@ -328,7 +328,7 @@ def test_engine_chat_prefers_local_llm(tmp_path):
         openai=_openai("z OpenAI"),
     )
     a.awake = True
-    r = a.route("jak się masz?", now=NOW)
+    r = a.route("sprawdź jak się masz?", now=NOW)
     assert r.action == "chat" and r.data.get("engine") == "local"
     assert "świetnie" in r.text
 
@@ -401,7 +401,7 @@ def test_engine_streams_local_chat_sentence_by_sentence(tmp_path):
     spoken: list[tuple[str, str]] = []
     tokens = {"n": 0}
     r = a.route(
-        "jak się masz?", now=NOW,
+        "sprawdź jak się masz?", now=NOW,
         on_sentence=lambda s, lang: spoken.append((lang, s)),
         on_token=lambda: tokens.__setitem__("n", tokens["n"] + 1),
     )
@@ -431,7 +431,7 @@ def test_engine_chat_falls_back_to_openai(tmp_path):
         openai=_openai("Cześć z OpenAI."),
     )
     a.awake = True
-    r = a.route("opowiedz dowcip", now=NOW)
+    r = a.route("sprawdź opowiedz dowcip", now=NOW)
     assert r.action == "chat" and r.data.get("engine") == "openai"
     assert "OpenAI" in r.text
 
@@ -439,7 +439,7 @@ def test_engine_chat_falls_back_to_openai(tmp_path):
 def test_engine_chat_canned_when_nothing(tmp_path):
     a = _assistant(tmp_path)  # no key, no llm, no openai
     a.awake = True
-    r = a.route("jak się masz?", now=NOW)
+    r = a.route("sprawdź jak się masz?", now=NOW)
     assert r.action == "chat" and r.data.get("needs_key")
 
 
@@ -508,7 +508,7 @@ def test_engine_chat_injects_name_into_system_prompt(tmp_path):
     )
     a.awake = True
     a.route("mam na imię Zofia", now=NOW)
-    a.route("opowiedz coś o kawie", now=NOW)
+    a.route("sprawdź opowiedz coś o kawie", now=NOW)
     assert "Zofia" in (fake.last_system or "")
 
 
@@ -558,7 +558,7 @@ def test_chat_injects_relevant_note_into_system_prompt(tmp_path):
     a.awake = True
     a.route("zapamiętaj: plan na weekend. Chcę pojechać w góry", now=NOW)
     a.route("zapamiętaj że hasło do wifi to lato2026", now=NOW)
-    a.route("co planuję w weekend?", now=NOW)
+    a.route("sprawdź co planuję w weekend?", now=NOW)
     system = fake.last_system or ""
     assert "góry" in system        # the relevant note was retrieved + injected
     assert "lato2026" not in system  # the irrelevant note was filtered by score
@@ -627,7 +627,7 @@ def test_chat_context_respects_top_k(tmp_path):
     a.awake = True
     for i in range(6):  # six equally-relevant weekend notes
         a.route(f"zapamiętaj że weekend numer {i}", now=NOW)
-    a.route("co o weekend?", now=NOW)
+    a.route("sprawdź co o weekend?", now=NOW)
     system = fake.last_system or ""
     assert "numer" in system and system.count("numer") <= 2  # capped at top_k
 

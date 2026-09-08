@@ -12,11 +12,19 @@ from __future__ import annotations
 import re
 
 # Bilingual address forms, mirroring the active wake models
-# (jessica_en / jessica_pl) in configs/wake-word.yaml. All ASCII, so a
-# case-insensitive match on the original text is exact.
+# (jessica_en / jessica_pl) in configs/wake-word.yaml — INCLUDING the Polish
+# phonetic spellings whisper actually writes ("Dżesika, włącz…"). Their
+# absence meant strip_wake left the name in place; the chat fallback used to
+# swallow that, the closed command list (2026-09-08) does not.
 WAKE_NAMES: tuple[str, ...] = (
+    "hej dżesiko",
+    "hej dżesika",
     "hej jessico",
     "hej jessica",
+    "dżesiko",
+    "dżesika",
+    "dzesika",
+    "dziesika",
     "jessico",
     "jessica",
     "jess",
