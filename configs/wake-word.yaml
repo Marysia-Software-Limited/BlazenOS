@@ -80,13 +80,17 @@ harvest_false_wakes: true
 # in asr/__main__.py now feeds this loop automatically). Validated 2026-08-29:
 # held-out real "dżesika" 9/9 at every thr 0.3-0.9; all 48 real positives pass
 # 0.65 before AND after (zero sensitivity regressions); the radio clips that
-# false-fired dropped 16/27 → 2/27.
+# false-fired dropped 16/27 → 2/27. Retrained 2026-09-08 (paul): +71 screened
+# harvest clips (a week of podcast/room-talk false wakes + a silent-room
+# transient that scored 0.71 and started a radio) → 951 real negatives.
+# Validated: held-out "dżesika" 9/9 at every thr 0.3-0.9; corpus false-fires
+# at 0.65 dropped 4 → 2; the captured silence transient 0.33 → 0.22.
 models:
   jessica_en:
     backend: openwakeword
     file: wake/jessica.onnx                   # under models/; gitignored, regen via train-wake.py
     trained_by: scripts/train-wake.py
-    sha256: "11bc842a1be4c80c8ae2a7e354dc8fadbdbfddb52cc35ac4552e00fe083d821b"
+    sha256: "9051314eff7ad2949e86b136d603647d8d21568aceba416e7a1ade827bf0a9fa"
     size_mb: 1
     language: en
     phrases: ["jessica", "hey jessica"]
@@ -95,7 +99,7 @@ models:
     backend: openwakeword
     file: wake/jessica.onnx                   # same unified bilingual model
     trained_by: scripts/train-wake.py
-    sha256: "11bc842a1be4c80c8ae2a7e354dc8fadbdbfddb52cc35ac4552e00fe083d821b"
+    sha256: "9051314eff7ad2949e86b136d603647d8d21568aceba416e7a1ade827bf0a9fa"
     size_mb: 1
     language: pl
     phrases: ["dżesika"]
