@@ -15,7 +15,15 @@
       "properties": {
         "language": { "type": "string", "enum": ["en", "pl"] },
         "text": { "type": "string" },
-        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "speaker_sim": {
+          "type": "number", "minimum": -1, "maximum": 1,
+          "description": "Speaker-ID cosine vs the owner profile (2026-09-08); absent = cannot tell (no model/profile) — treat as the owner."
+        },
+        "speaker_owner": {
+          "type": "boolean",
+          "description": "speaker_sim >= the site threshold; absent = trust the voice."
+        }
       },
       "additionalProperties": false
     }

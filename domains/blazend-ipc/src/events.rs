@@ -168,6 +168,13 @@ pub enum Event {
         text: String,
         /// Aggregate confidence in `[0, 1]`.
         confidence: f32,
+        /// Speaker-ID cosine vs the owner profile (2026-09-08); `None` =
+        /// cannot tell (no model/profile) — consumers trust the voice.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        speaker_sim: Option<f32>,
+        /// `speaker_sim >= threshold`; `None` = trust the voice.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        speaker_owner: Option<bool>,
     },
 
     /// Fast-path intent match produced by the NLU router (`blazend-nlu`,
@@ -183,6 +190,15 @@ pub enum Event {
         params: std::collections::HashMap<String, String>,
         /// The transcript that matched.
         transcript: String,
+        /// Pass-through of `asr.final` confidence (2026-09-08).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        confidence: Option<f32>,
+        /// Pass-through of `asr.final` speaker similarity (2026-09-08).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        speaker_sim: Option<f32>,
+        /// Pass-through of `asr.final` owner verdict (2026-09-08).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        speaker_owner: Option<bool>,
     },
 
     /// No fast-path intent matched the transcript — the conversational brain
@@ -194,6 +210,15 @@ pub enum Event {
         language: String,
         /// The unmatched transcript.
         transcript: String,
+        /// Pass-through of `asr.final` confidence (2026-09-08).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        confidence: Option<f32>,
+        /// Pass-through of `asr.final` speaker similarity (2026-09-08).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        speaker_sim: Option<f32>,
+        /// Pass-through of `asr.final` owner verdict (2026-09-08).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        speaker_owner: Option<bool>,
     },
 
     /// The Rust mind (`blazend-mind`) asks the Python ML glue to run the
@@ -408,16 +433,24 @@ mod tests {
                 language: "pl".into(),
                 text: "t".into(),
                 confidence: 0.9,
+                speaker_sim: Some(0.7),
+                speaker_owner: Some(true),
             },
             Event::NluIntent {
                 intent: "i".into(),
                 language: "pl".into(),
                 params: Default::default(),
                 transcript: "t".into(),
+                confidence: Some(0.9),
+                speaker_sim: None,
+                speaker_owner: None,
             },
             Event::NluMiss {
                 language: "pl".into(),
                 transcript: "t".into(),
+                confidence: None,
+                speaker_sim: None,
+                speaker_owner: None,
             },
             Event::BrainRequest {
                 request_id: "r1".into(),

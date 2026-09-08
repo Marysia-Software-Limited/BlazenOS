@@ -130,6 +130,7 @@ async fn run(
             Event::NluMiss {
                 language,
                 transcript,
+                ..
             } => {
                 let store = load_store(&mem_path);
                 let req = plan_turn(
@@ -313,6 +314,9 @@ mod tests {
                     language: "pl".into(),
                     params,
                     transcript: "jaka pogoda w Gdańsku".into(),
+                    confidence: Some(0.9),
+                    speaker_sim: None,
+                    speaker_owner: None,
                 },
             ))
             .await

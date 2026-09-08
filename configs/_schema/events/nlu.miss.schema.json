@@ -3,18 +3,63 @@
   "$id": "https://blazen.os/events/nlu.miss",
   "title": "nlu.miss",
   "type": "object",
-  "required": ["v", "ts_ms", "source", "topic", "data"],
+  "required": [
+    "v",
+    "ts_ms",
+    "source",
+    "topic",
+    "data"
+  ],
   "properties": {
-    "v": { "type": "integer", "const": 1 },
-    "ts_ms": { "type": "integer", "minimum": 0 },
-    "source": { "type": "string", "minLength": 1 },
-    "topic": { "type": "string", "const": "nlu.miss" },
+    "v": {
+      "type": "integer",
+      "const": 1
+    },
+    "ts_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "topic": {
+      "type": "string",
+      "const": "nlu.miss"
+    },
     "data": {
       "type": "object",
-      "required": ["transcript", "language"],
+      "required": [
+        "transcript",
+        "language"
+      ],
       "properties": {
-        "transcript": { "type": "string" },
-        "language": { "type": "string", "enum": ["en", "pl"] }
+        "transcript": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "pl"
+          ]
+        },
+        "speaker_sim": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "Pass-through of asr.final speaker_sim (2026-09-08)."
+        },
+        "speaker_owner": {
+          "type": "boolean",
+          "description": "Pass-through of asr.final speaker_owner."
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Pass-through of asr.final confidence (2026-09-08)."
+        }
       },
       "additionalProperties": false
     }

@@ -1,0 +1,44 @@
+# /etc/blazen/speaker-id.yaml
+#
+# Speaker identification (2026-09-08): is the utterance the OWNER's voice?
+# A WeSpeaker ResNet34 (VoxCeleb) ONNX embedder scores each post-wake capture
+# and follow-up against the enrollment profile built from the voice-training
+# recordings ("naucz się mojego głosu") + confirmed command clips. Soft by
+# design: no model file or no profile → every voice is trusted (pre-feature
+# behaviour), so the Pi ships unchanged until the model is installed and the
+# owner has trained a profile.
+
+version: 1
+
+# Max-cosine vs the enrollment set at/above which the voice is the owner.
+# Calibrate per site with scripts/speaker-calibrate.py (paul 2026-09-08:
+# owner median 0.78 vs impostor p90 0.38 on the harvested radio/podcast
+# clips; the impostor tail above 0.5 was the owner's own room chatter).
+threshold: 0.45
+
+# false = log-only rollout: the ASR still stamps speaker_sim/speaker_owner on
+# asr.final (journal shows what WOULD be blocked) but nothing is dropped.
+# Flip per-site after a week of clean logs.
+enforce: false
+
+# Commands ANY voice may run even when enforcement is on. Safety first:
+# stopping and volume must never be locked to the owner.
+allow_any_voice:
+  - stop_talking
+  - radio_stop
+  - volume_up
+  - volume_down
+  - volume_set
+  - wake_ack
+  - repeat_last
+
+models:
+  wespeaker_resnet34:
+    backend: onnx
+    language: multi            # VoxCeleb-trained; speaker ID transfers to PL
+    size_mb: 26
+    license: Apache-2.0
+    files:
+      - file: speaker/wespeaker_en_voxceleb_resnet34.onnx
+        download_url: https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34.onnx
+        sha256: "5ef208a9da1453335308a6b6f4e6dfbd7e183a38b604de0a57664f45d257fe94"

@@ -84,6 +84,10 @@ earcons:
   error_tone: true
   shutdown_tone: true
   custom_voice_marker: false
+  # Foreign-voice blip (2026-09-08): a quiet low falling note when a command
+  # came from a voice that is NOT the owner and speaker-id.yaml enforce is on
+  # — "heard, not obeying". Rate-limited in the orchestrator.
+  foreign_voice: true
   # Spoken "Chwileczkę." when the answer will take a while (LLM generation or a
   # long reply's XTTS render) — announces the wait instead of dead air. One cue
   # per question (cooldown in the supervisor). Cue text: phrases.yaml cues.working.

@@ -3,20 +3,70 @@
   "$id": "https://blazen.os/events/nlu.intent",
   "title": "nlu.intent",
   "type": "object",
-  "required": ["v", "ts_ms", "source", "topic", "data"],
+  "required": [
+    "v",
+    "ts_ms",
+    "source",
+    "topic",
+    "data"
+  ],
   "properties": {
-    "v": { "type": "integer", "const": 1 },
-    "ts_ms": { "type": "integer", "minimum": 0 },
-    "source": { "type": "string", "minLength": 1 },
-    "topic": { "type": "string", "const": "nlu.intent" },
+    "v": {
+      "type": "integer",
+      "const": 1
+    },
+    "ts_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "topic": {
+      "type": "string",
+      "const": "nlu.intent"
+    },
     "data": {
       "type": "object",
-      "required": ["intent", "language"],
+      "required": [
+        "intent",
+        "language"
+      ],
       "properties": {
-        "intent": { "type": "string", "minLength": 1 },
-        "language": { "type": "string", "enum": ["en", "pl"] },
-        "params": { "type": "object" },
-        "transcript": { "type": "string" }
+        "intent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "pl"
+          ]
+        },
+        "params": {
+          "type": "object"
+        },
+        "transcript": {
+          "type": "string"
+        },
+        "speaker_sim": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "Pass-through of asr.final speaker_sim (2026-09-08)."
+        },
+        "speaker_owner": {
+          "type": "boolean",
+          "description": "Pass-through of asr.final speaker_owner."
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Pass-through of asr.final confidence (2026-09-08)."
+        }
       },
       "additionalProperties": false
     }

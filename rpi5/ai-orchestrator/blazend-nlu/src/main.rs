@@ -53,7 +53,34 @@ fn route(router: &IntentRouter, language: &str, text: &str) -> Option<Event> {
         language: m.language,
         params: m.params,
         transcript: text.to_string(),
+        confidence: None,
+        speaker_sim: None,
+        speaker_owner: None,
     })
+}
+
+/// Copy the ASR-side quality fields into an outgoing NLU event so downstream
+/// consumers (dispatcher confirmations, speaker policy) see them (2026-09-08).
+fn carry_asr_fields(event: &mut Event, conf: f32, sim: Option<f32>, owner: Option<bool>) {
+    match event {
+        Event::NluIntent {
+            confidence,
+            speaker_sim,
+            speaker_owner,
+            ..
+        }
+        | Event::NluMiss {
+            confidence,
+            speaker_sim,
+            speaker_owner,
+            ..
+        } => {
+            *confidence = Some(conf);
+            *speaker_sim = sim;
+            *speaker_owner = owner;
+        }
+        _ => {}
+    }
 }
 
 /// Connect to the ASR publisher socket, retrying until it appears.
@@ -73,27 +100,36 @@ async fn run(asr_sock: PathBuf, nlu_sock: PathBuf, router: IntentRouter) -> anyh
     let mut sub = connect_asr(&asr_sock).await;
     tracing::info!(asr = ?asr_sock, "nlu subscribed to asr.final");
     while let Some(env) = sub.next().await? {
-        if let Event::AsrFinal { language, text, .. } = env.event {
+        if let Event::AsrFinal {
+            language,
+            text,
+            confidence,
+            speaker_sim,
+            speaker_owner,
+        } = env.event
+        {
             match route(&router, &language, &text) {
-                Some(intent_event) => {
+                Some(mut intent_event) => {
                     if let Event::NluIntent { ref intent, .. } = intent_event {
                         tracing::info!(%intent, %language, %text, "intent matched");
                     }
+                    carry_asr_fields(&mut intent_event, confidence, speaker_sim, speaker_owner);
                     publisher
                         .publish(EventEnvelope::new("blazend-nlu", env.ts_ms, intent_event))
                         .await?;
                 }
                 None => {
                     tracing::debug!(%language, %text, "no fast-path intent → nlu.miss");
+                    let mut miss = Event::NluMiss {
+                        language,
+                        transcript: text,
+                        confidence: None,
+                        speaker_sim: None,
+                        speaker_owner: None,
+                    };
+                    carry_asr_fields(&mut miss, confidence, speaker_sim, speaker_owner);
                     publisher
-                        .publish(EventEnvelope::new(
-                            "blazend-nlu",
-                            env.ts_ms,
-                            Event::NluMiss {
-                                language,
-                                transcript: text,
-                            },
-                        ))
+                        .publish(EventEnvelope::new("blazend-nlu", env.ts_ms, miss))
                         .await?;
                 }
             }
@@ -224,6 +260,8 @@ intents:
                     language: "en".into(),
                     text: "what time is it".into(),
                     confidence: 0.9,
+                    speaker_sim: None,
+                    speaker_owner: None,
                 },
             ))
             .await
@@ -254,6 +292,8 @@ intents:
                     language: "pl".into(),
                     text: "ustaw głośność na 45".into(),
                     confidence: 0.9,
+                    speaker_sim: Some(0.8),
+                    speaker_owner: Some(true),
                 },
             ))
             .await
@@ -281,6 +321,8 @@ intents:
                     language: "pl".into(),
                     text: "opowiedz mi bajkę o smoku".into(),
                     confidence: 0.9,
+                    speaker_sim: None,
+                    speaker_owner: None,
                 },
             ))
             .await
@@ -295,9 +337,12 @@ intents:
             Event::NluMiss {
                 language,
                 transcript,
+                confidence,
+                ..
             } => {
                 assert_eq!(language, "pl");
                 assert_eq!(transcript, "opowiedz mi bajkę o smoku");
+                assert_eq!(confidence, Some(0.9)); // ASR fields carried through
             }
             other => panic!("expected nlu.miss, got: {other:?}"),
         }

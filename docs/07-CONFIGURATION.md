@@ -84,6 +84,27 @@ two ways:
 Every downstream resolver (radio/music/books) matches exact stems only, so
 this layer is what makes a one-character ASR slip survivable.
 
+## Speaker-ID — the owner's voice (`speaker-id.yaml`) — 2026-09-08
+
+Jessica learns WHOSE orders to follow. A WeSpeaker ResNet34 ONNX embedder
+(declared under `models:`, installed by `make models`) scores every post-wake
+command and follow-up against the owner's enrollment profile — built from the
+"naucz się mojego głosu" recordings (and, later, confirmed command clips);
+the orchestrator re-arms enrollment (`speaker-enroll` marker) whenever voice
+training completes. The ASR stamps `speaker_sim`/`speaker_owner` on
+`asr.final` (carried through `nlu.intent`/`nlu.miss` by the Rust NLU).
+
+- `threshold` — max-cosine at/above which the voice is the owner; calibrate
+  per site with `scripts/speaker-calibrate.py` (owner recordings vs the
+  harvested false-wake clips as real impostors).
+- `enforce` — `false` = log-only (journal shows what WOULD be dropped);
+  `true` = a foreign voice gets the quiet low "plumknięcie" blip
+  (`audio.yaml earcons.foreign_voice`, rate-limited) and the command is
+  DROPPED — except `allow_any_voice` (stop, volume…), which any voice may
+  run, and the wake-less stop sentinel, which never checks the speaker.
+- Soft everywhere: no model file, no profile, unreadable config → no fields
+  on the wire → every consumer trusts the voice (pre-feature behaviour).
+
 ## ASR confidence floors + wake-less STOP (2026-09-08)
 
 Whisper's confidence separates noise from speech cleanly in practice (noise

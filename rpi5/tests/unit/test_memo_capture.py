@@ -245,6 +245,7 @@ class _DialogStub:
         self._voice_train_retries = 0
         self._voice_train_stage: str | None = None  # name finale off (2026-08-27)
         self._followup_until = 0.0  # conversation follow-up off (2026-08-30)
+        self._runtime_dir = Path("/nonexistent-rt")  # speaker-enroll touch (2026-09-08)
 
     async def _speak(self, text: str, lang: str = "pl") -> None:
         self.spoken.append(text)

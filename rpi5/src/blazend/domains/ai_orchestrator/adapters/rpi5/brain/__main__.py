@@ -24,7 +24,11 @@ from blazend.config import load
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.context_wiring import (
     notes_context_wiring,
 )
-from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import Assistant, Reply
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import (
+    Assistant,
+    Reply,
+    _is_stop_order,
+)
 from blazend.domains.ai_orchestrator.core.registry import build_model_router
 from blazend.events import Envelope, system_event
 from blazend.ipc import Publisher, Subscriber, runtime_dir
@@ -120,6 +124,10 @@ async def serve(
 
     ticker = asyncio.create_task(_reminder_ticker(engine, pub, stop))
     wake_watch = asyncio.create_task(_watch_wake(engine, rt, stop))
+    try:
+        speaker_enforce = bool(load("speaker-id").get("enforce", False))
+    except Exception:  # noqa: BLE001 — unreadable config = trust every voice
+        speaker_enforce = False
     sub = await _connect_nlu(rt)
     log.info("brain subscribed to nlu.miss")
     try:
@@ -148,6 +156,15 @@ async def serve(
                 continue
             if env.topic == "nlu.miss":
                 text = env.data.get("transcript", "")
+                # Speaker policy (2026-09-08): with enforcement on, a voice
+                # that is NOT the owner never reaches the engine/LLM — except
+                # a bare stop order, which works for anyone. Missing speaker
+                # fields = cannot tell → trust (pre-feature behaviour).
+                if (speaker_enforce and env.data.get("speaker_owner") is False
+                        and not _is_stop_order(text)):
+                    log.info("speaker: foreign voice (sim=%s) — ignoring %r",
+                             env.data.get("speaker_sim"), text[:60])
+                    continue
                 # Thinking cue: routing may block on the LLM for many seconds; tell
                 # the orchestrator FIRST so it can speak "Chwileczkę." instead of
                 # dead air (blind-first). Only when the engine will actually engage

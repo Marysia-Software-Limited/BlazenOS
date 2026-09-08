@@ -277,6 +277,8 @@ async def _capture_followup(
     silence_s: float = 1.2,
     lead_in_s: float = 5.0,
     min_conf: float = 0.6,
+    speaker_id: object | None = None,
+    speaker_thr: float = 0.45,
 ) -> None:
     """Conversation-mode follow-up (2026-08-30): after Jessica speaks an LLM
     reply the orchestrator opens this window so the user can answer WITHOUT
@@ -320,12 +322,31 @@ async def _capture_followup(
                   "message": "follow-up below confidence floor"}))
         return
     _save_clip(pcm, ring.sample_rate, text, clips_dir)
+    sp = _speaker_fields(speaker_id, pcm, speaker_thr)
     await pub.publish(Envelope(
         topic="asr.final", source="blazend-asr",
         data={"language": result.language, "text": text,
-              "confidence": round(result.confidence, 3)}))
-    log.info("asr.final (follow-up) %s %r (conf=%.2f)",
-             result.language, text, result.confidence)
+              "confidence": round(result.confidence, 3), **sp}))
+    log.info("asr.final (follow-up) %s %r (conf=%.2f%s)",
+             result.language, text, result.confidence,
+             f" sim={sp['speaker_sim']:.2f}" if sp else "")
+
+
+def _speaker_fields(speaker_id: object | None, pcm: np.typing.ArrayLike,
+                    threshold: float) -> dict[str, float | bool]:
+    """speaker_sim/speaker_owner for an utterance — {} when identification is
+    impossible (no model/profile/too short): downstream trusts the voice."""
+    if speaker_id is None:
+        return {}
+    try:
+        sim = speaker_id.similarity(pcm)  # type: ignore[attr-defined]
+    except Exception as exc:  # noqa: BLE001 — never break the voice path
+        log.debug("speaker id failed: %s", exc)
+        return {}
+    if sim is None:
+        return {}
+    return {"speaker_sim": round(float(sim), 3),
+            "speaker_owner": bool(sim >= threshold)}
 
 
 # Wake-less STOP phrases (folded): single tokens matched exactly, multi-word
@@ -479,6 +500,27 @@ async def _real_loop(pub: Publisher) -> None:
     stopcheck_marker.unlink(missing_ok=True)
     clips_dir = data_dir() / "clips"
     transcriber = Transcriber()
+    # Speaker-ID (2026-09-08): stamp every command/follow-up with how much it
+    # sounds like the OWNER. Soft: no model/profile → no fields → downstream
+    # trusts every voice. Enrollment (re)builds on the speaker-enroll marker
+    # (touched by the orchestrator when voice training completes) and at
+    # startup when a profile is missing but training recordings exist.
+    from blazend.domains.voice_input.adapters.rpi5.asr.speaker import SpeakerId
+
+    speaker_id = SpeakerId()
+    speaker_thr = float(load("speaker-id").get("threshold", 0.45))
+    enroll_marker = rt / "speaker-enroll"
+    enroll_marker.unlink(missing_ok=True)
+    train_dir = (Path(os.environ["BLAZEN_DATA_DIR"]).parent / "voice-training"
+                 if os.environ.get("BLAZEN_DATA_DIR")
+                 else Path("/var/lib/blazen/voice-training"))
+
+    async def _enroll() -> None:
+        n = await asyncio.to_thread(speaker_id.enroll_dir, train_dir)
+        log.info("speaker enrollment: %d embeddings from %s", n, train_dir)
+
+    if not speaker_id.available and train_dir.is_dir():
+        asyncio.create_task(_enroll())
     log.info("asr real path: model=%s ring=%dHz fixed-window=%.1fs",
              transcriber.model, ring.sample_rate, cap_s)
 
@@ -536,7 +578,12 @@ async def _real_loop(pub: Publisher) -> None:
                 silence_s=float(fu_cfg.get("silence_s", 1.2)),
                 lead_in_s=base_lead + 2.0 if hot else base_lead,
                 min_conf=max(0.0, base_conf - 0.1) if hot else base_conf,
+                speaker_id=speaker_id, speaker_thr=speaker_thr,
             )
+            continue
+        if enroll_marker.exists():
+            enroll_marker.unlink(missing_ok=True)
+            await _enroll()
             continue
         if stopcheck_marker.exists():
             stopcheck_marker.unlink(missing_ok=True)
@@ -692,6 +739,7 @@ async def _real_loop(pub: Publisher) -> None:
             # Keep the utterance audio briefly claimable: "zapamiętaj, że …"
             # stores the memory as sound + text by picking this clip up.
             _save_clip(pcm, ring.sample_rate, text, clips_dir)
+            sp = _speaker_fields(speaker_id, pcm, speaker_thr)
             await pub.publish(
                 Envelope(
                     topic="asr.final",
@@ -700,11 +748,15 @@ async def _real_loop(pub: Publisher) -> None:
                         "language": result.language,
                         "text": text,
                         "confidence": round(result.confidence, 3),
+                        **sp,
                     },
                 )
             )
             log.info(
-                "asr.final %s %r (conf=%.2f)", result.language, text, result.confidence
+                "asr.final %s %r (conf=%.2f%s)", result.language, text,
+                result.confidence,
+                f" sim={sp['speaker_sim']:.2f} owner={sp['speaker_owner']}"
+                if sp else "",
             )
             # Speech-kind harvest: publishing above is UNCHANGED — this only
             # keeps the audio of a speech window with no wake-like token for

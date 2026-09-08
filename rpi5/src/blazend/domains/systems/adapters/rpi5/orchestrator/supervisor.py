@@ -151,6 +151,9 @@ _WAKE_REFRACTORY_S = 4.0
 # phrase is discarded). Rate-limited so speech-y radio leak-through can't keep
 # whisper busy. Escape hatch: BLAZEN_STOP_SENTINEL=0.
 _STOPCHECK_MIN_GAP_S = 5.0
+# Min gap between foreign-voice blips ("plumknięcie", 2026-09-08) — a chatty
+# radio/TV must not turn the not-obeying signal into a metronome.
+_FOREIGN_CUE_COOLDOWN_S = 8.0
 _STOPCHECK_MIN_MS = 250.0
 _STOPCHECK_MAX_MS = 4000.0
 _STOP_SENTINEL = os.environ.get("BLAZEN_STOP_SENTINEL", "1") != "0"
@@ -217,6 +220,29 @@ def _make_processing_tick_wav(rate: int = _BEEP_RATE_HZ) -> bytes:
     for i in range(n):
         env = min(1.0, i / fade, (n - i) / fade)
         frames += struct.pack("<h", int(0.22 * env * 32767 * math.sin(2 * math.pi * 440.0 * i / rate)))
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(bytes(frames))
+    return buf.getvalue()
+
+
+def _make_foreign_blip_wav(rate: int = _BEEP_RATE_HZ) -> bytes:
+    """The foreign-voice "plumknięcie": ONE low falling note (330→262 Hz,
+    ~140 ms, quiet) — unmistakably different from the rising wake chime.
+    "I heard a voice, it is not my owner, I am not acting" (2026-09-08)."""
+    notes = (330.0, 262.0)
+    note_s = 0.07
+    fade = max(1, int(0.008 * rate))
+    frames = bytearray()
+    for freq in notes:
+        n = int(rate * note_s)
+        for i in range(n):
+            env = min(1.0, i / fade, (n - i) / fade)
+            frames += struct.pack(
+                "<h", int(0.18 * env * 32767 * math.sin(2 * math.pi * freq * i / rate)))
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
         w.setnchannels(1)
@@ -300,6 +326,17 @@ class Orchestrator:
         self._earcons, self._cues = self._load_earcons()
         # Wake chime: pre-rendered once, played straight to the Jabra on wake.detected.
         self._beep_wav = _make_wake_beep_wav()
+        self._foreign_blip_wav = _make_foreign_blip_wav()
+        self._foreign_cue_at = 0.0
+        # Speaker policy (speaker-id.yaml, 2026-09-08): enforcement flag +
+        # the commands any voice may run. Soft: unreadable config = trust all.
+        try:
+            _sp = load_config("speaker-id").data
+        except Exception:  # noqa: BLE001
+            _sp = {}
+        self._speaker_enforce = bool(_sp.get("enforce", False))
+        self._speaker_allow_any = frozenset(
+            str(x) for x in _sp.get("allow_any_voice", []) or [])
         # Processing heartbeat ("still working" tick): armed on wake, cancelled
         # by whatever answers first (reply / cue / playback / memo result).
         self._tick_wav = _make_processing_tick_wav()
@@ -886,6 +923,10 @@ class Orchestrator:
             # The brain is about to block on the LLM — the long wait starts NOW.
             self._start_heartbeat()
         if env.topic == "nlu.intent" and self._dispatcher is not None:
+            if self._foreign_voice_block(str(env.data.get("intent", "")), env.data):
+                await self._notify_foreign_voice()
+                await self._state.update(patch)
+                return
             if not self._awake():
                 # Heard a command but not addressed ("Hej Jessico" not said) —
                 # acknowledge in state, but stay silent.
@@ -1115,6 +1156,37 @@ class Orchestrator:
         # and bring the volume back up.
         if self._radio.playing and self._ducked:
             await self._duck_off()
+
+    def _foreign_voice_block(self, intent: str, data: dict[str, Any]) -> bool:
+        """Speaker policy (2026-09-08): True when this intent must be DROPPED
+        because the voice is not the owner's. Only with `speaker-id.yaml
+        enforce: true`; utterances without speaker fields are trusted (no
+        model/profile — pre-feature behaviour); the allow_any_voice list
+        (stop, volume…) is never blocked. In log-only mode the would-block
+        case is logged so the threshold can be proven from the journal."""
+        owner = data.get("speaker_owner")
+        if owner is not False or intent in self._speaker_allow_any:
+            return False
+        sim = data.get("speaker_sim")
+        if not self._speaker_enforce:
+            log.info("speaker: foreign voice (sim=%s) — would drop %r "
+                     "(enforce off)", sim, intent)
+            return False
+        log.info("speaker: foreign voice (sim=%s) — dropping %r", sim, intent)
+        return True
+
+    async def _notify_foreign_voice(self) -> None:
+        """The soft "plumknięcie" — a quiet low blip telling the room a voice
+        was heard but not obeyed (user request 2026-09-08). Rate-limited so a
+        chatty radio can't turn it into a metronome; gated by audio.yaml
+        earcons.foreign_voice."""
+        if not self._earcons.get("foreign_voice", True):
+            return
+        now = asyncio.get_running_loop().time()
+        if now - self._foreign_cue_at < _FOREIGN_CUE_COOLDOWN_S:
+            return
+        self._foreign_cue_at = now
+        await self._play_beep(self._foreign_blip_wav)
 
     def _maybe_stopcheck(self, env: Envelope) -> None:
         """Arm one wake-less ASR stop check for a short utterance heard while
@@ -1481,6 +1553,12 @@ class Orchestrator:
         except OSError as exc:
             log.warning("voice-training: profile name store failed: %s", exc)
         log.info("voice-training: owner address stored (%r)", name)
+        # The training set just grew — tell the ASR to (re)build the owner's
+        # speaker-ID profile from it (speaker.py enrollment, 2026-09-08).
+        try:
+            (self._runtime_dir / "speaker-enroll").touch()
+        except OSError as exc:
+            log.warning("could not arm speaker enrollment: %s", exc)
         await self._speak(msg("train.name_saved", lang, name=name), lang)
 
     async def _start_memo_capture(self, lang: str) -> None:
