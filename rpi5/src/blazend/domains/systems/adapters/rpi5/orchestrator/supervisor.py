@@ -154,6 +154,52 @@ _STOPCHECK_MIN_GAP_S = 5.0
 # Min gap between foreign-voice blips ("plumknięcie", 2026-09-08) — a chatty
 # radio/TV must not turn the not-obeying signal into a metronome.
 _FOREIGN_CUE_COOLDOWN_S = 8.0
+# Confirmation dialog for UNCERTAIN actions (2026-09-08): whisper confidence
+# below asr.yaml `confirm_conf` on an actionable intent makes Jessica repeat
+# her understanding and ask, instead of acting on a possible mishearing.
+# The pending action survives this long; then it silently lapses.
+_CONFIRM_TTL_S = 30.0
+# Confirmation vocabulary (folded, lowercase). Sync note: emotional overlaps
+# the stop-sentinel phrases on purpose — "zamknij się" both aborts a pending
+# action AND is a strong detection-error label.
+_CONFIRM_YES = frozenset({
+    "tak", "potwierdzam", "dobrze", "zgadza sie", "zgadzasie", "no tak",
+    "tak tak", "dokladnie", "wlasnie tak", "yes", "correct", "right", "ok",
+})
+_CONFIRM_NO = frozenset({
+    "nie", "nie potwierdzam", "anuluj", "zle", "nie tak", "wycofaj",
+    "no", "wrong", "cancel", "nope",
+})
+_CONFIRM_EMO = (
+    "zamknij sie", "spierdalaj", "odczep sie", "daj spokoj", "cicho badz",
+    "odwal sie", "shut up", "piss off", "leave me alone",
+)
+
+
+def classify_confirmation(text: str) -> str:
+    """Classify the user's reaction to "Zrozumiałam: «…» — potwierdzasz?"
+    → ``confirmed`` | ``denied`` | ``emotional`` | ``other``. Pure and folded;
+    ``other`` covers both unrelated babble (→ unconfirmed) and a corrected
+    command (the caller distinguishes by whether an intent matched)."""
+    import re as _re
+    import unicodedata
+
+    folded = "".join(c for c in unicodedata.normalize("NFKD", text.lower())
+                     if not unicodedata.combining(c)).replace("ł", "l")
+    folded = _re.sub(r"[^\w\s]", " ", folded).strip()
+    folded = _re.sub(r"\s+", " ", folded)
+    if any(p in folded for p in _CONFIRM_EMO):
+        return "emotional"
+    if folded in _CONFIRM_YES:
+        return "confirmed"
+    if folded in _CONFIRM_NO:
+        return "denied"
+    toks = folded.split()
+    if toks and len(toks) <= 3 and toks[0] in ("tak", "yes"):
+        return "confirmed"
+    if toks and len(toks) <= 3 and toks[0] in ("nie", "no"):
+        return "denied"
+    return "other"
 _STOPCHECK_MIN_MS = 250.0
 _STOPCHECK_MAX_MS = 4000.0
 _STOP_SENTINEL = os.environ.get("BLAZEN_STOP_SENTINEL", "1") != "0"
@@ -337,6 +383,14 @@ class Orchestrator:
         self._speaker_enforce = bool(_sp.get("enforce", False))
         self._speaker_allow_any = frozenset(
             str(x) for x in _sp.get("allow_any_voice", []) or [])
+        # Uncertain-action confirmation (2026-09-08): pending deferred intent
+        # + the confidence bar an action must clear to run unconfirmed.
+        self._confirm_pending: dict[str, Any] | None = None
+        try:
+            self._confirm_conf = float(
+                load_config("asr").get("confirm_conf", 0.7))
+        except Exception:  # noqa: BLE001
+            self._confirm_conf = 0.7
         # Processing heartbeat ("still working" tick): armed on wake, cancelled
         # by whatever answers first (reply / cue / playback / memo result).
         self._tick_wav = _make_processing_tick_wav()
@@ -924,9 +978,18 @@ class Orchestrator:
             self._start_heartbeat()
         if env.topic == "nlu.intent" and self._dispatcher is not None:
             if self._foreign_voice_block(str(env.data.get("intent", "")), env.data):
+                self._learn_event("foreign", str(env.data.get("transcript", "")),
+                                  env.data)
                 await self._notify_foreign_voice()
                 await self._state.update(patch)
                 return
+            if self._confirm_pending is not None:
+                # A confirmation is pending — this utterance answers it
+                # (yes/no/emotional) or corrects it (a different command,
+                # which then falls through and runs normally).
+                if await self._resolve_confirmation(env):
+                    await self._state.update(patch)
+                    return
             if not self._awake():
                 # Heard a command but not addressed ("Hej Jessico" not said) —
                 # acknowledge in state, but stay silent.
@@ -952,6 +1015,13 @@ class Orchestrator:
                 patch["last_command"] = {
                     "intent": env.data.get("intent"), "result": env.data.get("intent")}
             else:
+                if await self._maybe_ask_confirmation(env):
+                    patch["last_command"] = {
+                        "intent": env.data.get("intent"),
+                        "result": "confirm_pending",
+                    }
+                    await self._state.update(patch)
+                    return
                 if str(env.data.get("intent", "")) in ("news_brief", "sport_brief"):
                     # Live web research (GPT web_search) blocks for tens of
                     # seconds. Narrate the wait (user request 2026-08-21):
@@ -1053,17 +1123,33 @@ class Orchestrator:
                 # Closed command list (2026-09-08): the brain says it did not
                 # understand — speak the cue with the same rate limit as the
                 # asr.no_text path, then stop; no LLM guessing.
-                if (str(env.data.get("action")) == "not_understood"
-                        and self._earcons.get("error_tone")
-                        and not self._radio.playing):
-                    now = asyncio.get_running_loop().time()
-                    if now - self._not_understood_cue_at >= _NOT_UNDERSTOOD_CUE_COOLDOWN_S:
-                        self._not_understood_cue_at = now
-                        await self._speak(self._cues["not_understood"])
+                if str(env.data.get("action")) == "not_understood":
+                    # Learning label: an owner utterance the closed list did
+                    # not match (the clip text rides along via peek).
+                    self._learn_event("not_understood", "", env.data)
+                    if (self._earcons.get("error_tone")
+                            and not self._radio.playing):
+                        now = asyncio.get_running_loop().time()
+                        if (now - self._not_understood_cue_at
+                                >= _NOT_UNDERSTOOD_CUE_COOLDOWN_S):
+                            self._not_understood_cue_at = now
+                            await self._speak(self._cues["not_understood"])
+        if env.topic == "nlu.miss" and self._confirm_pending is not None:
+            # Free text while a confirmation is pending: yes/no/emotional or
+            # unrelated babble (= no confirmation → cancel). The brain is
+            # gated by the confirm-pending marker, so no double reply.
+            await self._resolve_confirmation(env)
         if env.topic == "error" and env.data.get("code") == "asr.followup_empty":
             # Silence after the reply — the exchange is over. Close quietly:
             # nagging "Słucham?" after every answer would be noise.
             self._followup_until = 0.0
+            if self._confirm_pending is not None:
+                stored = self._clear_confirmation() or {}
+                self._learn_event(
+                    "unconfirmed",
+                    str((stored.get("data") or {}).get("transcript", "")),
+                    stored.get("data") or {})
+                log.info("confirm: silence — cancelled")
             log.info("follow-up window closed (silence)")
         # State cue: heard a sound after "dżesika" but no intelligible words. Tell
         # the (blind) user rather than going silent — but only when we were awake
@@ -1187,6 +1273,149 @@ class Orchestrator:
             return
         self._foreign_cue_at = now
         await self._play_beep(self._foreign_blip_wav)
+
+    # -- uncertain-action confirmation + learning labels (2026-09-08) -------
+    def _learn_event(self, outcome: str, text: str, data: dict[str, Any],
+                     corrected: str | None = None) -> None:
+        """Append one label to ``<state>/learning/events.jsonl`` and keep a
+        copy of the utterance audio when the ASR clip is still fresh. Every
+        confirmation outcome, foreign-voice discard and not-understood miss
+        is a training example (wake negatives, lexicon corrections, speaker
+        profile). Best-effort — learning must never break the voice path."""
+        try:
+            import shutil
+
+            from blazend.domains.context.adapters.rpi5.memory import MemoryStore
+
+            root = _state_root() / "learning"
+            clips = root / "clips"
+            clips.mkdir(parents=True, exist_ok=True)
+            clip_path = ""
+            peek = MemoryStore().peek_last_clip()
+            if peek and peek.get("path"):
+                src = Path(str(peek["path"]))
+                if src.exists():
+                    dest = clips / src.name
+                    if not dest.exists():
+                        shutil.copy2(src, dest)
+                    clip_path = str(dest)
+                    for stale in sorted(clips.glob("clip-*.wav"))[:-200]:
+                        stale.unlink(missing_ok=True)
+            event = {
+                "ts": datetime.now(UTC).isoformat(),
+                "outcome": outcome,
+                "text": text,
+                "intent": data.get("intent", ""),
+                "confidence": data.get("confidence"),
+                "speaker_sim": data.get("speaker_sim"),
+                "corrected": corrected,
+                "clip": clip_path,
+            }
+            with (root / "events.jsonl").open("a", encoding="utf-8") as f:
+                f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        except Exception as exc:  # noqa: BLE001
+            log.debug("learning event write failed: %s", exc)
+
+    def _confirmable(self, intent: str) -> bool:
+        """Intents the confirmation dialog applies to: real actions — not the
+        any-voice safety set (stop/volume act instantly), not the
+        orchestrator's own dialog openers, not no-op acknowledgements."""
+        return intent not in self._speaker_allow_any and intent not in (
+            "wake_ack", "cancel_pending", "apply_change",
+            "music_now_playing", "music_shuffle", "voice_memo_record",
+            "voice_learn", "go_to_sleep", "wake_up")
+
+    async def _maybe_ask_confirmation(self, env: Envelope) -> bool:
+        """True when the intent was NOT executed but deferred: whisper is not
+        sure enough (confidence < asr.yaml confirm_conf), so Jessica repeats
+        her understanding and asks. The user's reply resolves it in
+        :meth:`_resolve_confirmation` (wake-less, via the follow-up window)."""
+        conf = env.data.get("confidence")
+        intent = str(env.data.get("intent", ""))
+        if (conf is None or float(conf) >= self._confirm_conf
+                or not self._confirmable(intent)):
+            return False
+        lang = str(env.data.get("language", "") or "pl")
+        transcript = str(env.data.get("transcript", ""))
+        loop_now = asyncio.get_running_loop().time()
+        self._confirm_pending = {
+            "data": dict(env.data), "lang": lang,
+            "until": loop_now + _CONFIRM_TTL_S,
+        }
+        try:  # gate the brain: this turn belongs to the confirmation dialog
+            (self._runtime_dir / "confirm-pending").touch()
+        except OSError:
+            pass
+        log.info("confirm: %r (conf=%.2f < %.2f) — asking", transcript,
+                 float(conf), self._confirm_conf)
+        await self._speak(msg("confirm.echo_ask", lang, text=transcript), lang)
+        if self._followup_task is not None and not self._followup_task.done():
+            self._followup_task.cancel()
+        self._followup_task = asyncio.create_task(self._arm_followup())
+        return True
+
+    def _clear_confirmation(self) -> dict[str, Any] | None:
+        pending = self._confirm_pending
+        self._confirm_pending = None
+        (self._runtime_dir / "confirm-pending").unlink(missing_ok=True)
+        return pending
+
+    async def _resolve_confirmation(self, env: Envelope) -> bool:
+        """Route the utterance that arrived while a confirmation is pending.
+        Returns True when consumed; False = it is a CORRECTED command (or the
+        pending lapsed) and the caller processes the envelope normally."""
+        pending = self._confirm_pending
+        assert pending is not None
+        stored = pending["data"]
+        lang = pending["lang"]
+        text = str(env.data.get("transcript", ""))
+        if asyncio.get_running_loop().time() > pending["until"]:
+            self._clear_confirmation()
+            self._learn_event("unconfirmed", str(stored.get("transcript", "")),
+                              stored)
+            return False  # stale — treat the new utterance as its own turn
+        cls = classify_confirmation(text)
+        intent = str(env.data.get("intent", "")) if env.topic == "nlu.intent" else ""
+        if intent == "wake_ack":
+            cls = "confirmed"  # a bare "tak" fast-paths as the ack intent
+        elif intent == "cancel_pending":
+            cls = "denied"
+        elif intent == "stop_talking":
+            cls = "denied"  # "stop" while she asks = abort the pending action
+        elif intent and cls == "other":
+            # A different real command: detection error WITH correction — run
+            # the new command instead ("Dżesika, <komenda>" re-dictation).
+            self._clear_confirmation()
+            self._learn_event("corrected", str(stored.get("transcript", "")),
+                              stored, corrected=text)
+            log.info("confirm: corrected %r → %r",
+                     stored.get("transcript"), text)
+            return False
+        if cls == "confirmed":
+            self._clear_confirmation()
+            self._learn_event("confirmed", str(stored.get("transcript", "")),
+                              stored)
+            log.info("confirm: confirmed — executing %r", stored.get("intent"))
+            env2 = Envelope(topic="nlu.intent", source="blazend-orchestrator",
+                            data={**stored, "confidence": 1.0})
+            await self._on_envelope("nlu", env2)
+            return True
+        if cls == "denied":
+            self._clear_confirmation()
+            self._learn_event("denied", str(stored.get("transcript", "")), stored)
+            await self._speak(msg("confirm.cancelled", lang), lang)
+            return True
+        if cls == "emotional":
+            self._clear_confirmation()
+            self._learn_event("emotional", str(stored.get("transcript", "")),
+                              stored)
+            await self._speak(msg("confirm.sorry", lang), lang)
+            return True
+        # Unrelated babble (nlu.miss, no intent): no confirmation = error.
+        self._clear_confirmation()
+        self._learn_event("unconfirmed", str(stored.get("transcript", "")), stored)
+        log.info("confirm: no confirmation (%r) — cancelled silently", text[:40])
+        return True
 
     def _maybe_stopcheck(self, env: Envelope) -> None:
         """Arm one wake-less ASR stop check for a short utterance heard while

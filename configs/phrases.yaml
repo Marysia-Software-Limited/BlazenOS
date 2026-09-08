@@ -449,6 +449,17 @@ messages:
     pl: "Co mam sprawdzić?"
     en: "What should I check?"
 
+  # -- uncertain-action confirmation (2026-09-08) -----------------------------
+  confirm.echo_ask:
+    pl: "Zrozumiałam: „{text}”. Potwierdzasz?"
+    en: "I understood: \"{text}\". Confirm?"
+  confirm.cancelled:
+    pl: "Wycofuję."
+    en: "Cancelled."
+  confirm.sorry:
+    pl: "Przepraszam."
+    en: "Sorry."
+
   # -- engine: clock / calendar ---------------------------------------------
   # {time} is pre-rendered per language in code: Polish words via plnum (so
   # Piper says "dwudziesta trzecia szesnaście" naturally), EN "h:mm AM/PM".

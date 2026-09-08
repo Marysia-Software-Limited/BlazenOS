@@ -444,6 +444,22 @@ class MemoryStore:
             return None
         return str(dest), float(raw.get("duration_s", 0.0) or 0.0)
 
+    def peek_last_clip(self, *, max_age_s: float = 15.0) -> dict[str, Any] | None:
+        """NON-destructive look at the ASR's rolling clip marker (2026-09-08,
+        the learning loop): returns the raw ``last.json`` dict when it is
+        fresh, without moving the wav or consuming the marker — so the
+        learning-event log can copy the audio while "zapamiętaj" claims keep
+        working exactly as before."""
+        marker = self.path.parent / "clips" / "last.json"
+        try:
+            raw = json.loads(marker.read_text(encoding="utf-8"))
+            recorded = datetime.fromisoformat(str(raw.get("ts", "")))
+        except (OSError, ValueError):
+            return None
+        if (datetime.now(UTC) - recorded).total_seconds() > max_age_s:
+            return None
+        return dict(raw)
+
     # -- reminders ---------------------------------------------------------
     def add_reminder(
         self, text: str, *, due: datetime, now: datetime, category: str = "reminder"

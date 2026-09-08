@@ -156,6 +156,13 @@ async def serve(
                 continue
             if env.topic == "nlu.miss":
                 text = env.data.get("transcript", "")
+                # A pending uncertain-action confirmation owns this turn: the
+                # orchestrator classifies the answer (yes/no/emotional/babble)
+                # and the brain must not ALSO route it (2026-09-08).
+                if (rt / "confirm-pending").exists():
+                    log.info("confirm pending — leaving %r to the orchestrator",
+                             text[:40])
+                    continue
                 # Speaker policy (2026-09-08): with enforcement on, a voice
                 # that is NOT the owner never reaches the engine/LLM — except
                 # a bare stop order, which works for anyone. Missing speaker
