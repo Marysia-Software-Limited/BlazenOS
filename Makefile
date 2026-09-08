@@ -112,6 +112,10 @@ rust-aarch64: ## Cross-build Rust crates for Pi 5 (aarch64-unknown-linux-gnu)
 
 # -------- IPC events code-gen --------
 
+.PHONY: learn-sync
+learn-sync: ## Pull jessica-ts learning labels + consume (lexicon boost, wake negatives, speaker profile)
+	$(PY) scripts/learn-sync.py --pull
+
 .PHONY: gen-events
 gen-events: python ## Regenerate IPC event types (Python + Rust) from JSON Schemas
 	$(PY) scripts/gen-event-types.py --schemas configs/_schema/events \

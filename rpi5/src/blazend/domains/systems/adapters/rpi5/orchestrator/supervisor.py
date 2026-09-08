@@ -71,6 +71,14 @@ def _extract_address(text: str) -> str:
     # Lead-ins stack ("zwracaj się do mnie per pan doktor") — strip until fixed.
     while (stripped := _ADDRESS_LEADIN.sub("", body).strip(" ,.?!„”\"")) != body:
         body = stripped
+    # Whisper's stock silence hallucinations must never become the owner's
+    # address (live 2026-09-08 15:56: an empty name window transcribed to
+    # "Dziękuje za uwagę" and Jessica started addressing the user with it).
+    folded = body.lower().replace("ę", "e").replace("ó", "o").replace("ł", "l")
+    if any(p in folded for p in (
+            "dziekuje za", "dzieki za", "napisy", "amara", "zapraszam",
+            "do zobaczenia", "thanks for watching", "subscribe")):
+        return ""
     words = body.split()
     if not words or len(words) > 4:
         return ""

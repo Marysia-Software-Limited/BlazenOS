@@ -45,3 +45,12 @@ def test_rambling_answer_is_rejected():
 def test_empty_answer_is_rejected():
     assert _extract_address("") == ""
     assert _extract_address("  .,! ") == ""
+
+
+def test_silence_hallucinations_never_become_the_address():
+    # Live 2026-09-08 15:56: an empty name window transcribed to whisper's
+    # stock "Dziękuje za uwagę" and Jessica addressed the owner with it.
+    assert _extract_address("Dziękuje za uwagę") == ""
+    assert _extract_address("Dziękuję za oglądanie.") == ""
+    assert _extract_address("Zapraszam na kolejny film") == ""
+    assert _extract_address("Mów mi Błazen") == "Błazen"  # real names still pass

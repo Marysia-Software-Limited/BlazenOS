@@ -155,7 +155,29 @@ class Lexicon:
         lex._load_news()
         lex._load_books()
         lex._load_music()
+        lex._load_learned()
         return lex
+
+    def _load_learned(self) -> None:
+        """Learned corrections (2026-09-08, phase 4 of the learning loop):
+        phrases the user CONFIRMED or dictated as corrections, written by
+        scripts/learn-sync.py to ``<state>/learning/lexicon-boost.yaml``.
+        They join the command tier so the fuzzy repair snaps future misreads
+        to what the user actually says. Best-effort like every source."""
+        try:
+            import yaml
+
+            root = (Path(os.environ["BLAZEN_DATA_DIR"]).parent
+                    if os.environ.get("BLAZEN_DATA_DIR")
+                    else Path("/var/lib/blazen"))
+            path = root / "learning" / "lexicon-boost.yaml"
+            if not path.is_file():
+                return
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            for phrase in data.get("phrases", []) or []:
+                self._add(_TIER_COMMANDS, str(phrase))
+        except Exception:  # noqa: BLE001 — lexicon must never break ASR
+            return
 
     def _load_intents(self) -> None:
         try:

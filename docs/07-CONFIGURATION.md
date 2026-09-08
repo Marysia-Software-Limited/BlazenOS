@@ -105,6 +105,26 @@ training completes. The ASR stamps `speaker_sim`/`speaker_owner` on
 - Soft everywhere: no model file, no profile, unreadable config → no fields
   on the wire → every consumer trusts the voice (pre-feature behaviour).
 
+## Confirmations + the learning loop (2026-09-08)
+
+An actionable intent whose whisper confidence sits below `asr.yaml
+confirm_conf` (0.7) is echoed back — "Zrozumiałam: «…». Potwierdzasz?" — and
+resolved wake-less through the follow-up window: confirmation executes
+(stamped confidence 1.0), "nie" cancels ("Wycofuję."), an emotional reply
+("zamknij się", "spierdalaj") cancels with "Przepraszam." and a strong error
+label, a different real command is a CORRECTION (runs instead), silence or
+babble cancels silently. Safety/no-op intents (stop, volume, wake_ack,
+dialog openers) never enter the dialog; the `confirm-pending` marker keeps
+the brain out of the answer turn.
+
+Every outcome — plus foreign-voice discards and closed-list not-understoods
+— appends a labelled event (text, intent, confidence, speaker_sim, clip
+copy) to `<state>/learning/events.jsonl`. `make learn-sync` (paul, the ML
+server) pulls jessica-ts labels over SSH and consumes them: corrected
+phrases → `learning/lexicon-boost.yaml` (loaded into the lexicon's command
+tier), denied/unconfirmed/foreign clips → wake-negative candidates (usual
+screening), confirmed clips → speaker-profile refresh.
+
 ## ASR confidence floors + wake-less STOP (2026-09-08)
 
 Whisper's confidence separates noise from speech cleanly in practice (noise
