@@ -328,6 +328,61 @@ async def _capture_followup(
              result.language, text, result.confidence)
 
 
+# Wake-less STOP phrases (folded): single tokens matched exactly, multi-word
+# matched as a phrase. Deliberately unambiguous — anything else spoken over a
+# stream is DISCARDED by _check_stop, never routed.
+_STOP_TOKENS = ("stop", "przestan", "dosc", "cisza", "koniec", "pauza", "wylacz")
+_STOP_PHRASES = ("zamknij sie",)
+
+
+async def _check_stop(
+    pub: Publisher,
+    ring: RingReader,
+    transcriber: object,
+    *,
+    span_s: float = 4.0,
+    min_conf: float = 0.5,
+) -> None:
+    """Wake-less stop check (2026-09-08): while Jessica plays a stream or speaks
+    a long reply the wake word is unreliable — the Jabra DSP attenuates the mic
+    and "Dżesika, stop!" scored below even the near-miss band, leaving the user
+    UNABLE to stop the radio by voice. The orchestrator arms this on any short
+    VAD utterance during her own activity; the last few seconds are transcribed
+    and ONLY a short, confident, unambiguous stop phrase acts (published as a
+    canonical "stop" command). Everything else — room talk, radio leak-through,
+    her own voice — is silently discarded: no chat fallback, no reply."""
+    import re
+
+    from audiobook_catalog.text_norm import _fold
+
+    end = ring.write_pos
+    pcm = np.asarray(
+        ring.read_range(max(0, end - int(span_s * ring.sample_rate)), end),
+        dtype=np.int16,
+    )
+    if len(pcm) < ring.sample_rate // 2:
+        return
+    result = await asyncio.to_thread(
+        transcriber.transcribe, pcm, ring.sample_rate)  # type: ignore[attr-defined]
+    text = (result.text or "").strip()
+    if not text or result.confidence < min_conf or _looks_hallucinated(text):
+        return
+    toks = re.sub(r"[^\w\s]", " ", _fold(text)).split()
+    if not toks or len(toks) > 6:  # a stop order is short; babble is not
+        return
+    joined = " ".join(toks)
+    if not (any(t in _STOP_TOKENS for t in toks)
+            or any(p in joined for p in _STOP_PHRASES)):
+        log.info("stop check: no stop phrase in %r — ignored", text[:60])
+        return
+    log.info("stop check HIT %r (conf=%.2f) — routing canonical stop",
+             text[:60], result.confidence)
+    await pub.publish(Envelope(
+        topic="asr.final", source="blazend-asr",
+        data={"language": result.language, "text": "stop",
+              "confidence": round(result.confidence, 3)}))
+
+
 async def _capture_memo(
     pub: Publisher,
     ring: RingReader,
@@ -416,6 +471,8 @@ async def _real_loop(pub: Publisher) -> None:
     memo_marker.unlink(missing_ok=True)  # stale marker from a crash mid-memo
     followup_marker = rt / "followup-capture"
     followup_marker.unlink(missing_ok=True)
+    stopcheck_marker = rt / "stopcheck-capture"
+    stopcheck_marker.unlink(missing_ok=True)
     clips_dir = data_dir() / "clips"
     transcriber = Transcriber()
     log.info("asr real path: model=%s ring=%dHz fixed-window=%.1fs",
@@ -469,6 +526,10 @@ async def _real_loop(pub: Publisher) -> None:
                 lead_in_s=float(fu_cfg.get("lead_in_s", 5.0)),
                 min_conf=float(fu_cfg.get("min_conf", 0.6)),
             )
+            continue
+        if stopcheck_marker.exists():
+            stopcheck_marker.unlink(missing_ok=True)
+            await _check_stop(pub, ring, transcriber)
             continue
         if memo_marker.exists():
             memo_marker.unlink(missing_ok=True)

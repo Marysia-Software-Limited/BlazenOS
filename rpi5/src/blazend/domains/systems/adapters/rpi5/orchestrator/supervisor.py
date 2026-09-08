@@ -143,6 +143,17 @@ _SPEAKER_WARMUP_S = 1.5
 # opening a capture window every couple of seconds. One real "dżesika" → one beep
 # → one listen window; rapid repeats within the refractory are dropped.
 _WAKE_REFRACTORY_S = 4.0
+# Wake-less STOP sentinel (2026-09-08): while a stream plays (or a long reply
+# is being spoken) the Jabra DSP attenuates the mic and "Dżesika, stop!" can
+# score below even the wake near-miss band — the user was left unable to stop
+# a radio by voice. So any short VAD utterance heard DURING her own activity
+# arms one ASR stop check (strictly matched there; everything not a stop
+# phrase is discarded). Rate-limited so speech-y radio leak-through can't keep
+# whisper busy. Escape hatch: BLAZEN_STOP_SENTINEL=0.
+_STOPCHECK_MIN_GAP_S = 5.0
+_STOPCHECK_MIN_MS = 250.0
+_STOPCHECK_MAX_MS = 4000.0
+_STOP_SENTINEL = os.environ.get("BLAZEN_STOP_SENTINEL", "1") != "0"
 # How long a guided dialog (voice training / memo dictation) may wait for its
 # capture before the orchestrator declares it abandoned and re-enables wake
 # activation. Must exceed the longest capture (memo max_s 60) + prompts.
@@ -326,6 +337,7 @@ class Orchestrator:
         self._drop_next_reply = False
         self._beep_device = self._load_beep_device()
         self._listening_cue_at = 0.0  # loop time of the last "Słucham?" (cooldown)
+        self._stopcheck_at = 0.0  # loop time of the last wake-less stop check
         self._not_understood_cue_at = 0.0  # loop time of the last "Nie zrozumiałam" (cooldown)
         self._working_cue_at = 0.0  # loop time of the last "Chwileczkę." (cooldown)
         self._wake_handled_at = -1e9  # loop time of the last acted-on wake (refractory)
@@ -781,6 +793,8 @@ class Orchestrator:
             self._memo_stage = None  # abandon the title/content dialog
             self._memo_title = ""
             await self._speak(msg("memo.retry_empty", self._default_lang))
+        if env.topic == "vad.end":
+            self._maybe_stopcheck(env)
         if env.topic == "wake.detected":
             now = asyncio.get_running_loop().time()
             # Refractory: ignore wakes that arrive too soon after the last handled
@@ -1085,6 +1099,30 @@ class Orchestrator:
         # and bring the volume back up.
         if self._radio.playing and self._ducked:
             await self._duck_off()
+
+    def _maybe_stopcheck(self, env: Envelope) -> None:
+        """Arm one wake-less ASR stop check for a short utterance heard while
+        Jessica herself is making sound (stream playing / long spoken reply) —
+        see _STOPCHECK_MIN_GAP_S. The strict phrase match lives in the ASR; a
+        non-stop utterance is discarded there, so arming is cheap and safe."""
+        if not _STOP_SENTINEL:
+            return
+        if not (self._radio.playing or (self._runtime_dir / "speaking").exists()):
+            return
+        if self._dialog_active():
+            return  # memo/training/follow-up owns the mic
+        dur = float(env.data.get("duration_ms", 0.0))
+        if not _STOPCHECK_MIN_MS <= dur <= _STOPCHECK_MAX_MS:
+            return  # a stop order is a short burst, not babble or a click
+        now = asyncio.get_running_loop().time()
+        if now - self._stopcheck_at < _STOPCHECK_MIN_GAP_S:
+            return
+        self._stopcheck_at = now
+        try:
+            (self._runtime_dir / "stopcheck-capture").touch()
+            log.info("stop sentinel armed (vad %d ms during activity)", int(dur))
+        except OSError as exc:
+            log.warning("could not arm stop check: %s", exc)
 
     async def _act_on_reply(self, data: dict[str, Any]) -> None:
         """Execute a reply's action: play/stop the internet-radio stream, or bring

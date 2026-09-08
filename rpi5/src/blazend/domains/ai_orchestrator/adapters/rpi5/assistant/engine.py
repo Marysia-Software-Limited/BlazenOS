@@ -269,6 +269,24 @@ def _looks_ambient(text: str) -> bool:
     return any(mark in inner for mark in (". ", "? ", "! "))
 
 
+# Bare stop orders (with/without diacritics — whisper drops them at times).
+# Kept in sync with the ASR sentinel's _STOP_TOKENS/_STOP_PHRASES.
+_STOP_ORDERS = frozenset({
+    "stop", "przestań", "przestan", "dość", "dosc", "cisza", "koniec",
+    "pauza", "wyłącz", "wylacz", "zamknij się", "zamknij sie",
+})
+
+
+def _is_stop_order(text: str) -> bool:
+    """True for a short, unambiguous stop command ("stop", "przestań", …) —
+    the one class of utterance that must route even asleep and wake-less."""
+    cleaned = re.sub(r"[^\w\s]", " ", text.lower()).strip()
+    if not cleaned or len(cleaned.split()) > 3:
+        return False
+    return cleaned in _STOP_ORDERS or any(
+        tok in _STOP_ORDERS for tok in cleaned.split())
+
+
 @dataclass
 class Reply:
     """The assistant's response to one utterance."""
@@ -542,6 +560,13 @@ class Assistant:
             if not command or command == text and wake.is_wake(command):
                 command = ""
         elif self.awake:
+            command = text
+        elif _is_stop_order(text):
+            # Wake-less STOP (2026-09-08): the ASR stop sentinel routes a bare
+            # "stop" heard over a playing stream, with no wake and possibly no
+            # awake window. Stopping must NEVER be gated on being awake — the
+            # user could not silence a mis-started radio because "Dżesika"
+            # scored under the wake threshold against the stream's mic duck.
             command = text
         else:
             if _looks_ambient(text):

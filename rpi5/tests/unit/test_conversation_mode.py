@@ -17,6 +17,7 @@ import pytest
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import Assistant
 from blazend.domains.ai_orchestrator.core.model_router import Task
 from blazend.domains.context.adapters.rpi5.memory import MemoryStore
+from blazend.ipc import Envelope
 
 NOW = datetime(2026, 8, 30, 12, 0)
 REPO = Path(__file__).resolve().parents[3]
@@ -196,6 +197,105 @@ def test_followup_silence_publishes_followup_empty(tmp_path):
     assert len(pub.published) == 1
     env = pub.published[0]
     assert env.topic == "error" and env.data["code"] == "asr.followup_empty"
+
+
+# ----- wake-less stop sentinel (2026-09-08) -----------------------------------
+
+from blazend.domains.voice_input.adapters.rpi5.asr.__main__ import (  # noqa: E402
+    _check_stop,
+)
+
+
+class _StopTranscriber:
+    def __init__(self, text: str, conf: float = 0.9) -> None:
+        self._text, self._conf = text, conf
+
+    def transcribe(self, pcm, sample_rate):
+        class _T:
+            text = self._text
+            language = "pl"
+            confidence = self._conf
+        return _T()
+
+
+def _run_stopcheck(text: str, conf: float = 0.9) -> list:
+    pub = _FakePub()
+    asyncio.run(_check_stop(pub, _FakeRing(speech_s=2), _StopTranscriber(text, conf)))
+    return pub.published
+
+
+def test_stop_sentinel_routes_canonical_stop():
+    out = _run_stopcheck("Stop!")
+    assert len(out) == 1 and out[0].topic == "asr.final"
+    assert out[0].data["text"] == "stop"
+    out = _run_stopcheck("Dżesika, przestań!")
+    assert len(out) == 1 and out[0].data["text"] == "stop"
+
+
+def test_stop_sentinel_discards_everything_else():
+    # Room talk / radio leak-through over a stream must NOT act or reply.
+    assert _run_stopcheck("Natomiast przyjemnie przyspiesza i ma kierunkowskazy") == []
+    assert _run_stopcheck("no i co ty na to") == []
+    assert _run_stopcheck("Stop!", conf=0.3) == []  # unsure = discard
+    assert _run_stopcheck("Kraków Kraków Kraków") == []  # hallucination guard
+
+
+class _StopcheckStub:
+    def __init__(self, rt: Path, playing: bool = True) -> None:
+        import types
+
+        self._runtime_dir = rt
+        self._radio = types.SimpleNamespace(playing=playing)
+        self._stopcheck_at = 0.0
+
+    def _dialog_active(self) -> bool:
+        return False
+
+
+def _vad_end(ms: float):
+    return Envelope(topic="vad.end", source="blazend-audio-in",
+                    data={"duration_ms": ms})
+
+
+def test_stop_sentinel_arms_only_during_activity(tmp_path):
+    async def run() -> None:
+        stub = _StopcheckStub(tmp_path, playing=True)
+        Orchestrator._maybe_stopcheck(stub, _vad_end(600))
+        assert (tmp_path / "stopcheck-capture").exists()
+        (tmp_path / "stopcheck-capture").unlink()
+        # Rate limit: a second utterance right behind does not re-arm.
+        Orchestrator._maybe_stopcheck(stub, _vad_end(600))
+        assert not (tmp_path / "stopcheck-capture").exists()
+        # Idle (no stream, no speaking marker) never arms.
+        idle = _StopcheckStub(tmp_path, playing=False)
+        Orchestrator._maybe_stopcheck(idle, _vad_end(600))
+        assert not (tmp_path / "stopcheck-capture").exists()
+        # A click (too short) and babble (too long) never arm.
+        stub2 = _StopcheckStub(tmp_path, playing=True)
+        Orchestrator._maybe_stopcheck(stub2, _vad_end(80))
+        Orchestrator._maybe_stopcheck(stub2, _vad_end(9000))
+        assert not (tmp_path / "stopcheck-capture").exists()
+
+    asyncio.run(run())
+
+
+def test_stop_order_routes_even_asleep(tmp_path):
+    """The engine must never sleep-gate a bare stop ("Śpię — powiedz Jessica"
+    in reply to "stop" over a playing radio was the unstoppable-radio bug)."""
+    b = _HistBackend()
+    a = Assistant(memory=MemoryStore(tmp_path / "memory.json"),
+                  router=_OneBackendRouter(b), always_awake=False)
+    a._notes_context = lambda text, lang: ""
+    assert not a.awake
+    r = a.route("stop", now=NOW)
+    assert r.action != "asleep"
+    r2 = a.route("przestań", now=NOW + timedelta(seconds=1))
+    assert r2.action != "asleep"
+    # Control: ordinary speech is still sleep-gated.
+    r3 = Assistant(memory=MemoryStore(tmp_path / "m2.json"),
+                   router=_OneBackendRouter(_HistBackend()),
+                   always_awake=False).route("która godzina", now=NOW)
+    assert r3.action == "asleep"
 
 
 # ----- orchestrator follow-up arming ------------------------------------------
