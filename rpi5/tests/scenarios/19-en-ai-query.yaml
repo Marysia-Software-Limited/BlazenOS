@@ -1,0 +1,20 @@
+id: 19-en-ai-query
+language: en
+description: >
+  Closed command list (2026-09-08), EN asset (runtime is PL-only): the LLM
+  conversation opens only via the explicit query command; unmatched speech
+  gets the not-understood cue and never reaches the LLM.
+tags: [conversation, ai-query, closed-list, en]
+preconditions:
+  languages.enabled: [pl, en]
+turns:
+  - user: "hey Jessica, check who the Yotvingians were"
+    expect:
+      action: chat
+      llm_called: true
+  - user: "hey Jessica, I bought new shoes yesterday"
+    expect:
+      action: not_understood
+      llm_called: false
+postconditions:
+  no_unit_restarts: true

@@ -1,0 +1,24 @@
+id: 20-en-confirmation
+language: en
+description: >
+  Uncertain-action confirmation (2026-09-08), EN asset (runtime is PL-only):
+  a low-confidence command is echoed back; "yes" executes, "no" cancels.
+tags: [confirmation, learning, en]
+preconditions:
+  languages.enabled: [pl, en]
+  asr.confirm_conf: 0.7
+turns:
+  - user: "hey Jessica, play station three"
+    inject:
+      asr_confidence: 0.55
+    expect:
+      spoken_contains: "Confirm?"
+      radio_playing: false
+  - user: "yes"
+    expect:
+      radio_playing: true
+  - user: "hey Jessica, stop"
+    expect:
+      radio_playing: false
+postconditions:
+  no_unit_restarts: true

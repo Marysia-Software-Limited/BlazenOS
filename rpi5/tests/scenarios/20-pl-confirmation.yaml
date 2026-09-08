@@ -1,0 +1,34 @@
+id: 20-pl-confirmation
+language: pl
+description: >
+  Potwierdzanie niepewnych akcji (2026-09-08): komenda z niską pewnością ASR
+  jest echem odpytana zamiast wykonana; "tak" wykonuje, "nie" wycofuje,
+  odpowiedź emocjonalna anuluje z przeprosinami, nowa komenda to korekta.
+tags: [confirmation, learning, pl]
+preconditions:
+  asr.confirm_conf: 0.7
+turns:
+  - user: "dżesika, włącz trójkę"
+    inject:
+      asr_confidence: 0.55
+    expect:
+      spoken_contains: "Potwierdzasz?"
+      radio_playing: false
+  - user: "tak"
+    expect:
+      radio_playing: true
+  - user: "dżesika, stop"
+    expect:
+      radio_playing: false
+  - user: "dżesika, włącz jedynkę"
+    inject:
+      asr_confidence: 0.55
+    expect:
+      spoken_contains: "Potwierdzasz?"
+  - user: "nie"
+    expect:
+      spoken_contains: "Wycofuję"
+      radio_playing: false
+postconditions:
+  learning_events_min: 2
+  no_unit_restarts: true

@@ -1,0 +1,21 @@
+id: 19-pl-ai-query
+language: pl
+description: >
+  Zamknięta lista komend (2026-09-08): rozmowę z LLM otwiera wyłącznie
+  komenda "sprawdź"; niedopasowana wypowiedź dostaje sygnał "nie
+  zrozumiałam" i nigdy nie trafia do LLM.
+tags: [conversation, ai-query, closed-list, pl]
+preconditions:
+  languages.enabled: [pl]
+turns:
+  - user: "dżesika, sprawdź kim byli Jadźwingowie"
+    expect:
+      action: chat
+      llm_called: true
+  - user: "dżesika, kupiłem wczoraj nowe buty"
+    expect:
+      action: not_understood
+      llm_called: false
+      spoken_contains: "Nie zrozumiałam"
+postconditions:
+  no_unit_restarts: true
