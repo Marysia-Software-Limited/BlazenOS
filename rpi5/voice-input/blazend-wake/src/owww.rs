@@ -28,10 +28,19 @@ pub struct WakeModel {
 
 impl WakeModel {
     pub fn load(melspec: &Path, embedding: &Path, classifier: &Path) -> Result<Self> {
+        // Two intra-op threads per session: ort's default grabs every core and
+        // its spin-wait burned ~2.5 cores FLAT on a 16-thread desktop
+        // (2026-09-08) for a model this small; the Pi (4 cores) needs the cap
+        // even more. Scoring a 2.5 s window stays well under the 200 ms tick.
+        let session = |p: &Path| -> Result<Session> {
+            Ok(Session::builder()?
+                .with_intra_threads(2)?
+                .commit_from_file(p)?)
+        };
         Ok(Self {
-            melspec: Session::builder()?.commit_from_file(melspec)?,
-            embedding: Session::builder()?.commit_from_file(embedding)?,
-            classifier: Session::builder()?.commit_from_file(classifier)?,
+            melspec: session(melspec)?,
+            embedding: session(embedding)?,
+            classifier: session(classifier)?,
         })
     }
 

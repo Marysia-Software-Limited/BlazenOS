@@ -331,8 +331,10 @@ async def _capture_followup(
 # Wake-less STOP phrases (folded): single tokens matched exactly, multi-word
 # matched as a phrase. Deliberately unambiguous — anything else spoken over a
 # stream is DISCARDED by _check_stop, never routed.
-_STOP_TOKENS = ("stop", "przestan", "dosc", "cisza", "koniec", "pauza", "wylacz")
-_STOP_PHRASES = ("zamknij sie",)
+_STOP_TOKENS = ("stop", "przestan", "dosc", "cisza", "koniec", "pauza", "wylacz",
+                # EN asset parity (docs/13): retained though runtime is PL-only.
+                "quiet", "silence", "enough")
+_STOP_PHRASES = ("zamknij sie", "shut up", "be quiet")
 
 
 async def _check_stop(

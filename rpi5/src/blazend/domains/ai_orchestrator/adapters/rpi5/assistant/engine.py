@@ -274,6 +274,8 @@ def _looks_ambient(text: str) -> bool:
 _STOP_ORDERS = frozenset({
     "stop", "przestań", "przestan", "dość", "dosc", "cisza", "koniec",
     "pauza", "wyłącz", "wylacz", "zamknij się", "zamknij sie",
+    # EN asset parity (docs/13): retained though runtime is PL-only.
+    "quiet", "silence", "enough", "shut up", "be quiet",
 })
 
 

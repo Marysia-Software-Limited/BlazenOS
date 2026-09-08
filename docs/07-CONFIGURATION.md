@@ -84,6 +84,29 @@ two ways:
 Every downstream resolver (radio/music/books) matches exact stems only, so
 this layer is what makes a one-character ASR slip survivable.
 
+## ASR confidence floors + wake-less STOP (2026-09-08)
+
+Whisper's confidence separates noise from speech cleanly in practice (noise
+decodes at 0.31-0.49, real commands at 0.6+), so two floors gate ACTING on a
+transcript — wake sensitivity is untouched:
+
+- `asr.yaml min_final_conf` (default 0.5) — main post-wake commands below it
+  are dropped with the not-understood cue ("Kraków ×3" at 0.47 once started
+  Radio Kraków in a silent room).
+- `asr.yaml followup_capture.min_conf` (default 0.6) — wake-less conversation
+  turns need MORE confidence than wake-gated commands; below it the
+  conversation closes instead of feeding the LLM.
+
+**Wake-less STOP sentinel:** while a stream plays or a long reply is being
+spoken, the Jabra DSP attenuates the mic and "Dżesika, stop!" can score below
+even the wake near-miss band. Any short VAD utterance (0.25-4 s) during her
+own activity therefore arms ONE ASR stop check (rate-limited 5 s): the last
+4 s are transcribed and only a short (≤6 tokens), confident (≥0.5),
+unambiguous stop phrase ("stop", "przestań", "dość", "cisza", "zamknij się";
+EN assets retained) routes — as a canonical "stop", which the engine accepts
+even asleep. Everything else is silently discarded (no chat fallback, no
+reply). `BLAZEN_STOP_SENTINEL=0` disables the arming.
+
 ## Secondary sensor mic (`audio.yaml ambient_mic:`) — 2026-08-31
 
 A dedicated second microphone (not the voice mic) as Jessica's room sensor.
