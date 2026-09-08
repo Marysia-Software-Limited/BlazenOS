@@ -85,6 +85,11 @@ def _looks_hallucinated(text: str) -> bool:
     if any(p in folded for p in _SILENCE_PHRASES):
         return True
     toks = text.lower().split()
+    # ONE word repeated with nothing else is a loop at any length ≥3:
+    # "Kraków Kraków Kraków" (conf 0.47, silence, 2026-09-08) slipped the
+    # 6-token minimum below and STARTED Radio Kraków via the short-ask gate.
+    if len(toks) >= 3 and len(set(toks)) == 1:
+        return True
     if len(toks) < 6:
         return False
     counts = sorted((toks.count(t) for t in set(toks)), reverse=True)
@@ -403,6 +408,7 @@ async def _real_loop(pub: Publisher) -> None:
     # only — memo dictation stays verbatim.
     lex_correct = bool(_cfg.get("lexicon.correct", True))
     lex_ratio = float(_cfg.get("lexicon.fuzzy_ratio", 0.78))
+    min_final_conf = float(_cfg.get("min_final_conf", 0.5))
     lexicon = get_lexicon() if lex_correct else None
     harvest = bool(load("wake-word").get("harvest_false_wakes", True))
     speaker_busy = rt / "speaker-busy"
@@ -587,6 +593,22 @@ async def _real_loop(pub: Publisher) -> None:
                     topic="error",
                     source="blazend-asr",
                     data={"code": "asr.no_text", "message": "hallucinated transcript"},
+                )
+            )
+            continue
+        if text and result.confidence < min_final_conf:
+            # Whisper this unsure is decoding noise, not a command — observed
+            # garbage sat at 0.31-0.49 while real commands score 0.6+. Acting
+            # on it is how "Kraków ×3" (conf 0.47) started a radio in a silent
+            # room. The orchestrator's not-understood cue asks to repeat.
+            log.info("asr: final below min conf %.2f dropped %r (conf=%.2f)",
+                     min_final_conf, text[:60], result.confidence)
+            await pub.publish(
+                Envelope(
+                    topic="error",
+                    source="blazend-asr",
+                    data={"code": "asr.no_text",
+                          "message": "transcript below confidence floor"},
                 )
             )
             continue

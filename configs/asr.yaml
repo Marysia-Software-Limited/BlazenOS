@@ -28,6 +28,9 @@ memo_capture:
 # right after a spoken LLM reply (wake-word.yaml conversation.followup) so
 # the user answers without the wake word. Short by design — quiet closes
 # the exchange (asr.followup_empty), it never nags.
+min_final_conf: 0.5   # main-path commands whisper is less sure of are dropped
+                      # ("not understood" cue): noise decodes at 0.31-0.49,
+                      # real commands 0.6+ ("Kraków x3" @0.47 started a radio)
 followup_capture:
   max_s: 12
   silence_s: 1.2

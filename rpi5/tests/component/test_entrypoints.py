@@ -331,6 +331,50 @@ async def test_asr_real_loop_silent_wake_skips_whisper(monkeypatch, tmp_path):
     assert errors and errors[0].data["code"] == "asr.no_speech"
 
 
+@pytest.mark.asyncio
+async def test_asr_real_loop_low_confidence_dropped(monkeypatch, tmp_path):
+    """A transcript whisper is unsure of (conf < min_final_conf) must not act —
+    "Kraków Kraków Kraków" at 0.47 once started a radio in a silent room."""
+    import blazend.domains.voice_input.adapters.rpi5.asr.engine as engine
+
+    class _Unsure(_FakeTranscriber):
+        def transcribe(self, pcm, sample_rate):  # noqa: ANN001
+            t = _FakeTranscript("Kraków")
+            t.confidence = 0.31
+            return t
+
+    monkeypatch.setattr(engine, "Transcriber", _Unsure)
+    monkeypatch.setattr(asr_main, "runtime_dir", lambda: tmp_path)
+
+    async def fake_open_ring(_path, timeout=30.0):  # noqa: ANN001
+        return _FakeRing()
+
+    async def fast_sleep(_s: float) -> None:
+        return None
+
+    monkeypatch.setattr(asr_main.asyncio, "sleep", fast_sleep)
+    connects = 0
+
+    async def fake_connect(_sock):  # noqa: ANN001
+        nonlocal connects
+        connects += 1
+        if connects == 1:
+            return _OneShotSub(
+                [Envelope(topic="wake.detected", source="wake", data={}, ts_ms=3000)])
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(asr_main, "_open_ring", fake_open_ring)
+    monkeypatch.setattr(asr_main, "_connect", fake_connect)
+
+    pub = FakePublisher(tmp_path / "asr.sock")
+    with pytest.raises(asyncio.CancelledError):
+        await asr_main._real_loop(pub)
+    finals = [e for e in pub.published if e.topic == "asr.final"]
+    errors = [e for e in pub.published if e.topic == "error"]
+    assert not finals
+    assert errors and errors[0].data["code"] == "asr.no_text"
+
+
 # ---------------------------------------------------------------------------
 # blazend.domains.ai_orchestrator.adapters.rpi5.brain.__main__
 # ---------------------------------------------------------------------------

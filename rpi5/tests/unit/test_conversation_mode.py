@@ -302,3 +302,9 @@ def test_followup_hallucination_treated_as_empty(tmp_path):
     assert _looks_hallucinated("Dziękuje za oglądanie.")
     assert _looks_hallucinated("Napisy stworzone przez społeczność Amara.org")
     assert not _looks_hallucinated("dziękuję, to wszystko")
+    # A single word looping is a hallucination at ANY length ≥3 — "Kraków ×3"
+    # (conf 0.47, silent room, 2026-09-08) started Radio Kraków via the
+    # short-ask gate before this held.
+    assert _looks_hallucinated("Kraków Kraków Kraków")
+    assert not _looks_hallucinated("włącz Trójkę")
+    assert not _looks_hallucinated("stop stop")  # two = an insistent human
