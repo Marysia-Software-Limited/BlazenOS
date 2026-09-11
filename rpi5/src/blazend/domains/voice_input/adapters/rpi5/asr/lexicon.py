@@ -82,16 +82,49 @@ _DEFAULT_AUDIOBOOKS = "/var/lib/blazen/audiobooks/catalog.json"
 _DEFAULT_ONTOLOGY = "/etc/blazen/ontology/books.json"
 
 
+def _split_top_alts(pattern: str) -> list[str]:
+    """Split a trigger on TOP-LEVEL ``|`` (outside any parens). One regexy
+    alternative must not sink its plain siblings: ``"wiadomo(ś|s)\\w*|wie(ś|s)ci"``
+    keeps "wieści" in the lexicon even though the first branch is skipped —
+    live 2026-09-11: "jakie wieści" had NO lexicon entry (the whole pattern
+    was rejected for the one ``\\w*``), so "jakie wyjści" was never repaired
+    and the news command kept coming back not-understood."""
+    parts: list[str] = []
+    cur: list[str] = []
+    depth = 0
+    for ch in pattern:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        if ch == "|" and depth == 0:
+            parts.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    parts.append("".join(cur))
+    return [p for p in (s.strip() for s in parts) if p]
+
+
 def _expand_trigger(pattern: str) -> list[str]:
     """Deterministically expand a simple alternation regex into phrases.
 
     ``"g(ł|l)o(ś|s)niej"`` → ``["głośniej", "glośniej", …]`` (diacritic variant
     first, so dedup-by-stem keeps it as the canonical spelling);
-    ``"^(stop|cicho)$"`` → ``["stop", "cicho"]``. Patterns using regex syntax
+    ``"^(stop|cicho)$"`` → ``["stop", "cicho"]``. Top-level alternatives are
+    split first and screened independently. Patterns using regex syntax
     beyond ``( | ) ? ^ $`` are skipped. Expansion is capped — diacritic groups
     multiply fast but collapse again under the folded key.
     """
     pattern = pattern.strip().removeprefix("^").removesuffix("$")
+    alts = _split_top_alts(pattern)
+    if len(alts) > 1:
+        merged: list[str] = []
+        for alt in alts:
+            for phrase in _expand_trigger(alt):
+                if phrase not in merged:
+                    merged.append(phrase)
+        return merged[:_MAX_EXPANSIONS]
     if not _SAFE_TRIGGER.match(pattern):
         return []
     variants = [pattern]
@@ -295,6 +328,12 @@ class Lexicon:
                     continue
                 match = self._closest(key, fuzzy_ratio)
                 if match is None:
+                    continue
+                # A repair may SHRINK or respell, never GROW: replacing a
+                # window with a longer phrase invents words the user did not
+                # say ("jak jest" must not become "jaka jest data" —
+                # found 2026-09-11 while widening the trigger expansion).
+                if len(match.split()) > size:
                     continue
                 replacements.append((start, end, window, match))
                 taken.append((start, end))

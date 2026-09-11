@@ -144,3 +144,27 @@ def test_genuine_station_typo_still_repaired():
     # The stoplist must not kill real entity repairs.
     out, _ = Lexicon.build().correct("włącz jedynkie")
     assert "Jedynka" in out
+
+
+def test_top_level_alternation_survives_a_regexy_sibling():
+    """2026-09-11: "wiadomo(ś|s)\\w*|wie(ś|s)ci|…" lost ALL its phrases to the
+    one \\w* branch — "jakie wieści" had no lexicon entry and misheard news
+    asks were never repaired. Top-level alternatives are screened separately."""
+    from blazend.domains.voice_input.adapters.rpi5.asr.lexicon import _expand_trigger
+    got = _expand_trigger("wiadomo(ś|s)\\w*|jakie wie(ś|s)ci|co (nowego|s(ł|l)ycha(ć|c))")
+    assert "jakie wieści" in got
+    assert "co nowego" in got and "co słychać" in got
+    assert not any("\\w" in g for g in got)  # the regexy branch stayed out
+
+
+def test_repair_never_grows_the_window():
+    """A repair may respell or shrink, never ADD words: "jak jest" must not
+    become "jaka jest data" (found 2026-09-11)."""
+    from blazend.domains.voice_input.adapters.rpi5.asr.lexicon import Lexicon
+    lex = Lexicon()
+    lex._add(1, "jaka jest data")
+    lex._add(1, "jakie wieści")
+    out, hits = lex.correct("no wiesz jak jest", fuzzy_ratio=0.78)
+    assert out == "no wiesz jak jest" and not hits
+    out2, hits2 = lex.correct("jakie wyjści", fuzzy_ratio=0.78)
+    assert out2 == "jakie wieści" and hits2

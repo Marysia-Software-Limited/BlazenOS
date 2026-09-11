@@ -570,9 +570,24 @@ class Assistant:
             return False
         if wake.is_wake(text):
             command = wake.strip_wake(text)
-            return bool(command) and not (command == text and wake.is_wake(command))
-        self._expire_awake(datetime.now())
-        return self.awake
+            if not command or (command == text and wake.is_wake(command)):
+                return False
+            text = command
+        else:
+            self._expire_awake(datetime.now())
+            if not self.awake:
+                return False
+        # Closed command list (2026-09-11): an utterance that will come back
+        # not_understood must not announce "Chwileczkę, już to sprawdzam"
+        # first — the cue promised work that never starts. Engage only when a
+        # chat path is actually reachable: the explicit AI-query command, an
+        # active conversation, or the one-shot ask window. (Ladder commands
+        # answer fast and never needed the cue.)
+        if _AI_QUERY.match(text) is not None:
+            return True
+        return bool(self._chat_history) or (
+            self._ai_query_until is not None
+            and datetime.now() <= self._ai_query_until)
 
     def route(
         self,

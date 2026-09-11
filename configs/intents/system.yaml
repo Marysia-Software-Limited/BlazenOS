@@ -692,7 +692,10 @@ intents:
   - name: news_brief
     triggers:
       pl:
-        - "wiadomo(ś|s)\\w*|co (nowego|s(ł|l)ycha(ć|c))|aktualno(ś|s)\\w*|wie(ś|s)ci|co na (ś|s)wiecie"
+        # "jakie wie(ś|s)ci" is redundant for the MATCHER (bare "wieści"
+        # already hits) but seeds the LEXICON with the two-token ask, so a
+        # misheard "jakie wyjści" fuzzy-repairs to it (live 2026-09-11).
+        - "wiadomo(ś|s)\\w*|co (nowego|s(ł|l)ycha(ć|c))|aktualno(ś|s)\\w*|jakie wie(ś|s)ci|przeczytaj wie(ś|s)ci|wie(ś|s)ci|co na (ś|s)wiecie"
       en:
         - "news|headlines|what'?s happening"
     action: tool_call

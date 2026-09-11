@@ -739,12 +739,22 @@ def test_engages_probe_is_pure_and_matches_route_gating(tmp_path):
     # A bare wake engages nothing (route answers "Tak? Słucham." instantly).
     assert not a.engages("Jessica")
     assert not a.engages("")
-    # Wake + command engages even from asleep.
-    assert a.engages("Jessica, opowiedz mi o Krakowie")
+    # Wake + the explicit AI-query command engages even from asleep; a
+    # wake-prefixed utterance the closed list will NOT understand does not —
+    # "Chwileczkę, już to sprawdzam" before "Nie zrozumiałam" promised work
+    # that never starts (live 2026-09-11).
+    assert a.engages("Jessica, sprawdź opowiedz mi o Krakowie")
+    assert not a.engages("Jessica, opowiedz mi o Krakowie")  # → not_understood
     assert not a.awake  # still pure
-    # Awake: any command engages.
+    # Awake: the AI-query command engages; ladder commands answer fast and
+    # never needed the cue; unmatched speech must stay silent.
     a.awake = True
-    assert a.engages("opowiedz mi o Krakowie")
+    assert a.engages("sprawdź opowiedz mi o Krakowie")
+    assert not a.engages("jaka godzina")  # fast ladder answer, no cue
+    assert not a.engages("opowiedz mi o Krakowie")  # → not_understood
+    # An ESTABLISHED conversation engages prefix-free follow-ups.
+    a._chat_history.append(("q", "a"))
+    assert a.engages("a co dalej?")
     assert not a.engages("")  # empty transcript never engages
 
 
