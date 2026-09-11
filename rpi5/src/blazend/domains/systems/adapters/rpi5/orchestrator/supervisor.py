@@ -1345,6 +1345,12 @@ class Orchestrator:
             return False
         lang = str(env.data.get("language", "") or "pl")
         transcript = str(env.data.get("transcript", ""))
+        try:  # echo the COMMAND, not "Dżesika, …" (2026-09-11 polish)
+            from blazend.domains.ai_orchestrator.adapters.rpi5.assistant import wake
+
+            transcript = wake.strip_wake(transcript) or transcript
+        except Exception:  # noqa: BLE001
+            pass
         loop_now = asyncio.get_running_loop().time()
         self._confirm_pending = {
             "data": dict(env.data), "lang": lang,

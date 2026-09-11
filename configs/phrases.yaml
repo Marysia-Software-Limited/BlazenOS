@@ -460,6 +460,11 @@ messages:
     pl: "Przepraszam."
     en: "Sorry."
 
+  # -- language switch refused: runtime is Polish-only (docs/13) -------------
+  lang.not_enabled:
+    pl: "Mówię teraz tylko po polsku."
+    en: "I currently speak Polish only."
+
   # -- engine: clock / calendar ---------------------------------------------
   # {time} is pre-rendered per language in code: Polish words via plnum (so
   # Piper says "dwudziesta trzecia szesnaście" naturally), EN "h:mm AM/PM".

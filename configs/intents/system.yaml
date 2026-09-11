@@ -183,13 +183,16 @@ intents:
       value_from_group: voice
 
   - name: switch_language
+    # Anchored (2026-09-11): "mów po angielsku" INSIDE overheard room talk
+    # once pinned EN for four days — a language switch is a short imperative,
+    # never a fragment of a longer sentence.
     triggers:
       en:
-        - "speak (?P<lang>polish|english|german|french|spanish)"
-        - "switch to (?P<lang>polish|english|german|french|spanish)"
+        - "^speak (?P<lang>polish|english|german|french|spanish)$"
+        - "^switch to (?P<lang>polish|english|german|french|spanish)$"
       pl:
-        - "m(ó|o)w po (?P<lang>polsku|angielsku|niemiecku|francusku|hiszpa(ń|n)sku)"
-        - "prze(ł|l)(ą|a)cz na (?P<lang>polski|angielski|niemiecki|francuski|hiszpa(ń|n)ski)"
+        - "^m(ó|o)w po (?P<lang>polsku|angielsku|niemiecku|francusku|hiszpa(ń|n)sku)$"
+        - "^prze(ł|l)(ą|a)cz na (?P<lang>polski|angielski|niemiecki|francuski|hiszpa(ń|n)ski)$"
     action: switch_language
 
   - name: detect_language

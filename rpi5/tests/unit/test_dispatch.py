@@ -30,8 +30,12 @@ POLICY = {
 }
 
 
-def _disp(tmp_path):
-    return IntentDispatcher(INTENTS, POLICY, SettingsStore(tmp_path / "settings.json"))
+def _disp(tmp_path, enabled=("pl", "en")):
+    # Bilingual envelope by default: these tests exercise the EN ASSET
+    # behaviour (docs/13 parity). The PL-only runtime clamp has its own tests.
+    return IntentDispatcher(INTENTS, POLICY,
+                            SettingsStore(tmp_path / "settings.json"),
+                            enabled_langs=enabled)
 
 
 def test_say_action_speaks_bilingual_response(tmp_path):
@@ -40,7 +44,8 @@ def test_say_action_speaks_bilingual_response(tmp_path):
         "name": "what_can_you_do", "action": "say",
         "response": {"pl": "Jestem Jessica.", "en": "I'm Jessica."},
     }]}
-    d = IntentDispatcher(intents, POLICY, SettingsStore(tmp_path / "s.json"))
+    d = IntentDispatcher(intents, POLICY, SettingsStore(tmp_path / "s.json"),
+                         enabled_langs=("pl", "en"))
     pl = d.dispatch("what_can_you_do", {}, "pl")
     en = d.dispatch("what_can_you_do", {}, "en")
     assert pl.action == "applied" and pl.speak == "Jestem Jessica."
@@ -168,3 +173,22 @@ def test_orchestrator_dispatches_nlu_intent(tmp_path):
                  data={"intent": "unknown_intent", "language": "pl", "params": {}})
     )
     assert none is None
+
+
+def test_polish_only_runtime_clamps_language(tmp_path):
+    """PL-only envelope (2026-09-11): a stale EN pin — live: overheard room
+    talk pinned EN and the EN voice spelled out Polish news for four days —
+    must be inert, and switching to a not-enabled language must refuse."""
+    d = _disp(tmp_path, enabled=("pl",))
+    # A stale pin outside the envelope is ignored.
+    d._settings.set("languages.pinned", "en")
+    assert d._effective_lang("pl") == "pl"
+    assert d._effective_lang("en") == "pl"
+    # Switching to a not-enabled language refuses (no pin written).
+    d._settings.set("languages.pinned", None)
+    r = d.dispatch("switch_language", {"lang": "angielsku"}, "pl")
+    assert r.action == "denied"
+    assert d.pinned_language() is None
+    # Polish (enabled) still pins fine.
+    r2 = d.dispatch("switch_language", {"lang": "polsku"}, "pl")
+    assert r2.action == "applied" and d.pinned_language() == "pl"

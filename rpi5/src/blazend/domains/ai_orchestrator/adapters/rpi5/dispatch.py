@@ -100,7 +100,9 @@ class IntentDispatcher:
     """Acts on fast-path intents, holding the pending-confirmation state."""
 
     def __init__(
-        self, intents_cfg: dict[str, Any], policy_cfg: dict[str, Any], settings: SettingsStore
+        self, intents_cfg: dict[str, Any], policy_cfg: dict[str, Any],
+        settings: SettingsStore,
+        enabled_langs: tuple[str, ...] | None = None,
     ):
         self._intents = {i["name"]: i for i in intents_cfg.get("intents", [])}
         self._allow = policy_cfg.get("allow_voice_mutation", {})
@@ -109,6 +111,22 @@ class IntentDispatcher:
         self._pending: dict[str, Any] | None = None
         allowed = self._allow.get("languages.pinned", {}).get("allowed_values", ["pl", "en"])
         self._supported = tuple(c for c in allowed if c)
+        # Runtime language envelope (system.yaml languages.enabled — PL-only
+        # since docs/13): the ONLY languages a reply may be spoken in. Live
+        # 2026-09-07 22:39: overheard room talk ("…nie za bardzo mów po
+        # angielsku…") matched switch_language and pinned EN for four days —
+        # the EN Piper voice then spelled out Polish news. A pin outside the
+        # envelope is now inert and the switch refuses it outright.
+        if enabled_langs is None:
+            try:
+                from blazend.config import load as _load_cfg
+
+                enabled = _load_cfg("system").get(
+                    "languages.enabled", ["pl"]) or ["pl"]
+            except Exception:  # noqa: BLE001
+                enabled = ["pl"]
+            enabled_langs = tuple(str(c) for c in enabled)
+        self._enabled_langs = enabled_langs
         self._tool_kit: Tools | None = None
 
     def _tools(self) -> Tools:
@@ -125,8 +143,13 @@ class IntentDispatcher:
         return None if pinned is None else str(pinned)
 
     def _effective_lang(self, detected: str) -> str:
-        """Pinned language wins over the per-utterance detected one."""
-        return self.pinned_language() or detected
+        """Pinned language wins over the per-utterance detected one — but the
+        result is CLAMPED to `languages.enabled`: on the Polish-only runtime
+        every reply is spoken Polish, whatever a stale pin or a detector says."""
+        lang = self.pinned_language() or detected
+        if lang not in self._enabled_langs:
+            return self._enabled_langs[0]
+        return lang
 
     def dispatch(self, name: str, params: dict[str, Any], language: str = "pl") -> DispatchResult:
         spec = self._intents.get(name)
@@ -236,6 +259,13 @@ class IntentDispatcher:
         if code not in self._supported:
             return DispatchResult(
                 msg("lang.only_pl_en", lang),
+                lang, "denied", data={"requested": code})
+        if code not in self._enabled_langs:
+            # Polish-only runtime (docs/13): the EN assets exist but the
+            # language is not enabled — refuse instead of pinning a voice
+            # that will spell out Polish content (live 2026-09-07).
+            return DispatchResult(
+                msg("lang.not_enabled", lang),
                 lang, "denied", data={"requested": code})
         self._settings.set("languages.pinned", code)
         # Confirm in the *target* language so the user hears the switch land.
