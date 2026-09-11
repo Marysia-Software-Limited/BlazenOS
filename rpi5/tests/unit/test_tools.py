@@ -306,6 +306,17 @@ class _FakeNews:
     def collect(self, tiers, limit=None) -> dict[str, list[str]]:
         return {t: self.by_tier(t) for t in tiers}
 
+    def rich_by_tier(self, tier: str, limit: int | None = None) -> list[dict[str, str]]:
+        # Titles with a summary for the first Kraków item — enough to assert
+        # the composer received the STORY material (2026-09-11).
+        out = [{"title": t, "summary": ""} for t in self.by_tier(tier, limit)]
+        if tier == "local" and out:
+            out[0]["summary"] = "Prace na Wawelu potrwają do jesieni."
+        return out
+
+    def collect_rich(self, tiers, limit=None):
+        return {t: self.rich_by_tier(t, limit) for t in tiers}
+
 
 def test_news_uses_openai_when_key_present() -> None:
     fake = _FakeOpenAi("Z Krakowa: remont. Z kraju: budżet. Ze świata: szczyt ONZ.")

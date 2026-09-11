@@ -783,35 +783,41 @@ prompts:
     pl: >-
       Znajdź w internecie najważniejsze DZISIEJSZE ({today}) wiadomości i
       ułóż mówiony serwis po polsku w trzech częściach, dokładnie w tej
-      kolejności: „Z Krakowa”, „Z kraju” (Polska), „Ze świata” — po cztery-pięć
-      wiadomości w każdej części, każda w jednym lub dwóch zdaniach z konkretami:
-      kto, co, gdzie, kiedy, liczby i kwoty jeśli są znane. Tylko fakty
+      kolejności: „Z Krakowa”, „Z kraju” (Polska), „Ze świata” — po trzy-cztery
+      wiadomości w każdej części. Każdą wiadomość OPOWIEDZ w trzech-czterech
+      pełnych zdaniach z konkretami: kto, co, gdzie, kiedy, skutki, liczby i
+      kwoty jeśli są znane — nie podawaj samych tytułów. Tylko fakty
       znalezione w sieci.
     en: >-
       Search the internet for TODAY'S ({today}) top news and compose a spoken
       brief in three sections, in this exact order: From Kraków, From Poland,
-      Worldwide — four-five items each, one-two sentences each with specifics:
-      who, what, where, when, figures and amounts when known. Only facts found
-      on the web.
+      Worldwide — three-four stories each. TELL each story in three-four full
+      sentences with specifics: who, what, where, when, consequences, figures
+      and amounts when known — no bare titles. Only facts found on the web.
 
   # -- tools: news brief — RSS headline composer (cloud fallback) -----------
   news_compose.system:
     pl: >-
-      {persona} Jesteś prezenterką wiadomości. Z podanych nagłówków ułóż
-      krótki, mówiony serwis po polsku w trzech częściach: „Z Krakowa”, „Z kraju”,
-      „Ze świata” — po dwie wiadomości w każdej, każda jednym zdaniem. Nagłówki
-      zagraniczne przetłumacz na polski. Nie dodawaj faktów spoza nagłówków,
-      bez wstępu, bez adresów URL. Zwykły tekst do przeczytania na głos — bez
-      formatowania Markdown, bez gwiazdek i nagłówków.
+      {persona} Jesteś prezenterką wiadomości. Z podanego materiału (tytuły z
+      opisami) ułóż mówiony serwis po polsku w trzech częściach: „Z Krakowa”,
+      „Z kraju”, „Ze świata” — po trzy-cztery wiadomości w każdej części.
+      Każdą wiadomość OPOWIEDZ w trzech-czterech pełnych zdaniach: co się
+      stało, kto, gdzie, jakie są skutki lub liczby — nie czytaj samych
+      tytułów. Materiał zagraniczny przetłumacz na polski. Nie dodawaj faktów
+      spoza materiału, bez wstępu, bez adresów URL. Zwykły tekst do
+      przeczytania na głos — bez formatowania Markdown, bez gwiazdek i
+      nagłówków.
     en: >-
-      {persona} You are a news anchor. From these headlines compose a short
-      spoken brief in three sections — From Kraków, Nationally, Worldwide — two
-      items each, one sentence each. Add no facts beyond the headlines, no
-      preamble, no URLs. Plain text to be read aloud — no Markdown, no asterisks
-      or headers.
+      {persona} You are a news anchor. From the material below (titles with
+      summaries) compose a spoken brief in three sections — From Kraków,
+      Nationally, Worldwide — three to four stories per section. TELL each
+      story in three to four full sentences (what happened, who, where,
+      consequences or figures) — do not read out bare titles. Add no facts
+      beyond the material, no preamble, no URLs. Plain text to be read aloud —
+      no Markdown, no asterisks or headers.
   news_compose.query:
-    pl: "Nagłówki na dziś:\n{headlines}"
-    en: "Today's headlines:\n{headlines}"
+    pl: "Materiał na dziś (tytuły z opisami):\n{headlines}"
+    en: "Today's material (titles with summaries):\n{headlines}"
 
   # -- tools: news brief — Gemini grounded search (secondary cloud path) ----
   news_gemini.query:

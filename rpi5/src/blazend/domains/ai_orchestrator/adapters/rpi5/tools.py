@@ -15,6 +15,7 @@ Gemini, RSS, the station directory, the memory store) — see
 from __future__ import annotations
 
 import logging
+import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -50,6 +51,8 @@ from blazend.domains.context.adapters.rpi5.embeddings import EmbedderError
 from blazend.domains.context.adapters.rpi5.memory import MemoryStore
 from blazend.domains.context.adapters.rpi5.timeparse import parse_when
 from blazend.i18n import msg, plural, table
+
+_UNSET = object()  # lazy-slot sentinel (None = probed and absent)
 
 log = logging.getLogger("blazend.domains.ai_orchestrator.tools")
 
@@ -169,6 +172,7 @@ class Tools:
         # OpenAI client for live news (web-search model). Built lazily from news.yaml
         # so the key (OPENAI_API_KEY / CHAT_GPT_KEY) is read at call time; injectable.
         self._openai = openai
+        self._local_llm: object = _UNSET  # lazy on-box news composer (Bielik)
         self.radio = radio or RadioDirectory()
         self.music = music or MusicDirectory()
         self.audiobooks = AudiobookDirectory()
@@ -570,17 +574,73 @@ class Tools:
             lines.extend(f"- {t}" for t in items)
         return "\n".join(lines)
 
-    def _spoken_from_tiers(self, tiers: dict[str, list[str]], lang: str) -> ToolResult:
-        """Keyless floor: read the tiers natively (Polish), two items each, no LLM."""
+    def _item_block(self, tiers: dict[str, list[dict[str, str]]], lang: str) -> str:
+        """Rich items (title + RSS summary) as the composer's material — what
+        lets the brief tell the STORY instead of reading titles (2026-09-11)."""
+        lines: list[str] = []
+        for key in self._NEWS_TIERS:
+            items = tiers.get(key) or []
+            if not items:
+                continue
+            lines.append(f"[{table('news_labels', key, lang)}]")
+            for it in items:
+                # The local composer runs a small-context CPU model — cap the
+                # per-item material so the whole block fits and prefill stays
+                # affordable (the floor still reads the FULL summaries).
+                body = it.get("summary", "")[:300]
+                lines.append(f"- {it['title']}" + (f" — {body}" if body else ""))
+        return "\n".join(lines)
+
+    def _local_composer(self) -> Any:  # OllamaLlm | None
+        """The on-box LLM (Bielik via ollama, same mesh resource the brain
+        chats through) as the news composer when no cloud key is present —
+        the common case since 2026-09: paul runs keyless and the brief was
+        falling straight to the bare-title floor."""
+        if self._local_llm is _UNSET:
+            self._local_llm = None
+            try:
+                from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.ollama import (
+                    OllamaLlm,
+                )
+                from blazend.domains.ai_orchestrator.core.registry import (
+                    _ollama_url_from_mesh,
+                )
+
+                url = (_ollama_url_from_mesh()
+                       or os.environ.get("BLAZEN_LLM_OLLAMA_URL", "")).strip()
+                if url:
+                    # A full three-tier brief is ~600 tokens at ~5 tok/s on
+                    # the CPU-resident 11B — the dispatch narrates the wait
+                    # ("ciągle szukam"), so give it real room; a timeout still
+                    # falls to the (now story-rich) RSS floor.
+                    llm = OllamaLlm(url, timeout=300.0)
+                    if llm.available:
+                        self._local_llm = llm
+            except Exception as exc:  # noqa: BLE001
+                log.debug("local news composer unavailable: %s", exc)
+        return self._local_llm
+
+    def _spoken_from_tiers(self, tiers: dict[str, list[Any]], lang: str) -> ToolResult:
+        """No-LLM floor: read the tiers natively (Polish), three items each.
+        Rich items (title + RSS summary) are read in full — even without any
+        composer the user hears the story, not just its headline (2026-09-11)."""
         parts: list[str] = []
         counts: dict[str, int] = {}
         for key in self._NEWS_TIERS:
-            items = (tiers.get(key) or [])[:2]
+            items = (tiers.get(key) or [])[:3]
             counts[key] = len(items)
-            if items:
+            spoken: list[str] = []
+            for it in items:
+                if isinstance(it, dict):
+                    body = str(it.get("summary", "")).strip()
+                    title = str(it.get("title", "")).strip()
+                    spoken.append(f"{title}. {body}" if body else title)
+                else:
+                    spoken.append(str(it))
+            if spoken:
                 parts.append(msg("news.tier_line", lang,
                                  label=table("news_labels", key, lang),
-                                 items="; ".join(items)))
+                                 items="; ".join(spoken)))
         if not parts:
             return ToolResult(
                 False,
@@ -624,24 +684,39 @@ class Tools:
             return hit
 
         # Data is ALWAYS real RSS from the configured sources — keyless, on-device.
-        # Kraków + kraj are Polish; the world tier is the international agencies
-        # (English) the user asked for, translated into the Polish brief below.
-        tiers = self.news.collect(self._NEWS_TIERS)
+        # Since 2026-09-11 each item carries its RSS summary too: the user wants
+        # the NEWS dictated (3-4 stories per tier, 3-4 sentences each), not a
+        # readout of headlines. Kraków + kraj are Polish; the world tier is the
+        # international agencies (English), translated in the composed brief.
+        rich = self.news.collect_rich(self._NEWS_TIERS, limit=4)
+        block = self._item_block(rich, lang)
+        sys = msg("prompts.news_compose.system", lang, persona=self.persona)
+        query = msg("prompts.news_compose.query", lang, headlines=block)
+        counts = {k: len(v) for k, v in rich.items()}
 
-        # Preferred: the cloud composer folds the headlines into a spoken Polish
-        # brief, translating the world agencies. Opt-in; any failure → the floor.
+        # Preferred: the cloud composer folds the material into a spoken Polish
+        # brief, translating the world agencies. Opt-in; any failure → next rung.
         composer = self._news_composer()
-        block = self._headline_block(tiers, lang)
         if composer.available and block:
-            sys = msg("prompts.news_compose.system", lang, persona=self.persona)
-            query = msg("prompts.news_compose.query", lang, headlines=block)
             try:
                 answer = _clean_spoken(composer.chat(query, system=sys))
                 if answer:
                     return ToolResult(True, answer, "news",
-                                      {"source": "openai", "tiers": {k: len(v) for k, v in tiers.items()}})
+                                      {"source": "openai", "tiers": counts})
             except OpenAiError as e:
-                log.warning("news compose via OpenAI failed (%s); trying Gemini/RSS", e)
+                log.warning("news compose via OpenAI failed (%s); trying local LLM", e)
+
+        # On-box composer (Bielik via ollama) — the common path on a keyless
+        # install: same material, same prompt, ~1 min of narrated generation.
+        local = self._local_composer()
+        if local is not None and block:
+            try:
+                answer = _clean_spoken(local.chat(query, system=sys))
+                if answer:
+                    return ToolResult(True, answer, "news",
+                                      {"source": "local-llm", "tiers": counts})
+            except Exception as e:  # noqa: BLE001 — every rung is best-effort
+                log.warning("news compose via local LLM failed (%s); trying Gemini", e)
 
         # Gemini does its own grounded Kraków+Poland search (independent of the RSS
         # block), kept as the secondary cloud path.
@@ -654,11 +729,13 @@ class Tools:
             except GeminiError as e:
                 log.warning("news via Gemini failed (%s); falling back to RSS", e)
 
-        # Keyless floor: local + national spoken natively; the world tier switches
-        # to the Polish-language world feed so the brief stays fully Polish offline
-        # (falling back to the English agencies only if no Polish world feed answers).
-        floor = dict(tiers)
-        floor["world"] = self.news.by_tier("world_pl") or tiers.get("world", [])
+        # No-LLM floor: local + national spoken natively WITH their summaries;
+        # the world tier switches to the Polish-language world feed so the brief
+        # stays fully Polish offline (falling back to the English agencies only
+        # if no Polish world feed answers).
+        floor: dict[str, list[Any]] = dict(rich)
+        floor["world"] = (self.news.rich_by_tier("world_pl", limit=4)
+                          or rich.get("world", []))
         res = self._spoken_from_tiers(floor, lang)
         if web_tried and res.ok:
             # Verbose state: the user asked for live news and got RSS — say why.

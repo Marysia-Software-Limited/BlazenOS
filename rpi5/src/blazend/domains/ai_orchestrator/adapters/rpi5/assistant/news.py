@@ -65,29 +65,60 @@ def _http_get(url: str) -> str:
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError:
-        return raw.decode("iso-8859-2", "replace")
+        try:
+            return raw.decode("cp1250")
+        except UnicodeDecodeError:
+            return raw.decode("iso-8859-2", "replace")
 
 
-def parse_titles(feed_xml: str, limit: int) -> list[str]:
-    """Extract item/entry titles from RSS or Atom, skipping the channel title."""
+# RSS/Atom child tags that carry the item body, in preference order.
+_SUMMARY_TAGS = ("description", "summary", "encoded")  # encoded = content:encoded
+_TAG_RE = re.compile(r"<[^>]+>")
+_SUMMARY_MAX = 500  # chars per item — enough for 3-4 spoken sentences
+
+
+def _strip_html(text: str) -> str:
+    """Feed descriptions arrive as HTML — reduce to plain spoken text."""
+    import html
+
+    txt = _TAG_RE.sub(" ", html.unescape(text))
+    return " ".join(txt.split())
+
+
+def parse_items(feed_xml: str, limit: int) -> list[dict[str, str]]:
+    """Extract ``{"title", "summary"}`` per item/entry from RSS or Atom.
+
+    The summary (description / summary / content:encoded, HTML-stripped,
+    capped) is what lets the brief DICTATE the news instead of reading bare
+    headlines (user request 2026-09-11). Items without a body get an empty
+    summary — the caller degrades to the title."""
     try:
         root = ET.fromstring(feed_xml)
     except ET.ParseError as e:
         raise NewsError(f"malformed feed: {e}") from e
-    titles: list[str] = []
+    items: list[dict[str, str]] = []
     for el in root.iter():
         tag = el.tag.rsplit("}", 1)[-1]  # strip any namespace
-        if tag in ("item", "entry"):
-            for child in el:
-                if child.tag.rsplit("}", 1)[-1] != "title":
-                    continue
-                txt = (child.text or "").strip()
-                if txt:
-                    titles.append(" ".join(txt.split()))
-                    break
-        if len(titles) >= limit:
+        if tag not in ("item", "entry"):
+            continue
+        title, summary = "", ""
+        for child in el:
+            ctag = child.tag.rsplit("}", 1)[-1]
+            txt = (child.text or "").strip()
+            if ctag == "title" and txt and not title:
+                title = " ".join(txt.split())
+            elif ctag in _SUMMARY_TAGS and txt and not summary:
+                summary = _strip_html(txt)[:_SUMMARY_MAX]
+        if title:
+            items.append({"title": title, "summary": summary})
+        if len(items) >= limit:
             break
-    return titles
+    return items
+
+
+def parse_titles(feed_xml: str, limit: int) -> list[str]:
+    """Extract item/entry titles from RSS or Atom, skipping the channel title."""
+    return [it["title"] for it in parse_items(feed_xml, limit)]
 
 
 def _norm(title: str) -> str:
@@ -156,6 +187,33 @@ class NewsClient:
         """Headlines for each requested tier → ``{tier: [titles]}`` (empty tiers kept)."""
         return {tier: self.by_tier(tier, limit) for tier in tiers}
 
+    def rich_by_tier(self, tier: str, limit: int | None = None) -> list[dict[str, str]]:
+        """Like :meth:`by_tier` but each item is ``{"title", "summary"}`` —
+        the material for a DICTATED brief (2026-09-11), deduped by title."""
+        want = limit or self._per_tier
+        collected: list[dict[str, str]] = []
+        for feed in self._tiers.get(tier, []):
+            url = feed.get("url") if isinstance(feed, dict) else None
+            if not url:
+                continue
+            try:
+                collected.extend(parse_items(self._transport(url), want))
+            except NewsError:
+                continue
+        seen: set[str] = set()
+        out: list[dict[str, str]] = []
+        for it in collected:
+            key = _norm(it["title"])
+            if key and key not in seen:
+                seen.add(key)
+                out.append(it)
+        return out[:want]
+
+    def collect_rich(self, tiers: Sequence[str], limit: int | None = None,
+                     ) -> dict[str, list[dict[str, str]]]:
+        """Rich items for each requested tier (empty tiers kept)."""
+        return {tier: self.rich_by_tier(tier, limit) for tier in tiers}
+
     # -- legacy per-language API (older single-feed callers) ---------------
     def headlines(self, lang: str, limit: int | None = None) -> list[str]:
         """Top headlines for ``lang`` (first feed that works)."""
@@ -178,4 +236,4 @@ class NewsClient:
         return []
 
 
-__all__ = ["NewsClient", "NewsError", "parse_titles"]
+__all__ = ["NewsClient", "NewsError", "parse_items", "parse_titles"]

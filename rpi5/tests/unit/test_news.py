@@ -8,6 +8,7 @@ import pytest
 from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.news import (
     NewsClient,
     NewsError,
+    parse_items,
     parse_titles,
 )
 
@@ -111,3 +112,32 @@ def test_collect_returns_all_requested_tiers():
     got = client.collect(["local", "national", "world"])
     assert set(got) == {"local", "national", "world"}
     assert all(got[t] for t in got)
+
+
+_RICH_RSS = (
+    "<rss><channel><title>Kanał</title>"
+    "<item><title>Powódź w Małopolsce</title>"
+    "<description>&lt;p&gt;Po nocnych ulewach &lt;b&gt;rzeka wystąpiła&lt;/b&gt; "
+    "z brzegów. Ewakuowano 40 osób. Straty szacuje się na 2 mln zł.&lt;/p&gt;"
+    "</description></item>"
+    "<item><title>Sama wiadomość bez opisu</title></item>"
+    "</channel></rss>"
+)
+
+
+def test_parse_items_extracts_and_strips_summaries():
+    """The dictated brief (2026-09-11): items carry HTML-stripped summaries so
+    the news can be TOLD, not just its headline read out."""
+    items = parse_items(_RICH_RSS, 5)
+    assert items[0]["title"] == "Powódź w Małopolsce"
+    assert "rzeka wystąpiła z brzegów" in items[0]["summary"]
+    assert "<" not in items[0]["summary"]  # HTML stripped
+    assert items[1] == {"title": "Sama wiadomość bez opisu", "summary": ""}
+
+
+def test_rich_by_tier_dedupes_and_keeps_summaries():
+    client = NewsClient(transport=lambda _u: _RICH_RSS)
+    rich = client.rich_by_tier("local", limit=5)
+    titles = [it["title"] for it in rich]
+    assert titles.count("Powódź w Małopolsce") == 1
+    assert rich[0]["summary"]
