@@ -1224,11 +1224,13 @@ class Orchestrator:
         """Lower the Jabra so a command is heard over a playing stream."""
         self._ducked = True
         await self._set_volume(_DUCK_PCT)
+        log.info("duck → %d%% (listening over playback)", _DUCK_PCT)
 
     async def _duck_off(self) -> None:
         """Restore the Jabra to the user's volume after a duck."""
         self._ducked = False
         await self._set_volume(self._volume_pct)
+        log.info("duck restored → %d%%", self._volume_pct)
 
     def _arm_duck_restore(self) -> None:
         """(Re)arm the timer that un-ducks the stream if no command follows."""
@@ -1247,8 +1249,10 @@ class Orchestrator:
         except asyncio.CancelledError:
             return
         # No radio command followed the wake → treat it as a false (echo) wake
-        # and bring the volume back up.
-        if self._radio.playing and self._ducked:
+        # and bring the volume back up. Restore even when nothing plays anymore:
+        # a stream that died/ended inside the window used to strand the Jabra
+        # at _DUCK_PCT — "Jessica ściszyła się do minimum" (2026-09-18).
+        if self._ducked:
             await self._duck_off()
 
     def _foreign_voice_block(self, intent: str, data: dict[str, Any]) -> bool:
