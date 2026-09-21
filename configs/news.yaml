@@ -18,6 +18,8 @@
 version: 1
 max_per_tier: 3                          # headlines kept per tier (voice-length)
 max_headlines: 5                         # legacy single-feed headlines() cap
+max_age_h: 48                            # drop items older than this (0 = no age filter);
+                                         # feeds pin evergreen features on top (2026-09-20)
 
 tiers:
   local:                                 # Kraków — Polish
