@@ -167,6 +167,17 @@ _FOREIGN_CUE_COOLDOWN_S = 8.0
 # her understanding and ask, instead of acting on a possible mishearing.
 # The pending action survives this long; then it silently lapses.
 _CONFIRM_TTL_S = 30.0
+# Repeat-to-learn (2026-09-21, user request): a household voice the models fit
+# poorly (Błazen says "dżesika" differently than the trained samples) fails
+# REPEATEDLY — jessica-ts journal shows 2-4 attempts per command. After this
+# many consecutive failed understandings (asr.no_text / brain not_understood)
+# Jessica stops repeating the generic cue and EXPLICITLY asks for the wake
+# word + command again, arming a label window: the successful retry lands in
+# learning/events.jsonl as `repeat_after_prompt` with its audio clip — wake
+# positives + lexicon material for the next retrain.
+_LEARN_REPEAT_AFTER = 2       # consecutive misses before the explicit request
+_LEARN_REPEAT_HORIZON_S = 120.0  # misses further apart than this don't chain
+_LEARN_REPEAT_WINDOW_S = 60.0    # how long the retry keeps its training label
 # Confirmation vocabulary (folded, lowercase). Sync note: emotional overlaps
 # the stop-sentinel phrases on purpose — "zamknij się" both aborts a pending
 # action AND is a strong detection-error label.
@@ -441,6 +452,9 @@ class Orchestrator:
         self._listening_cue_at = 0.0  # loop time of the last "Słucham?" (cooldown)
         self._stopcheck_at = 0.0  # loop time of the last wake-less stop check
         self._not_understood_cue_at = 0.0  # loop time of the last "Nie zrozumiałam" (cooldown)
+        self._miss_count = 0          # consecutive failed understandings (repeat-to-learn)
+        self._last_miss_at = 0.0      # loop time of the last miss (chains within horizon)
+        self._repeat_armed_until = 0.0  # label the next understood command as a training repeat
         self._working_cue_at = 0.0  # loop time of the last "Chwileczkę." (cooldown)
         self._wake_handled_at = -1e9  # loop time of the last acted-on wake (refractory)
         self._book_activity_at = 0.0     # loop time the attention interval counts from
@@ -500,7 +514,9 @@ class Orchestrator:
                     "listening": "Słucham?",
                     "working": "Chwileczkę, już to sprawdzam.",
                     "searching": "Poczekaj chwileczkę, szukam wiadomości.",
-                    "still_searching": "Chwileczkę, ciągle szukam."}
+                    "still_searching": "Chwileczkę, ciągle szukam.",
+                    "learn_repeat": ("Powiedz słowo dżesika i swoją komendę "
+                                     "ponownie, abym mogła się nauczyć.")}
         try:
             phrases = load_config("phrases")
             cues = {k: str(phrases.get(f"cues.{k}.{lang}", v)) for k, v in fallback.items()}
@@ -998,6 +1014,11 @@ class Orchestrator:
                 if await self._resolve_confirmation(env):
                     await self._state.update(patch)
                     return
+            if self._awake():
+                # A recognised command ends any miss streak; when it answers
+                # the repeat-to-learn request it becomes a labelled example.
+                self._note_understood(str(env.data.get("transcript", "")),
+                                      env.data)
             if not self._awake():
                 # Heard a command but not addressed ("Hej Jessico" not said) —
                 # acknowledge in state, but stay silent.
@@ -1136,12 +1157,20 @@ class Orchestrator:
                     # not match (the clip text rides along via peek).
                     self._learn_event("not_understood", "", env.data)
                     if (self._earcons.get("error_tone")
-                            and not self._radio.playing):
+                            and not self._radio.playing
+                            and not await self._register_miss()):
                         now = asyncio.get_running_loop().time()
                         if (now - self._not_understood_cue_at
                                 >= _NOT_UNDERSTOOD_CUE_COOLDOWN_S):
                             self._not_understood_cue_at = now
                             await self._speak(self._cues["not_understood"])
+                elif (env.data.get("text")
+                      and str(env.data.get("action")) not in ("wake", "asleep",
+                                                              "error")):
+                    # A real answer (chat/tool) — the utterance was understood;
+                    # a bare wake ack ("Tak? Słucham.") doesn't count.
+                    self._note_understood(
+                        str(env.data.get("transcript", "")), env.data)
         if env.topic == "nlu.miss" and self._confirm_pending is not None:
             # Free text while a confirmation is pending: yes/no/emotional or
             # unrelated babble (= no confirmation → cancel). The brain is
@@ -1167,7 +1196,13 @@ class Orchestrator:
             self._cancel_heartbeat()  # the turn ended in an error cue, not a reply
         if (env.topic == "error" and env.data.get("code") == "asr.no_text"
                 and self._earcons.get("error_tone") and self._awake()
-                and not self._radio.playing):
+                and not self._radio.playing
+                # Only a REAL-SPEECH miss (whisper heard words, confidence too
+                # low) chains toward the repeat-to-learn request; hallucination
+                # and empty-window drops are false-wake noise — asking an empty
+                # room to "say dżesika again" would be the old cue chant back.
+                and not (env.data.get("reason") == "low_conf"
+                         and await self._register_miss())):
             now = asyncio.get_running_loop().time()
             if now - self._not_understood_cue_at >= _NOT_UNDERSTOOD_CUE_COOLDOWN_S:
                 self._not_understood_cue_at = now
@@ -1434,6 +1469,36 @@ class Orchestrator:
         self._learn_event("unconfirmed", str(stored.get("transcript", "")), stored)
         log.info("confirm: no confirmation (%r) — cancelled silently", text[:40])
         return True
+
+    async def _register_miss(self) -> bool:
+        """Count one failed understanding; True when the streak reached
+        ``_LEARN_REPEAT_AFTER`` and the explicit repeat-to-learn request was
+        spoken (in place of the generic "Nie zrozumiałam" cue). The request
+        bypasses the cue cooldown on purpose — it must be heard clearly."""
+        now = asyncio.get_running_loop().time()
+        if now - self._last_miss_at > _LEARN_REPEAT_HORIZON_S:
+            self._miss_count = 0
+        self._last_miss_at = now
+        self._miss_count += 1
+        if self._miss_count < _LEARN_REPEAT_AFTER:
+            return False
+        self._miss_count = 0
+        self._repeat_armed_until = now + _LEARN_REPEAT_WINDOW_S
+        # Keep listening: the user was told to speak again — the awake window
+        # must outlive the prompt, not expire mid-retry.
+        self._awake_until = max(self._awake_until, now + self._wake_window_s)
+        log.info("repeat-to-learn: asking for wake word + command again")
+        await self._speak(self._cues["learn_repeat"])
+        return True
+
+    def _note_understood(self, transcript: str, data: dict[str, Any]) -> None:
+        """A command was understood: end the miss streak, and when it answers
+        the repeat-to-learn request, label it as a training example."""
+        self._miss_count = 0
+        if asyncio.get_running_loop().time() < self._repeat_armed_until:
+            self._repeat_armed_until = 0.0
+            self._learn_event("repeat_after_prompt", transcript, data)
+            log.info("repeat-to-learn: labelled retry %r", transcript[:60])
 
     def _maybe_stopcheck(self, env: Envelope) -> None:
         """Arm one wake-less ASR stop check for a short utterance heard while

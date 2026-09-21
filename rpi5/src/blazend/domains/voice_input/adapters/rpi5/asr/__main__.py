@@ -727,7 +727,11 @@ async def _real_loop(pub: Publisher) -> None:
                     topic="error",
                     source="blazend-asr",
                     data={"code": "asr.no_text",
-                          "message": "transcript below confidence floor"},
+                          "message": "transcript below confidence floor",
+                          # real speech, garbled — repeat-to-learn counts THIS
+                          # kind of miss (noise/hallucination drops don't ask
+                          # an empty room to repeat itself, 2026-09-21)
+                          "reason": "low_conf"},
                 )
             )
             continue

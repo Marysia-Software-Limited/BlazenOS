@@ -86,6 +86,55 @@ async def test_no_text_still_prompts_not_understood(tmp_path):
     assert spoken == [orch._cues["not_understood"]]
 
 
+def _low_conf() -> Envelope:
+    """A REAL-SPEECH miss: whisper heard words, confidence under the floor."""
+    return Envelope(topic="error", source="blazend-asr",
+                    data={"code": "asr.no_text",
+                          "message": "transcript below confidence floor",
+                          "reason": "low_conf"})
+
+
+@pytest.mark.asyncio
+async def test_second_miss_asks_to_repeat_for_learning(tmp_path):
+    """Repeat-to-learn (2026-09-21): the SECOND consecutive real-speech
+    failure swaps the generic cue for the explicit wake-word+command request —
+    spoken even inside the cue cooldown, because it must be heard."""
+    orch, spoken = _orch(tmp_path)
+    await orch._on_envelope("asr", _low_conf())
+    await orch._on_envelope("asr", _low_conf())
+    assert spoken == [orch._cues["not_understood"], orch._cues["learn_repeat"]]
+    assert orch._cues["learn_repeat"] == (
+        "Powiedz słowo dżesika i swoją komendę ponownie, abym mogła się nauczyć.")
+
+
+@pytest.mark.asyncio
+async def test_noise_drops_never_ask_to_repeat(tmp_path):
+    """Hallucination/empty drops (no `reason: low_conf`) are false-wake noise:
+    they keep the old rate-limited cue and never chain toward the request."""
+    orch, spoken = _orch(tmp_path)
+    for _ in range(4):
+        await orch._on_envelope("asr", _err("asr.no_text"))
+    assert spoken == [orch._cues["not_understood"]]  # burst → one cue, no ask
+
+
+@pytest.mark.asyncio
+async def test_understood_retry_is_labelled_for_training(tmp_path):
+    """The command that answers the repeat request lands in the learning log
+    as `repeat_after_prompt`, and the miss streak resets."""
+    orch, spoken = _orch(tmp_path)
+    await orch._on_envelope("asr", _low_conf())
+    await orch._on_envelope("asr", _low_conf())  # arms the label window
+    labels: list[tuple[str, str]] = []
+    orch._learn_event = (  # type: ignore[method-assign]
+        lambda outcome, text, data, corrected=None: labels.append((outcome, text)))
+    orch._note_understood("dżesika, która jest godzina", {"intent": "time_query"})
+    assert labels == [("repeat_after_prompt", "dżesika, która jest godzina")]
+    assert orch._miss_count == 0
+    # The window is one-shot: the next understood command is NOT labelled.
+    orch._note_understood("dżesika, stop", {"intent": "stop"})
+    assert len(labels) == 1
+
+
 def _fake_aplay(monkeypatch, observed: dict):
     """Replace the aplay subprocess; record marker state at 'playback' time."""
 

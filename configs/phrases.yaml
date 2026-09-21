@@ -43,6 +43,12 @@ cues:
   still_searching:
     pl: "Chwileczkę, ciągle szukam."
     en: "One moment, still searching."
+  # Repeat-to-learn (2026-09-21): two consecutive failed understandings ->
+  # ask explicitly for the wake word + command; the retry is labelled
+  # repeat_after_prompt in learning/events.jsonl (wake + lexicon material).
+  learn_repeat:
+    pl: "Powiedz słowo dżesika i swoją komendę ponownie, abym mogła się nauczyć."
+    en: "Say the word Jessica and your command again, so I can learn."
 
 # ---------------------------------------------------------------------------
 # messages: flat dotted keys, grouped by domain prefix. Extracted VERBATIM
