@@ -321,8 +321,22 @@ async def _capture_followup(
             data={"code": "asr.followup_empty",
                   "message": "follow-up below confidence floor"}))
         return
-    _save_clip(pcm, ring.sample_rate, text, clips_dir)
     sp = _speaker_fields(speaker_id, pcm, speaker_thr)
+    if sp.get("speaker_owner") is False:
+        # Accidental catch (2026-09-21): the wake-less window heard a CONFIDENT
+        # utterance in a voice that is not the owner's — TV/radio/side talk
+        # answering nobody. Feeding it to the LLM keeps phantom conversations
+        # going; close quietly instead and keep the clip as a harvest negative.
+        # No speaker model/profile → sp is {} → trust, as everywhere else.
+        log.info("follow-up foreign voice (sim=%.2f): %r — closing",
+                 float(sp.get("speaker_sim", 0.0)), text[:60])
+        _save_false_wake(pcm, ring.sample_rate, "followup-foreign")
+        await pub.publish(Envelope(
+            topic="error", source="blazend-asr",
+            data={"code": "asr.followup_empty",
+                  "message": "foreign voice in follow-up"}))
+        return
+    _save_clip(pcm, ring.sample_rate, text, clips_dir)
     await pub.publish(Envelope(
         topic="asr.final", source="blazend-asr",
         data={"language": result.language, "text": text,

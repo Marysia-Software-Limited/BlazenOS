@@ -298,6 +298,34 @@ _AWAIT_PHRASES = (
 )
 
 
+# Negative/emotional pushback (2026-09-21, user request): profanity or a
+# dismissal aimed at Jessica mid-conversation. NEVER routed to the LLM —
+# answering "spierdalaj" with a chat completion pours fuel on it. The reply
+# goes silent, the conversation closes, and the orchestrator labels the
+# utterance `negative_reaction` in learning/events.jsonl: a negative training
+# stimulus tied to whatever Jessica just said/did. Folded lowercase
+# substrings; PL leads, EN assets retained (docs/13). Overlaps _STOP_ORDERS
+# ("zamknij się") on purpose — a stop that is ALSO an emotional rebuke still
+# stops first (fast-path); this list catches what the closed command list
+# misses.
+_NEGATIVE_REACTIONS = (
+    "spierdalaj", "odpierdol sie", "zamknij sie", "cicho badz", "badz cicho",
+    "odczep sie", "odwal sie", "daj spokoj", "zostaw mnie", "zamilcz",
+    "spadaj", "nie gadaj",
+    "fuck off", "shut up", "piss off", "leave me alone", "get lost",
+    "stop talking",
+)
+
+
+def is_negative_reaction(text: str) -> bool:
+    """True when the utterance is emotional pushback at Jessica (not a
+    command): silence her, close the conversation, learn from it."""
+    from audiobook_catalog.text_norm import _fold
+
+    folded = _fold(text)
+    return any(p in folded for p in _NEGATIVE_REACTIONS)
+
+
 def llm_awaits_reply(reply_text: str) -> bool:
     """True when a spoken LLM reply is WAITING for the user — it ends with a
     question or an inviting tail. The orchestrator then arms the HOT follow-up
@@ -583,6 +611,8 @@ class Assistant:
         # chat path is actually reachable: the explicit AI-query command, an
         # active conversation, or the one-shot ask window. (Ladder commands
         # answer fast and never needed the cue.)
+        if is_negative_reaction(text):
+            return False  # goes silent instantly — never promise "Chwileczkę"
         if _AI_QUERY.match(text) is not None:
             return True
         return bool(self._chat_history) or (
@@ -635,6 +665,13 @@ class Assistant:
             if name:
                 return Reply(msg("wake.greet_name", lang, name=name), lang, "wake")
             return Reply(msg("wake.greet", lang), lang, "wake")
+
+        if is_negative_reaction(command):
+            # Emotional pushback: silence, not a chat completion. The thread
+            # ends here; the orchestrator records the negative training label
+            # and closes the follow-up window.
+            self._chat_history.clear()
+            return Reply("", lang, "negative_reaction", {"transcript": text})
 
         reply = self._handle(command, lang, now=now, on_sentence=on_sentence,
                              on_token=on_token, named=named)

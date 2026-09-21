@@ -190,3 +190,21 @@ async def test_wake_with_chime_leaves_asr_able_to_listen(tmp_path, monkeypatch):
     assert "speaking" not in observed["during"]
     assert not (tmp_path / "speaking").exists()
     assert (tmp_path / "activate").exists()
+
+
+@pytest.mark.asyncio
+async def test_negative_reaction_closes_conversation_quietly(tmp_path):
+    """Emotional pushback (2026-09-21): the brain's negative_reaction reply
+    closes the follow-up window, writes the negative label, and says NOTHING."""
+    orch, spoken = _orch(tmp_path)
+    labels: list[tuple[str, str]] = []
+    orch._learn_event = (  # type: ignore[method-assign]
+        lambda outcome, text, data, corrected=None: labels.append((outcome, text)))
+    orch._followup_until = 10**9  # conversation window wide open
+    await orch._on_envelope("brain", Envelope(
+        topic="brain.reply", source="blazend-brain",
+        data={"action": "negative_reaction", "text": "", "language": "pl",
+              "payload": {"transcript": "spierdalaj"}}))
+    assert spoken == []
+    assert orch._followup_until == 0.0
+    assert labels == [("negative_reaction", "spierdalaj")]

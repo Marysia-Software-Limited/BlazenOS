@@ -183,7 +183,10 @@ async def serve(
                 reply = engine.route(text, now=datetime.now())
                 # not_understood carries no text but the orchestrator speaks
                 # its cue (closed command list, 2026-09-08) — publish it too.
-                if reply.text or reply.action == "not_understood":
+                # negative_reaction is silent by design, yet the orchestrator
+                # must see it to close the conversation and write the label.
+                if reply.text or reply.action in ("not_understood",
+                                                  "negative_reaction"):
                     log.info("reply (%s/%s): %s", reply.language, reply.action, reply.text)
                     await pub.publish(_reply_envelope(reply))
     finally:

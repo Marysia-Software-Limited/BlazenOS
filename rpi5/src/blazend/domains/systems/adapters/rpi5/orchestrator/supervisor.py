@@ -1119,7 +1119,10 @@ class Orchestrator:
             if self._drop_next_reply:
                 # "Dżesika, stop" cancelled this turn while the LLM was still
                 # generating — swallow the late answer instead of speaking it.
+                # A stop that interrupts an answer is ALSO a negative training
+                # stimulus (2026-09-21): the answer was unwanted.
                 self._drop_next_reply = False
+                self._learn_event("negative_reaction", "stop", env.data)
                 log.info("dropping cancelled brain reply: %r",
                          str(env.data.get("text", ""))[:60])
             elif (str(env.data.get("action", "")) == "reminder"
@@ -1152,6 +1155,20 @@ class Orchestrator:
                 # Closed command list (2026-09-08): the brain says it did not
                 # understand — speak the cue with the same rate limit as the
                 # asr.no_text path, then stop; no LLM guessing.
+                if str(env.data.get("action")) == "negative_reaction":
+                    # Emotional pushback (2026-09-21): go quiet NOW — close
+                    # the follow-up window so the conversation ends, and keep
+                    # the utterance as a negative training stimulus tied to
+                    # whatever was just said/done.
+                    self._followup_until = 0.0
+                    if (self._followup_task is not None
+                            and not self._followup_task.done()):
+                        self._followup_task.cancel()
+                    self._learn_event(
+                        "negative_reaction",
+                        str((env.data.get("payload") or {}).get("transcript", "")),
+                        env.data)
+                    log.info("negative reaction — conversation closed quietly")
                 if str(env.data.get("action")) == "not_understood":
                     # Learning label: an owner utterance the closed list did
                     # not match (the clip text rides along via peek).

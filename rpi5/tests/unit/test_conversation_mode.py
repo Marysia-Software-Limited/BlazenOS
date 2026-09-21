@@ -464,3 +464,73 @@ def test_followup_hallucination_treated_as_empty(tmp_path):
     assert _looks_hallucinated("Kraków Kraków Kraków")
     assert not _looks_hallucinated("włącz Trójkę")
     assert not _looks_hallucinated("stop stop")  # two = an insistent human
+
+
+# ----- negative reactions + accidental-catch gate (2026-09-21) -----------------
+
+from blazend.domains.ai_orchestrator.adapters.rpi5.assistant.engine import (  # noqa: E402
+    is_negative_reaction,
+)
+
+
+def test_negative_reaction_detector_pl_en():
+    for t in ("spierdalaj", "Zamknij się!", "daj spokój", "fuck off",
+              "Oh, shut up", "odczep się wreszcie"):
+        assert is_negative_reaction(t), t
+    for t in ("włącz radio", "która godzina", "opowiedz o Krakowie",
+              "zatrzymaj muzykę", "sprawdź pogodę"):
+        assert not is_negative_reaction(t), t
+
+
+def test_negative_reaction_goes_silent_never_to_the_llm(tmp_path):
+    backend = _HistBackend()
+    a = _assistant(tmp_path, backend)
+    r = a.route("spierdalaj", now=NOW)
+    assert r.action == "negative_reaction" and r.text == ""
+    assert r.data["transcript"] == "spierdalaj"
+    assert backend.calls == []            # the LLM never saw it
+    assert not a.engages("spierdalaj")    # and no "Chwileczkę" promise either
+
+
+def test_negative_reaction_ends_the_chat_thread(tmp_path):
+    backend = _HistBackend()
+    a = _assistant(tmp_path, backend)
+    a.route("sprawdź jaka będzie zima", now=NOW)
+    assert a._chat_history                # conversation open
+    r = a.route("zamknij się", now=NOW + timedelta(seconds=5))
+    assert r.action == "negative_reaction"
+    assert a._chat_history == []          # thread closed, nothing to continue
+
+
+class _ForeignSpeaker:
+    def similarity(self, pcm):
+        return 0.12
+
+
+class _OwnerSpeaker:
+    def similarity(self, pcm):
+        return 0.87
+
+
+def test_followup_foreign_voice_closes_conversation(tmp_path):
+    """A confident utterance in a NON-owner voice inside the wake-less window
+    is an accidental catch (TV/side talk) — close, don't feed the LLM."""
+    pub = _FakePub()
+    asyncio.run(_capture_followup(
+        pub, _FakeRing(speech_s=2), _FakeTranscriber(), None, 0.78,
+        tmp_path / "clips", speech_rms=200.0, max_s=12.0, silence_s=1.2,
+        lead_in_s=5.0, speaker_id=_ForeignSpeaker(), speaker_thr=0.45))
+    assert len(pub.published) == 1
+    env = pub.published[0]
+    assert env.topic == "error" and env.data["code"] == "asr.followup_empty"
+    assert env.data["message"] == "foreign voice in follow-up"
+
+
+def test_followup_owner_voice_still_flows(tmp_path):
+    pub = _FakePub()
+    asyncio.run(_capture_followup(
+        pub, _FakeRing(speech_s=2), _FakeTranscriber(), None, 0.78,
+        tmp_path / "clips", speech_rms=200.0, max_s=12.0, silence_s=1.2,
+        lead_in_s=5.0, speaker_id=_OwnerSpeaker(), speaker_thr=0.45))
+    env = pub.published[0]
+    assert env.topic == "asr.final" and env.data["speaker_owner"] is True
