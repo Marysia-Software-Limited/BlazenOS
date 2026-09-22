@@ -2095,6 +2095,16 @@ class Orchestrator:
             now = asyncio.get_running_loop().time()
             pending = self._call_incoming
             if pending is None:
+                # A ring that timed out exactly as ring_wait gave up leaves
+                # its answer file unread (observed 2026-09-22) — purge stale
+                # ones so the spool can't accumulate them.
+                import time as _time
+                for stale in spool.glob("answer-*.json"):
+                    try:
+                        if _time.time() - stale.stat().st_mtime > 300:
+                            stale.unlink(missing_ok=True)
+                    except OSError:
+                        pass
                 for f in sorted(spool.glob("ring-*.json")):
                     try:
                         req = json.loads(f.read_text(encoding="utf-8"))
