@@ -1,0 +1,29 @@
+id: 07-intercom-call
+language: pl
+description: >
+  Intencja "zadzwoń do błazna": dzwonienie do drugiego węzła Jessiki z
+  odbieraniem głosem po stronie odbierającej. Turny opisują strony CALLER
+  (user) i CALLEE (inject: zdarzenia dzwonka/odpowiedzi symulowane przez
+  spool <runtime>/call/ — patrz docs/04 §Intercom). EN parity: triggery
+  "call błazen / answer / reject" zachowane jako assety (docs/13).
+tags: [intercom, voice, pl]
+preconditions:
+  intercom.peers: [błazen, beret]
+  network.tailnet: up
+turns:
+  - user: "dżesika, zadzwoń do błazna"
+    expect:
+      spoken_contains: "Dzwonię do"
+  - inject: "ring-<id>.json lands in the callee's <runtime>/call/ spool"
+    expect:
+      remote_spoken_contains: "Połączenie od"
+  - user: "odbierz"          # spoken on the CALLEE, wake-less (ring window)
+    expect:
+      remote_spoken_contains: "Odbieram"
+      call.duplex: up
+  - inject: "max_call_s cap elapses (or the caller hangs up)"
+    expect:
+      spoken_contains: "Rozmowa zakończona"
+postconditions:
+  no_unit_restarts: true
+  markers.speaking: absent

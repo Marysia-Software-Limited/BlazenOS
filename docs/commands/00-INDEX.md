@@ -6,7 +6,7 @@ zrozumiałam”; rozmowę z LLM otwiera wyłącznie komenda `ai_query`
 („sprawdź …”). Plik generowany przez `scripts/gen-command-docs.py` —
 opisy edytuj w mapach DESC/ENGINE_COMMANDS tego skryptu.
 
-Komend: **95**.
+Komend: **98**.
 
 | Komenda | Opis |
 |---|---|
@@ -14,6 +14,9 @@ Komend: **95**.
 | [`ai_query`](ai_query.md) | Jedyne wejście do rozmowy z LLM (zamknięta lista komend). |
 | [`apply_change`](apply_change.md) | Akcja: `confirm_loud`. |
 | [`audiobook_play`](audiobook_play.md) | Akcja: `tool_call`. |
+| [`call_accept`](call_accept.md) | Odbiera przychodzące połączenie ("odbierz"/"halo") — działa BEZ wake worda, dopóki dzwonek trwa; bez dzwonka jest ignorowane. |
+| [`call_peer`](call_peer.md) | Dzwoni do drugiego węzła Jessiki ("zadzwoń do błazna/bereta") — dzwonek + odbieranie głosem po drugiej stronie, potem pełny duplex audio przez tailnet (intercom. |
+| [`call_reject`](call_reject.md) | Odrzuca przychodzące połączenie ("odrzuć"/"nie teraz") — jak call_accept, tylko w oknie dzwonka. |
 | [`cancel_change`](cancel_change.md) | Akcja: `cancel_pending`. |
 | [`chapter_next`](chapter_next.md) | Akcja: `media_transport`. |
 | [`chapter_prev`](chapter_prev.md) | Akcja: `media_transport`. |

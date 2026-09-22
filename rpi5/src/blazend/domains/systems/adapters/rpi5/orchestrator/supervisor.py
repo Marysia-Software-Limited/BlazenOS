@@ -19,6 +19,7 @@ import random
 import re
 import struct
 import subprocess
+import sys
 import wave
 from collections.abc import Iterable
 from datetime import UTC, datetime
@@ -182,6 +183,19 @@ _LEARN_REPEAT_WINDOW_S = 60.0    # how long the retry keeps its training label
 # the poll cadence of the <runtime>/announce/ watcher.
 _ANNOUNCE_MAX_CHARS = 4000
 _ANNOUNCE_POLL_S = 1.0
+# Intercom voice calls (2026-09-22, "zadzwoń do błazna/bereta"): the incoming
+# ring re-arms the wake-less answer window this often while it waits for
+# "odbierz" / "odrzuć" (a single follow-up capture is only ~12 s long).
+_CALL_REARM_S = 8.0
+
+
+def _fold_pl(text: str) -> str:
+    """Lowercase + strip diacritics (peer-name matching: błazna → blazna)."""
+    import unicodedata
+
+    folded = "".join(c for c in unicodedata.normalize("NFKD", text.lower())
+                     if not unicodedata.combining(c))
+    return folded.replace("ł", "l")
 # Confirmation vocabulary (folded, lowercase). Sync note: emotional overlaps
 # the stop-sentinel phrases on purpose — "zamknij się" both aborts a pending
 # action AND is a strong detection-error label.
@@ -459,6 +473,11 @@ class Orchestrator:
         self._miss_count = 0          # consecutive failed understandings (repeat-to-learn)
         self._last_miss_at = 0.0      # loop time of the last miss (chains within horizon)
         self._repeat_armed_until = 0.0  # label the next understood command as a training repeat
+        # Intercom: the pending INCOMING ring ({"id", "from", "until"}) whose
+        # voice answer ("odbierz"/"odrzuć") we are waiting for, and the task
+        # of an in-flight OUTGOING call.
+        self._call_incoming: dict[str, Any] | None = None
+        self._call_task: asyncio.Task[None] | None = None
         self._working_cue_at = 0.0  # loop time of the last "Chwileczkę." (cooldown)
         self._wake_handled_at = -1e9  # loop time of the last acted-on wake (refractory)
         self._book_activity_at = 0.0     # loop time the attention interval counts from
@@ -520,7 +539,21 @@ class Orchestrator:
                     "searching": "Poczekaj chwileczkę, szukam wiadomości.",
                     "still_searching": "Chwileczkę, ciągle szukam.",
                     "learn_repeat": ("Powiedz słowo dżesika i swoją komendę "
-                                     "ponownie, abym mogła się nauczyć.")}
+                                     "ponownie, abym mogła się nauczyć."),
+                    # Intercom (2026-09-22) — {caller}/{label} filled in-place.
+                    "call_incoming": ("Połączenie od: {caller}. "
+                                      "Powiedz: odbierz, albo odrzuć."),
+                    "call_missed": "Nie odebrano połączenia.",
+                    "call_dialing": "Dzwonię do: {label}. Czekam na odebranie.",
+                    "call_connected": "{label} odebrał. Rozmawiajcie.",
+                    "call_ended": "Rozmowa zakończona.",
+                    "call_rejected": "{label} odrzucił połączenie.",
+                    "call_no_answer": "{label} nie odbiera.",
+                    "call_failed": "Nie udało się połączyć z: {label}.",
+                    "call_busy": "Trwa już połączenie.",
+                    "call_unknown_peer": "Nie wiem, do kogo mam zadzwonić.",
+                    "call_accepting": "Odbieram.",
+                    "call_rejecting": "Odrzucam."}
         try:
             phrases = load_config("phrases")
             cues = {k: str(phrases.get(f"cues.{k}.{lang}", v)) for k, v in fallback.items()}
@@ -818,6 +851,7 @@ class Orchestrator:
         asyncio.create_task(self._book_watcher())  # auto-advance audiobook chapters
         asyncio.create_task(self._ambient_monitor())  # secondary-mic room sensor
         asyncio.create_task(self._announce_channel())  # operator announcement spool
+        asyncio.create_task(self._call_channel())  # intercom ring spool + answer window
 
         # Connect to every peer (idempotent; missing peers are retried lazily).
         for name in self._peers:
@@ -1019,6 +1053,20 @@ class Orchestrator:
                 if await self._resolve_confirmation(env):
                     await self._state.update(patch)
                     return
+            if (str(env.data.get("intent", "")) in ("call_accept", "call_reject")
+                    and self._call_incoming is not None):
+                # Incoming ring pending: the answer bypasses the awake gate —
+                # the callee never said the wake word, the RING opened the
+                # window. Without a pending ring these intents fall through
+                # (and being noop-dispatched, stay silent).
+                accepted = str(env.data.get("intent")) == "call_accept"
+                self._answer_call("accept" if accepted else "reject")
+                await self._speak(self._cues["call_accepting" if accepted else "call_rejecting"])
+                patch["last_command"] = {
+                    "intent": env.data.get("intent"),
+                    "result": "accept" if accepted else "reject"}
+                await self._state.update(patch)
+                return
             if self._awake():
                 # A recognised command ends any miss streak; when it answers
                 # the repeat-to-learn request it becomes a labelled example.
@@ -1031,7 +1079,7 @@ class Orchestrator:
                 patch["awake"] = False
             elif str(env.data.get("intent", "")) in (
                     "music_now_playing", "music_shuffle", "voice_memo_record",
-                    "voice_learn"):
+                    "voice_learn", "call_peer"):
                 # Intents the orchestrator answers ITSELF, asynchronously — they
                 # pause/resume the exclusive player or open a capture window,
                 # which a sync dispatcher reply cannot do. Conversation stays open.
@@ -1044,6 +1092,14 @@ class Orchestrator:
                     await self._shuffle_queue(lang)
                 elif intent_name == "voice_learn":
                     await self._start_voice_training(lang)
+                elif intent_name == "call_peer":
+                    # Intercom (2026-09-22): ring the named peer node; the
+                    # whole ring→answer→legs flow runs as its own task.
+                    if self._call_task is not None and not self._call_task.done():
+                        await self._speak(self._cues["call_busy"])
+                    else:
+                        self._call_task = asyncio.create_task(self._place_call(
+                            str(env.data.get("transcript", "")), lang))
                 else:
                     await self._start_memo_capture(lang)
                 patch["last_command"] = {
@@ -2000,6 +2056,136 @@ class Orchestrator:
             finally:
                 if vol is not None:
                     await self._set_volume(prev)
+
+    # -- intercom voice calls (2026-09-22) ---------------------------------
+    def _intercom_cfg(self) -> dict[str, Any]:
+        try:
+            return dict(load_config("intercom").data)
+        except Exception:  # noqa: BLE001 — no config → intercom disabled
+            return {}
+
+    def _resolve_peer(self, transcript: str) -> dict[str, Any] | None:
+        """The peer the user named in ``transcript`` (name/alias, folded),
+        skipping this node's own identity (``self`` in intercom.yaml)."""
+        cfg = self._intercom_cfg()
+        folded = _fold_pl(transcript)
+        me = _fold_pl(str(cfg.get("self", "")))
+        for peer in cfg.get("peers", []) or []:
+            names = [str(peer.get("name", ""))] + list(peer.get("aliases", []) or [])
+            if _fold_pl(str(peer.get("name", ""))) == me:
+                continue
+            if any(_fold_pl(n) in folded for n in names if n):
+                return dict(peer)
+        return None
+
+    async def _call_channel(self) -> None:
+        """Watch ``<runtime>/call/`` for ring requests from a peer node
+        (written over SSH by its ``intercom.ring_wait``), announce them and
+        keep the wake-less answer window armed until the user says
+        "odbierz"/"odrzuć" or the ring times out."""
+        spool = self._runtime_dir / "call"
+        try:
+            spool.mkdir(exist_ok=True)
+        except OSError as exc:
+            log.warning("call spool unavailable: %s", exc)
+            return
+        timeout_s = float(self._intercom_cfg().get("answer_timeout_s", 30))
+        last_rearm = 0.0
+        while not self._stop.is_set():
+            now = asyncio.get_running_loop().time()
+            pending = self._call_incoming
+            if pending is None:
+                for f in sorted(spool.glob("ring-*.json")):
+                    try:
+                        req = json.loads(f.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        f.unlink(missing_ok=True)
+                        continue
+                    f.unlink(missing_ok=True)
+                    caller = str(req.get("from", "")) or "drugiej Jessiki"
+                    self._call_incoming = {
+                        "id": str(req.get("id", "")), "from": caller,
+                        "until": now + timeout_s}
+                    log.info("incoming call from %s (id=%s)", caller,
+                             req.get("id"))
+                    await self._speak(
+                        self._cues["call_incoming"].format(caller=caller))
+                    (self._runtime_dir / "followup-capture-hot").touch()
+                    last_rearm = now
+                    break
+            elif now > float(pending["until"]):
+                self._answer_call("timeout")
+                await self._speak(self._cues["call_missed"])
+            elif now - last_rearm > _CALL_REARM_S:
+                # A follow-up capture is shorter than the ring — keep the
+                # wake-less answer window open for the whole ring.
+                if not (self._runtime_dir / "speaking").exists():
+                    (self._runtime_dir / "followup-capture-hot").touch()
+                    last_rearm = now
+            await asyncio.sleep(1.0)
+
+    def _answer_call(self, answer: str) -> None:
+        """Write the answer file ``ring_wait`` is polling for; clears pending."""
+        pending, self._call_incoming = self._call_incoming, None
+        if pending is None:
+            return
+        spool = self._runtime_dir / "call"
+        try:
+            tmp = spool / f"answer-{pending['id']}.json.tmp"
+            tmp.write_text(json.dumps({"answer": answer}), encoding="utf-8")
+            tmp.rename(spool / f"answer-{pending['id']}.json")
+        except OSError as exc:
+            log.warning("could not write call answer: %s", exc)
+        log.info("call %s: %s", pending["id"], answer)
+
+    async def _place_call(self, transcript: str, lang: str) -> None:
+        """Outgoing call: resolve the peer, ring it over SSH, wait for the
+        voice answer, then run the full-duplex legs (intercom.dial)."""
+        peer = self._resolve_peer(transcript)
+        if peer is None:
+            await self._speak(self._cues["call_unknown_peer"])
+            return
+        cfg = self._intercom_cfg()
+        label = str(peer.get("label") or peer.get("name"))
+        host = str(peer.get("host", ""))
+        sudo = bool(peer.get("remote_sudo"))
+        rpy = str(peer.get("remote_python", ""))
+        renv = str(peer.get("remote_env", ""))
+        timeout_s = float(cfg.get("answer_timeout_s", 30))
+        max_s = float(cfg.get("max_call_s", 300))
+        me = str(cfg.get("self", "")) or "Jessica"
+        await self._speak(self._cues["call_dialing"].format(label=label))
+        ring_cmd = (f"{'sudo -n ' if sudo else ''}env {renv} {rpy} -m "
+                    f"blazend.domains.voice_input.adapters.rpi5.intercom "
+                    f"--ring-from {me.capitalize()} --timeout {timeout_s:.0f}")
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ssh", "-o", "BatchMode=yes",
+                "-o", "StrictHostKeyChecking=accept-new", host, ring_cmd,
+                stdout=asyncio.subprocess.PIPE)
+            out, _ = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout_s + 30)
+            verdict = (out or b"").decode().strip().splitlines()[-1] if out else ""
+        except (OSError, TimeoutError) as exc:
+            log.warning("call to %s failed: %s", host, exc)
+            verdict = "ERROR"
+        if verdict == "ACCEPT":
+            await self._speak(self._cues["call_connected"].format(label=label))
+            await self._wait_speech_done()
+            dial = await asyncio.create_subprocess_exec(
+                sys.executable, "-m",
+                "blazend.domains.voice_input.adapters.rpi5.intercom",
+                "--dial", host, "--seconds", f"{max_s:.0f}",
+                *(["--remote-sudo"] if sudo else []),
+                "--remote-python", rpy, "--remote-env", renv)
+            await dial.wait()
+            await self._speak(self._cues["call_ended"])
+        elif verdict == "REJECT":
+            await self._speak(self._cues["call_rejected"].format(label=label))
+        elif verdict == "TIMEOUT":
+            await self._speak(self._cues["call_no_answer"].format(label=label))
+        else:
+            await self._speak(self._cues["call_failed"].format(label=label))
 
     async def _ambient_monitor(self) -> None:
         """Secondary-mic room sensor (2026-08-31, paul: the built-in ALC269VC

@@ -7,6 +7,37 @@
 version: 1
 
 intents:
+  # Intercom (2026-09-22): "zadzwoń do błazna/bereta" + voice answering.
+  # Handled by the orchestrator itself (async ring/answer flow), not the
+  # dispatcher — action stays noop. call_accept/call_reject only act while an
+  # incoming ring is pending; otherwise they are silently ignored.
+  - name: call_peer
+    triggers:
+      en:
+        - "^call (b(ł|l)azen|b(ł|l)azna|beret|bereta)$"
+        - "^(phone|ring) (b(ł|l)azen|beret)$"
+      pl:
+        - "zadzwo(ń|n) do (b(ł|l)azna|bereta)"
+        - "po(ł|l)(ą|a)cz (mnie )?z (b(ł|l)aznem|beretem)"
+        - "^(za)?dzwo(ń|n) (b(ł|l)azen|beret)$"
+    action: noop
+
+  - name: call_accept
+    triggers:
+      en:
+        - "^(answer|accept|pick (it )?up)$"
+      pl:
+        - "^(odbierz|odbieram|odebra(ć|c)|halo|po(ł|l)(ą|a)cz)$"
+    action: noop
+
+  - name: call_reject
+    triggers:
+      en:
+        - "^(reject|decline|not now)$"
+      pl:
+        - "^(odrzu(ć|c)|odrzucam|nie odbieraj|nie teraz|nie odbieram)$"
+    action: noop
+
   - name: wake_ack
     triggers:
       en:

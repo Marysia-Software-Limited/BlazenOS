@@ -257,3 +257,20 @@ scripts/call.py jessica-ts --seconds 120
 MVP limits (deliberate): started/ended from the CLI or the cap — not yet by
 voice ("zadzwoń do…" intent is the planned next step); during a call both
 nodes are deaf to wake words, including "stop".
+
+### Voice dialing + voice answering (2026-09-22, second iteration)
+
+The CLI MVP grew into a voice intent: **"dżesika, zadzwoń do błazna/bereta"**
+(`call_peer`; peers + `self` identity in `configs/intercom.yaml`). The caller's
+orchestrator rings the peer over SSH (`intercom.ring_wait` drops a request
+into the peer's `<runtime>/call/` spool), the callee's orchestrator announces
+"Połączenie od: … Powiedz: odbierz, albo odrzuć." and keeps a wake-less
+answer window armed for `answer_timeout_s`. **"odbierz"** (`call_accept`) or
+**"odrzuć"** (`call_reject`) answer WITHOUT the wake word — the ring itself
+opened the window; without a pending ring both intents are silently ignored.
+On accept the caller runs the full-duplex legs (`intercom.dial`, capped at
+`max_call_s`); reject/timeout are spoken back to the caller ("… odrzucił
+połączenie." / "… nie odbiera."). All spoken strings live in
+`configs/phrases.yaml` (PL + EN parity). The per-peer `remote_*` fields in
+`intercom.yaml` are the seam where future non-Jessica transports (Telegram /
+WhatsApp bridges) plug in as differently-shaped peers.

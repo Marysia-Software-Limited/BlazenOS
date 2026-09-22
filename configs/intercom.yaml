@@ -1,0 +1,34 @@
+# /etc/blazen/intercom.yaml
+#
+# Intercom peers for the "zadzwoń do …" voice intent (2026-09-22). A peer is
+# another Jessica node reachable over the tailnet; the caller signals the ring
+# over SSH (writes into the peer's <runtime>/call/ spool and waits for the
+# voice answer), then runs the full-duplex legs (see
+# blazend/domains/voice_input/adapters/rpi5/intercom.py and docs/04).
+#
+# `self` names which peer THIS node is (site override: paul → beret,
+# jessica-ts → błazen) so a node never dials itself. The per-peer remote_*
+# fields describe how to reach the peer's deployed blazend + runtime — this
+# is also the seam where future non-Jessica transports (Telegram/WhatsApp
+# bridges, user request 2026-09-22) plug in as differently-shaped peers.
+
+version: 1
+answer_timeout_s: 30      # how long the callee's "odbierz / odrzuć" window stays open
+max_call_s: 300           # hard call cap (both legs hang up)
+self: ""                  # site override: beret | błazen
+
+peers:
+  - name: "błazen"
+    label: "Błazen"
+    aliases: ["błazna", "blazna", "błaznem", "blaznem", "blazen"]
+    host: "jessica-ts"
+    remote_sudo: true                       # /run/blazen is root/service-only
+    remote_python: "/usr/lib/blazen/.venv/bin/python"
+    remote_env: "PYTHONPATH=/usr/lib/blazen BLAZEN_RUNTIME_DIR=/run/blazen"
+  - name: "beret"
+    label: "Beret"
+    aliases: ["bereta", "beretem"]
+    host: "beret@paul-ts"                   # Tailscale SSH (node-authenticated, ACL accept)
+    remote_sudo: false                      # /run/user/1000/blazen is beret-writable
+    remote_python: "/home/beret/.local/share/blazen/venv/bin/python"
+    remote_env: "PYTHONPATH=/home/beret/.local/share/blazen BLAZEN_RUNTIME_DIR=/run/user/1000/blazen"

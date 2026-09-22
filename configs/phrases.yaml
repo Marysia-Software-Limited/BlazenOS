@@ -46,6 +46,43 @@ cues:
   # Repeat-to-learn (2026-09-21): two consecutive failed understandings ->
   # ask explicitly for the wake word + command; the retry is labelled
   # repeat_after_prompt in learning/events.jsonl (wake + lexicon material).
+  # Intercom (2026-09-22) — {caller}/{label} are formatted in the orchestrator.
+  call_incoming:
+    pl: "Połączenie od: {caller}. Powiedz: odbierz, albo odrzuć."
+    en: "Incoming call from {caller}. Say answer, or reject."
+  call_missed:
+    pl: "Nie odebrano połączenia."
+    en: "The call was not answered."
+  call_dialing:
+    pl: "Dzwonię do: {label}. Czekam na odebranie."
+    en: "Calling {label}. Waiting for an answer."
+  call_connected:
+    pl: "{label} odebrał. Rozmawiajcie."
+    en: "{label} answered. Go ahead."
+  call_ended:
+    pl: "Rozmowa zakończona."
+    en: "Call ended."
+  call_rejected:
+    pl: "{label} odrzucił połączenie."
+    en: "{label} rejected the call."
+  call_no_answer:
+    pl: "{label} nie odbiera."
+    en: "{label} is not answering."
+  call_failed:
+    pl: "Nie udało się połączyć z: {label}."
+    en: "Could not reach {label}."
+  call_busy:
+    pl: "Trwa już połączenie."
+    en: "A call is already in progress."
+  call_unknown_peer:
+    pl: "Nie wiem, do kogo mam zadzwonić."
+    en: "I do not know who to call."
+  call_accepting:
+    pl: "Odbieram."
+    en: "Answering."
+  call_rejecting:
+    pl: "Odrzucam."
+    en: "Rejecting."
   learn_repeat:
     pl: "Powiedz słowo dżesika i swoją komendę ponownie, abym mogła się nauczyć."
     en: "Say the word Jessica and your command again, so I can learn."

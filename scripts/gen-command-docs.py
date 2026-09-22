@@ -114,6 +114,14 @@ ENGINE_COMMANDS: dict[str, dict[str, object]] = {
 
 # One-liners for system.yaml intents (fallback: generated from the action).
 DESC: dict[str, str] = {
+    "call_peer": ("Dzwoni do drugiego węzła Jessiki (\"zadzwoń do błazna/"
+                  "bereta\") — dzwonek + odbieranie głosem po drugiej stronie, "
+                  "potem pełny duplex audio przez tailnet (intercom.yaml)."),
+    "call_accept": ("Odbiera przychodzące połączenie (\"odbierz\"/\"halo\") — "
+                    "działa BEZ wake worda, dopóki dzwonek trwa; bez "
+                    "dzwonka jest ignorowane."),
+    "call_reject": ("Odrzuca przychodzące połączenie (\"odrzuć\"/\"nie "
+                    "teraz\") — jak call_accept, tylko w oknie dzwonka."),
     "wake_ack": "Krótkie potwierdzenie obecności po wake wordzie.",
     "stop_talking": "Natychmiast przerywa wypowiedź/przetwarzanie. Działa też BEZ wake worda podczas odtwarzania (sentinel stopu) i dla każdego głosu.",
     "repeat_last": "Powtarza ostatnią odpowiedź.",

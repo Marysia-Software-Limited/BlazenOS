@@ -4,7 +4,7 @@
 
 ## Wyzwalacze (PL — runtime)
 
-- „wiadomośw|co nowegoychać|aktualnośw|wieści|co na świecie”
+- „wiadomośw|co nowegoychać|aktualnośw|jakie wieści|przeczytaj wieści|wieści|co na świecie”
 
 ## Triggers (EN — asset, wyłączony w runtime)
 

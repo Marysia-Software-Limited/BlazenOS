@@ -265,3 +265,48 @@ async def test_announce_garbage_is_dropped_silently(tmp_path):
     await orch._process_announcements(spool)
     assert spoken == ["Działa"]  # bad volume → spoken at current volume
     assert list(spool.iterdir()) == []  # everything consumed, nothing looping
+
+
+# ----- intercom voice calls (2026-09-22) ---------------------------------------
+
+def test_resolve_peer_matches_aliases_and_skips_self(tmp_path, monkeypatch):
+    # The shared fixture points at rpi5/configs (cue fallbacks don't care);
+    # peer resolution needs the real repo configs/intercom.yaml.
+    monkeypatch.setenv("BLAZEN_CONFIG_ROOT", str(REPO.parent / "configs"))
+    orch, _ = _orch(tmp_path)
+    peer = orch._resolve_peer("zadzwoń do błazna")
+    assert peer and peer["host"] == "jessica-ts"
+    peer = orch._resolve_peer("połącz mnie z beretem")
+    assert peer and "paul-ts" in peer["host"]
+    assert orch._resolve_peer("zadzwoń do mamy") is None
+
+
+@pytest.mark.asyncio
+async def test_call_accept_answers_the_pending_ring(tmp_path):
+    orch, spoken = _orch(tmp_path)
+    orch._dispatcher = object()  # type: ignore[assignment]  # gate for nlu.intent
+    (tmp_path / "call").mkdir()
+    orch._call_incoming = {"id": "abc123", "from": "Beret", "until": 10**9}
+    await orch._on_envelope("nlu", Envelope(
+        topic="nlu.intent", source="blazend-nlu",
+        data={"intent": "call_accept", "transcript": "odbierz", "language": "pl"}))
+    assert spoken == [orch._cues["call_accepting"]]
+    assert orch._call_incoming is None
+    import json as _json
+    answer = _json.loads((tmp_path / "call" / "answer-abc123.json").read_text())
+    assert answer == {"answer": "accept"}
+
+
+@pytest.mark.asyncio
+async def test_call_reject_writes_reject(tmp_path):
+    orch, spoken = _orch(tmp_path)
+    orch._dispatcher = object()  # type: ignore[assignment]
+    (tmp_path / "call").mkdir()
+    orch._call_incoming = {"id": "xyz", "from": "Błazen", "until": 10**9}
+    await orch._on_envelope("nlu", Envelope(
+        topic="nlu.intent", source="blazend-nlu",
+        data={"intent": "call_reject", "transcript": "odrzuć", "language": "pl"}))
+    assert spoken == [orch._cues["call_rejecting"]]
+    import json as _json
+    assert _json.loads((tmp_path / "call" / "answer-xyz.json").read_text())[
+        "answer"] == "reject"
