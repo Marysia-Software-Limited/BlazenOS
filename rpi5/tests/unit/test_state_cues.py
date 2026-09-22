@@ -208,3 +208,60 @@ async def test_negative_reaction_closes_conversation_quietly(tmp_path):
     assert spoken == []
     assert orch._followup_until == 0.0
     assert labels == [("negative_reaction", "spierdalaj")]
+
+
+# ----- operator announce spool (2026-09-22) ------------------------------------
+
+def _announce_orch(tmp_path):
+    """_orch + stubs for the speech-drain wait and the mixer."""
+    orch, spoken = _orch(tmp_path)
+    volumes: list[int] = []
+
+    async def _no_wait() -> None:
+        return None
+
+    async def _set_vol(pct: int) -> None:
+        volumes.append(pct)
+
+    orch._wait_speech_done = _no_wait  # type: ignore[method-assign]
+    orch._set_volume = _set_vol  # type: ignore[method-assign]
+    return orch, spoken, volumes
+
+
+@pytest.mark.asyncio
+async def test_announce_file_is_spoken_and_consumed(tmp_path):
+    orch, spoken, _ = _announce_orch(tmp_path)
+    spool = tmp_path / "announce"
+    spool.mkdir()
+    (spool / "a.json").write_text(
+        '{"text": "Obiad gotowy!", "lang": "pl"}', encoding="utf-8")
+    await orch._process_announcements(spool)
+    assert spoken == ["Obiad gotowy!"]
+    assert list(spool.iterdir()) == []  # consumed
+
+
+@pytest.mark.asyncio
+async def test_announce_volume_override_is_restored(tmp_path):
+    orch, spoken, volumes = _announce_orch(tmp_path)
+    prev = orch._volume_pct
+    spool = tmp_path / "announce"
+    spool.mkdir()
+    (spool / "a.json").write_text(
+        '{"text": "Głośno!", "volume_pct": 65}', encoding="utf-8")
+    await orch._process_announcements(spool)
+    assert spoken == ["Głośno!"]
+    assert volumes == [65, prev]  # bumped for the announcement, then restored
+
+
+@pytest.mark.asyncio
+async def test_announce_garbage_is_dropped_silently(tmp_path):
+    orch, spoken, _ = _announce_orch(tmp_path)
+    spool = tmp_path / "announce"
+    spool.mkdir()
+    (spool / "bad.json").write_text("not json at all", encoding="utf-8")
+    (spool / "empty.json").write_text('{"text": "   "}', encoding="utf-8")
+    (spool / "vol.json").write_text(
+        '{"text": "Działa", "volume_pct": "łoś"}', encoding="utf-8")
+    await orch._process_announcements(spool)
+    assert spoken == ["Działa"]  # bad volume → spoken at current volume
+    assert list(spool.iterdir()) == []  # everything consumed, nothing looping

@@ -178,6 +178,10 @@ _CONFIRM_TTL_S = 30.0
 _LEARN_REPEAT_AFTER = 2       # consecutive misses before the explicit request
 _LEARN_REPEAT_HORIZON_S = 120.0  # misses further apart than this don't chain
 _LEARN_REPEAT_WINDOW_S = 60.0    # how long the retry keeps its training label
+# Operator announcement spool (2026-09-22): max spoken length per request and
+# the poll cadence of the <runtime>/announce/ watcher.
+_ANNOUNCE_MAX_CHARS = 4000
+_ANNOUNCE_POLL_S = 1.0
 # Confirmation vocabulary (folded, lowercase). Sync note: emotional overlaps
 # the stop-sentinel phrases on purpose — "zamknij się" both aborts a pending
 # action AND is a strong detection-error label.
@@ -813,6 +817,7 @@ class Orchestrator:
         asyncio.create_task(self._speaker_manager())
         asyncio.create_task(self._book_watcher())  # auto-advance audiobook chapters
         asyncio.create_task(self._ambient_monitor())  # secondary-mic room sensor
+        asyncio.create_task(self._announce_channel())  # operator announcement spool
 
         # Connect to every peer (idempotent; missing peers are retried lazily).
         for name in self._peers:
@@ -1935,6 +1940,66 @@ class Orchestrator:
                 self._followup_until = 0.0
         except asyncio.CancelledError:
             pass
+
+    async def _announce_channel(self) -> None:
+        """Operator announcement spool (2026-09-22). A JSON file dropped into
+        ``<runtime>/announce/`` — ``{"text": …, "lang": "pl", "volume_pct": 65}``
+        — is spoken through the normal TTS path and consumed. The runtime dir
+        is writable only by the service user/root, so being able to write here
+        (locally or over SSH + sudo — ``scripts/announce.py``) IS the
+        authorisation. Born from the 2026-09-22 remote broadcast (greeting +
+        news + GPT chat), which had to bypass the pipeline with raw ``aplay``;
+        this is the sanctioned path. Announcements outrank a playing stream,
+        same rule as alarms — the player holds the PCM, so a TTS copy spoken
+        over it would simply be lost."""
+        spool = self._runtime_dir / "announce"
+        try:
+            spool.mkdir(exist_ok=True)
+        except OSError as exc:
+            log.warning("announce spool unavailable: %s", exc)
+            return
+        while not self._stop.is_set():
+            await self._process_announcements(spool)
+            await asyncio.sleep(_ANNOUNCE_POLL_S)
+
+    async def _process_announcements(self, spool: Path) -> None:
+        """Speak and consume every queued announcement, oldest first."""
+        for f in sorted(spool.glob("*.json")):
+            try:
+                req = json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                log.warning("announce: unreadable %s (%s) — dropped", f.name, exc)
+                f.unlink(missing_ok=True)
+                continue
+            f.unlink(missing_ok=True)  # consume FIRST — a crash must not replay it
+            text = str(req.get("text", "")).strip()[:_ANNOUNCE_MAX_CHARS]
+            if not text:
+                continue
+            lang = str(req.get("lang", "") or self._default_lang or "pl")
+            log.info("announce: speaking %d chars from %s", len(text), f.name)
+            if self._radio.playing:
+                # Same bookkeeping as a user stop, so the book watcher doesn't
+                # auto-advance and "kontynuuj" can still resume afterwards.
+                self._book_stopping = True
+                self._save_book_progress()
+                self._book = None
+                await asyncio.to_thread(self._radio.stop)
+                self._speaker_busy.unlink(missing_ok=True)
+                await self._set_volume(self._volume_pct)
+                await asyncio.sleep(0.5)
+            try:
+                vol: int | None = max(0, min(100, int(req["volume_pct"])))
+            except (KeyError, TypeError, ValueError):
+                vol = None
+            prev = self._volume_pct
+            try:
+                if vol is not None:
+                    await self._set_volume(vol)
+                await self._speak(text, lang)
+                await self._wait_speech_done()
+            finally:
+                if vol is not None:
+                    await self._set_volume(prev)
 
     async def _ambient_monitor(self) -> None:
         """Secondary-mic room sensor (2026-08-31, paul: the built-in ALC269VC

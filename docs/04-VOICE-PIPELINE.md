@@ -202,3 +202,33 @@ the LED + announcement rather than opening the admin channel.
 3. **Wake-word cooldown.** Prevents the wake model from firing on the
    system's own TTS output (LED + earcon are not enough — we also gate
    with PipeWire loopback ducking).
+
+## Operator announcements (`<runtime>/announce/` spool)
+
+Besides the voice path, the orchestrator watches a spool directory in the
+runtime dir (`/run/blazen/announce/` on the appliance). A JSON file dropped
+there —
+
+```json
+{"text": "Obiad gotowy!", "lang": "pl", "volume_pct": 65}
+```
+
+— is spoken through the normal TTS path and consumed (deleted before
+speaking, so a crash can never replay it). `volume_pct` optionally bumps the
+output level for that one announcement and restores it afterwards; an
+announcement outranks a playing stream (same rule as alarms) — the stream is
+stopped with resume-friendly bookkeeping ("kontynuuj" works afterwards).
+
+Authorisation is the filesystem: the runtime dir is writable only by the
+service user/root, so being able to drop a file there — locally or over
+SSH + sudo — is the permission. `scripts/announce.py` wraps both cases:
+
+```
+scripts/announce.py "Obiad gotowy!"                       # this machine
+scripts/announce.py --host jessica-ts "Obiad!" --volume 65  # remote node
+```
+
+Born 2026-09-22: a remote "greeting + news + GPT chat" broadcast had to
+bypass the pipeline with raw `aplay`; this is the sanctioned path. It is an
+operator/remote surface — the voice-first UX (wake, discovery, recovery) is
+unaffected.
