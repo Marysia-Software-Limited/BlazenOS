@@ -15,6 +15,14 @@ SSH path used by releases, merges it with paul's own, then consumes labels:
   ``train-wake.py`` retrain (never auto-ingested).
 - ``confirmed`` events with clips → extra owner-voice enrollment: the speaker
   profile is rebuilt from the voice-training dir + these clips.
+- ``repeat_after_prompt`` events (2026-09-21, repeat-to-learn) → the clip is a
+  REAL "dżesika + command" spoken deliberately after Jessica asked for it —
+  copied into the wake POSITIVES pool (train-wake --real-dir) and its text
+  into the lexicon boost (that's how this speaker actually phrases it).
+- ``negative_reaction`` events (2026-09-21) are counted and reported, never
+  auto-ingested: they label Jessica's PREVIOUS action as unwanted (behaviour
+  tuning material), and the clip is the user's angry voice — neither a wake
+  negative nor safe enrollment audio.
 
 Usage:
   scripts/learn-sync.py                # local consume only
@@ -79,8 +87,13 @@ def consume(events: list[dict]) -> None:
         existing = list((yaml.safe_load(
             boost_path.read_text(encoding="utf-8")) or {}).get("phrases", []))
     phrases = list(dict.fromkeys(
-        existing + [str(e["corrected"]) for e in events
-                    if e.get("outcome") == "corrected" and e.get("corrected")]
+        existing
+        + [str(e["corrected"]) for e in events
+           if e.get("outcome") == "corrected" and e.get("corrected")]
+        # A repeat-to-learn retry is the user's OWN phrasing of the command —
+        # exactly what the fuzzy repair should snap to next time.
+        + [str(e["text"]) for e in events
+           if e.get("outcome") == "repeat_after_prompt" and e.get("text")]
     ))[-200:]
     boost_path.parent.mkdir(parents=True, exist_ok=True)
     boost_path.write_text(
@@ -108,6 +121,29 @@ def consume(events: list[dict]) -> None:
             shutil.copy2(src, dest)
             copied += 1
     print(f"wake-negative candidates: +{copied} (screen via train-wake flow)")
+
+    # 2b) repeat-to-learn retries → wake POSITIVE candidates (the user said
+    # "dżesika + command" ON REQUEST — the decisive real-voice signal).
+    pos = Path.home() / "wake-samples" / "dzesika"
+    pos.mkdir(parents=True, exist_ok=True)
+    pos_copied = 0
+    for e in events:
+        if e.get("outcome") != "repeat_after_prompt":
+            continue
+        clip = Path(str(e.get("clip", "")))
+        alt = (LEARN / "remote-jessica-ts" / "clips" / clip.name
+               if clip.name else None)
+        src = clip if clip.is_file() else (alt if alt and alt.is_file() else None)
+        if src is None:
+            continue
+        dest = pos / f"repeat-{src.name}"
+        if not dest.exists():
+            shutil.copy2(src, dest)
+            pos_copied += 1
+    negative_n = sum(e.get("outcome") == "negative_reaction" for e in events)
+    print(f"wake-positive candidates (repeat-to-learn): +{pos_copied}")
+    print(f"negative reactions on record: {negative_n} "
+          "(behaviour labels — never auto-ingested)")
 
     # 3) confirmed clips → speaker profile refresh (train dir + extras).
     from blazend.domains.voice_input.adapters.rpi5.asr.speaker import SpeakerId
