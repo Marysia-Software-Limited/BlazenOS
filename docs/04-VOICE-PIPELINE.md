@@ -232,3 +232,28 @@ Born 2026-09-22: a remote "greeting + news + GPT chat" broadcast had to
 bypass the pipeline with raw `aplay`; this is the sanctioned path. It is an
 operator/remote surface — the voice-first UX (wake, discovery, recovery) is
 unaffected.
+
+## Intercom — calls between Jessica nodes (`scripts/call.py`)
+
+Full-duplex voice between two nodes (e.g. paul ↔ jessica-ts), MVP 2026-09-22.
+One *leg* (`blazend/domains/voice_input/adapters/rpi5/intercom.py`) runs per
+node: it reads the node's mic from the shared audio ring (the capture device
+stays with `blazend-audio-in`) and plays the peer through `jabra_out` (retrying
+while audio-out still holds the device after the call announcement). Two legs
+are cross-wired over ONE SSH connection (stdin ↔ stdout) — the tailnet is the
+transport and the encryption; no new ports, no daemon. The Jabra's hardware
+AEC breaks the speaker→mic loop on both ends.
+
+Flow: both ends announce the call through the announce spool ("Łączę
+rozmowę…"), then hold the `speaking` marker for the duration (wake/ASR ignore
+the remote voice) and remove it on ANY exit path; `--seconds` (default 120)
+hard-caps the call so an abandoned session cannot leave a node deaf. Ending a
+call speaks "Rozmowa zakończona." on both ends.
+
+```
+scripts/call.py jessica-ts --seconds 120
+```
+
+MVP limits (deliberate): started/ended from the CLI or the cap — not yet by
+voice ("zadzwoń do…" intent is the planned next step); during a call both
+nodes are deaf to wake words, including "stop".

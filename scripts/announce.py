@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -43,19 +44,22 @@ def main() -> int:
 
     if args.host:
         rt = args.runtime_dir or "/run/blazen"
-        # Write hidden, then rename: the watcher globs *.json, so it can never
-        # see a half-written file.
-        script = (f"cat > {rt}/announce/.{name} && "
-                  f"mv {rt}/announce/.{name} {rt}/announce/{name}")
+        # Write with a .tmp suffix, then rename: pathlib's *.json glob DOES
+        # match dotfiles (unlike a shell), so a hidden temp name races the
+        # watcher (observed 2026-09-22); a different suffix cannot.
+        # ssh flattens argv into one remote shell line — the script must be
+        # quoted as a single argument or the redirect runs as the SSH user.
+        script = (f"cat > {rt}/announce/{name}.tmp && "
+                  f"mv {rt}/announce/{name}.tmp {rt}/announce/{name}")
         subprocess.run(["ssh", "-o", "BatchMode=yes", args.host,
-                        "sudo", "-n", "bash", "-c", script],
+                        f"sudo -n bash -c {shlex.quote(script)}"],
                        input=payload.encode(), check=True)
     else:
         rt = Path(args.runtime_dir or os.environ.get("BLAZEN_RUNTIME_DIR")
                   or f"/run/user/{os.getuid()}/blazen")
         spool = rt / "announce"
         spool.mkdir(parents=True, exist_ok=True)
-        tmp = spool / f".{name}"
+        tmp = spool / f"{name}.tmp"
         tmp.write_text(payload, encoding="utf-8")
         tmp.rename(spool / name)
     print(f"queued {name}")
