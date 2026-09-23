@@ -186,7 +186,32 @@ _ANNOUNCE_POLL_S = 1.0
 # Intercom voice calls (2026-09-22, "zadzwoń do błazna/bereta"): the incoming
 # ring re-arms the wake-less answer window this often while it waits for
 # "odbierz" / "odrzuć" (a single follow-up capture is only ~12 s long).
-_CALL_REARM_S = 8.0
+# 4 s (was 8): the first Telegram-call test spoke "Halo, czy mnie słyszysz?"
+# into a window that then stayed un-armed too long and the ring expired.
+_CALL_REARM_S = 4.0
+# Ring-answer vocabulary (2026-09-23): during a pending ring ANY utterance is
+# classified loosely — the first live test answered with a whole sentence
+# ("Halo, czy mnie słyszysz?"), which the exact-word call_accept intent
+# missed. Folded substrings/tokens; reject checked FIRST ("nie odbieraj"
+# contains "odbiera"). PL leads, EN retained (docs/13).
+_CALL_REJECT_PHRASES = ("odrzuc", "nie odbieraj", "nie odbieram", "nie teraz",
+                        "reject", "decline", "not now")
+_CALL_ACCEPT_TOKENS = frozenset({
+    "odbierz", "odbieram", "odebrac", "halo", "polacz", "tak",
+    "answer", "accept", "hello", "yes"})
+
+
+def classify_call_answer(text: str) -> str | None:
+    """``accept`` / ``reject`` / None for an utterance heard DURING a ring."""
+    folded = _fold_pl(text)
+    if any(p in folded for p in _CALL_REJECT_PHRASES):
+        return "reject"
+    import re as _re
+
+    tokens = _re.sub(r"[^\w\s]", " ", folded).split()
+    if any(t in _CALL_ACCEPT_TOKENS for t in tokens):
+        return "accept"
+    return None
 
 
 def _fold_pl(text: str) -> str:
@@ -1053,20 +1078,22 @@ class Orchestrator:
                 if await self._resolve_confirmation(env):
                     await self._state.update(patch)
                     return
-            if (str(env.data.get("intent", "")) in ("call_accept", "call_reject")
-                    and self._call_incoming is not None):
-                # Incoming ring pending: the answer bypasses the awake gate —
-                # the callee never said the wake word, the RING opened the
-                # window. Without a pending ring these intents fall through
-                # (and being noop-dispatched, stay silent).
-                accepted = str(env.data.get("intent")) == "call_accept"
-                self._answer_call("accept" if accepted else "reject")
-                await self._speak(self._cues["call_accepting" if accepted else "call_rejecting"])
-                patch["last_command"] = {
-                    "intent": env.data.get("intent"),
-                    "result": "accept" if accepted else "reject"}
-                await self._state.update(patch)
-                return
+            if self._call_incoming is not None:
+                # Incoming ring pending: classify ANY utterance loosely (a
+                # whole sentence like "Halo, czy mnie słyszysz?" must accept,
+                # 2026-09-23) — bypassing the awake gate: the RING opened the
+                # window, not the wake word. Unrelated commands fall through.
+                verdict = classify_call_answer(
+                    str(env.data.get("transcript", "")))
+                if verdict is not None:
+                    self._answer_call(verdict)
+                    await self._speak(self._cues[
+                        "call_accepting" if verdict == "accept"
+                        else "call_rejecting"])
+                    patch["last_command"] = {
+                        "intent": env.data.get("intent"), "result": verdict}
+                    await self._state.update(patch)
+                    return
             if self._awake():
                 # A recognised command ends any miss streak; when it answers
                 # the repeat-to-learn request it becomes a labelled example.
@@ -1249,6 +1276,20 @@ class Orchestrator:
                     # a bare wake ack ("Tak? Słucham.") doesn't count.
                     self._note_understood(
                         str(env.data.get("transcript", "")), env.data)
+        if env.topic == "nlu.miss" and self._call_incoming is not None:
+            # Free text during a ring — the loose answer vocabulary applies
+            # (the closed intent list already missed it, or NLU had no match).
+            verdict = classify_call_answer(str(env.data.get("transcript", "")))
+            if verdict is not None:
+                self._answer_call(verdict)
+                await self._speak(self._cues[
+                    "call_accepting" if verdict == "accept"
+                    else "call_rejecting"])
+                await self._state.update(patch)
+                return
+            # Not an answer: keep ringing, re-arm the window right away so
+            # the next attempt is heard.
+            (self._runtime_dir / "followup-capture-hot").touch()
         if env.topic == "nlu.miss" and self._confirm_pending is not None:
             # Free text while a confirmation is pending: yes/no/emotional or
             # unrelated babble (= no confirmation → cancel). The brain is
@@ -2118,6 +2159,10 @@ class Orchestrator:
                         "until": now + timeout_s}
                     log.info("incoming call from %s (id=%s)", caller,
                              req.get("id"))
+                    # Gate the brain for the ring's duration (same pattern as
+                    # confirm-pending): free text during a ring is an answer
+                    # attempt, not a chat prompt (2026-09-23).
+                    (self._runtime_dir / "call-pending").touch()
                     await self._speak(
                         self._cues["call_incoming"].format(caller=caller))
                     (self._runtime_dir / "followup-capture-hot").touch()
@@ -2137,6 +2182,7 @@ class Orchestrator:
     def _answer_call(self, answer: str) -> None:
         """Write the answer file ``ring_wait`` is polling for; clears pending."""
         pending, self._call_incoming = self._call_incoming, None
+        (self._runtime_dir / "call-pending").unlink(missing_ok=True)
         if pending is None:
             return
         spool = self._runtime_dir / "call"

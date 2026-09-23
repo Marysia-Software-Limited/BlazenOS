@@ -163,6 +163,14 @@ async def serve(
                     log.info("confirm pending — leaving %r to the orchestrator",
                              text[:40])
                     continue
+                # An incoming call is ringing: whatever was said is an answer
+                # attempt ("Halo, czy mnie słyszysz?") — the orchestrator
+                # classifies it; the LLM must not chat over the ring
+                # (2026-09-23).
+                if (rt / "call-pending").exists():
+                    log.info("call ringing — leaving %r to the orchestrator",
+                             text[:40])
+                    continue
                 # Speaker policy (2026-09-08): with enforcement on, a voice
                 # that is NOT the owner never reaches the engine/LLM — except
                 # a bare stop order, which works for anyone. Missing speaker

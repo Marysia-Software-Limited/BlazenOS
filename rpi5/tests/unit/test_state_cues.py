@@ -310,3 +310,33 @@ async def test_call_reject_writes_reject(tmp_path):
     import json as _json
     assert _json.loads((tmp_path / "call" / "answer-xyz.json").read_text())[
         "answer"] == "reject"
+
+
+def test_classify_call_answer_accepts_sentences():
+    """First live Telegram call (2026-09-23): the user answered with "Halo,
+    czy mnie słyszysz?" — a whole sentence must accept; rejection phrases win
+    even when they contain accept-ish substrings ("nie odbieraj")."""
+    from blazend.domains.systems.adapters.rpi5.orchestrator.supervisor import (
+        classify_call_answer,
+    )
+    for t in ("odbierz", "Halo, czy mnie słyszysz?", "no tak, odbieram",
+              "połącz", "Odbierz to."):
+        assert classify_call_answer(t) == "accept", t
+    for t in ("odrzuć", "nie odbieraj", "nie teraz", "Nie odbieram tego"):
+        assert classify_call_answer(t) == "reject", t
+    for t in ("która godzina", "włącz radio", ""):
+        assert classify_call_answer(t) is None, t
+
+
+@pytest.mark.asyncio
+async def test_ring_accepts_free_text_via_nlu_miss(tmp_path):
+    orch, spoken = _orch(tmp_path)
+    (tmp_path / "call").mkdir()
+    orch._call_incoming = {"id": "tg1", "from": "Beret", "until": 10**9}
+    await orch._on_envelope("nlu", Envelope(
+        topic="nlu.miss", source="blazend-nlu",
+        data={"transcript": "Halo, czy mnie słyszysz?", "language": "pl"}))
+    assert spoken == [orch._cues["call_accepting"]]
+    import json as _json
+    assert _json.loads((tmp_path / "call" / "answer-tg1.json").read_text())[
+        "answer"] == "accept"
