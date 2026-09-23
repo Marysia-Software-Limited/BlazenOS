@@ -274,3 +274,23 @@ połączenie." / "… nie odbiera."). All spoken strings live in
 `configs/phrases.yaml` (PL + EN parity). The per-peer `remote_*` fields in
 `intercom.yaml` are the seam where future non-Jessica transports (Telegram /
 WhatsApp bridges) plug in as differently-shaped peers.
+
+## Telegram bridge (`blazend-telegram`) — first external transport
+
+2026-09-23, first iteration (messages; real calls are MTProto territory a bot
+cannot reach — the intercom's peer seam is where a call-capable transport
+would plug in). A per-node Python daemon long-polls the Bot API (getUpdates —
+CGNAT/GSM-safe, no webhook or inbound port) and delivers messages from
+**allowlisted** chats to the room:
+
+- text → spoken through the announce spool ("Wiadomość z Telegrama od …");
+- voice note (OGG/Opus ≤ 120 s) → decoded with `opusdec` (opus-tools;
+  fallback `ffmpeg`) and played through `jabra_out` under the `speaking`
+  marker, after a spoken intro — the sender's real voice in the room.
+
+The sender gets a ✓/✗ confirmation; a stranger's chat is ignored WITHOUT any
+reply (the log carries the chat id the operator needs). Setup per node:
+BotFather token into `secrets.env` (`BLAZEN_TELEGRAM_TOKEN`), the chat id
+from the "ignoring chat" log line into `telegram.yaml allowed_chats`, then
+`enabled: true`. An empty allowlist admits nobody — there is deliberately no
+"allow everyone" switch.

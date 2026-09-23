@@ -1,0 +1,20 @@
+# /etc/blazen/telegram.yaml
+#
+# Telegram bridge (2026-09-23) — messages from allowlisted chats reach the
+# room: text is spoken (announce channel), voice notes are played in the
+# sender's own voice. See blazend/domains/systems/adapters/rpi5/telegram/.
+#
+# Enabling a node (site override, never the defaults):
+#   1. @BotFather → /newbot → put the token in secrets.env:
+#        BLAZEN_TELEGRAM_TOKEN=123456:ABC…
+#   2. Write to the bot from your Telegram account; the bridge logs
+#      "ignoring chat <id>" — copy that id into allowed_chats below.
+#   3. enabled: true + restart blazend-telegram.
+#
+# An empty allowlist means NOBODY gets through — there is deliberately no
+# "allow everyone" switch. Voice notes longer than 120 s are refused.
+
+version: 1
+enabled: false
+poll_timeout_s: 50        # getUpdates long-poll (CGNAT/GSM-safe; no webhook)
+allowed_chats: []         # Telegram chat IDs allowed to reach this node

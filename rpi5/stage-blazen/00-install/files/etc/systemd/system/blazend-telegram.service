@@ -1,0 +1,25 @@
+[Unit]
+Description=blazen_os Telegram bridge (Python, Bot API long-poll)
+PartOf=blazend.target
+After=network-online.target blazend-orchestrator.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=blazen
+Group=blazen
+WorkingDirectory=/usr/lib/blazen
+Environment=PYTHONPATH=/usr/lib/blazen
+Environment=BLAZEN_RUNTIME_DIR=/run/blazen
+# Bot token: BLAZEN_TELEGRAM_TOKEN in secrets.env (0600, never in git).
+EnvironmentFile=-/etc/blazen/secrets.env
+ExecStart=/usr/lib/blazen/.venv/bin/python -m blazend.domains.systems.adapters.rpi5.telegram
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/blazen
+ProtectHome=yes
+
+[Install]
+WantedBy=blazend.target
