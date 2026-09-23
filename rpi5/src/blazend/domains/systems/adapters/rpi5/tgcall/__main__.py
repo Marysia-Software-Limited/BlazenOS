@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from pyrogram import Client, filters
+from pyrogram import Client, filters, raw
+from pyrogram.handlers import RawUpdateHandler
 from pyrogram.types import Message
 from pytgcalls import PyTgCalls
 from pytgcalls import filters as call_filters
@@ -106,6 +107,26 @@ class Account:
             pass
 
     # -- calls -------------------------------------------------------------
+    async def on_raw(self, client: Client, update: Any,
+                     _users: Any, _chats: Any) -> None:
+        """Confirm RINGING to the caller the moment a call request lands.
+        py-tgcalls never sends phone.receivedCall, so the caller's phone gave
+        up almost immediately ("od razu nieodebrane", live test 2026-09-23) —
+        with the confirmation it keeps ringing for its full window while the
+        room answers by voice."""
+        if (isinstance(update, raw.types.UpdatePhoneCall)
+                and isinstance(update.phone_call,
+                               raw.types.PhoneCallRequested)):
+            pc = update.phone_call
+            try:
+                await client.invoke(raw.functions.phone.ReceivedCall(
+                    peer=raw.types.InputPhoneCall(
+                        id=pc.id, access_hash=pc.access_hash)))
+                log.info("%s: ringing confirmed to caller (call %s)",
+                         self.name, pc.id)
+            except Exception as exc:  # noqa: BLE001 — best-effort courtesy
+                log.debug("%s: receivedCall failed: %s", self.name, exc)
+
     async def on_chat_update(self, _c: PyTgCalls, u: Update) -> None:
         if not isinstance(u, ChatUpdate):
             return
@@ -233,6 +254,7 @@ class Account:
     async def run(self) -> None:
         self.client.on_message(filters.private & filters.incoming)(
             self.on_message)
+        self.client.add_handler(RawUpdateHandler(self.on_raw), group=-99)
         self.calls.on_update(call_filters.chat_update(
             ChatUpdate.Status.INCOMING_CALL
             | ChatUpdate.Status.DISCARDED_CALL))(self.on_chat_update)
