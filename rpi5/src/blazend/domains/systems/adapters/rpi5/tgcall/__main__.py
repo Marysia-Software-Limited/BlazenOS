@@ -65,6 +65,7 @@ class Account:
         self.calls = PyTgCalls(self.client)
         self.active_chat: int | None = None
         self.player: Any = None
+        self._pending_call: Any = None  # InputPhoneCall of a ringing request
         self._mic_task: asyncio.Task[None] | None = None
 
     # -- messages ----------------------------------------------------------
@@ -114,18 +115,27 @@ class Account:
         up almost immediately ("od razu nieodebrane", live test 2026-09-23) —
         with the confirmation it keeps ringing for its full window while the
         room answers by voice."""
-        if (isinstance(update, raw.types.UpdatePhoneCall)
-                and isinstance(update.phone_call,
-                               raw.types.PhoneCallRequested)):
-            pc = update.phone_call
+        if not isinstance(update, raw.types.UpdatePhoneCall):
+            return
+        pc = update.phone_call
+        log.info("%s: raw phone_call: %s", self.name, type(pc).__name__)
+        if isinstance(pc, raw.types.PhoneCallRequested):
+            # Confirm RINGING to the caller THE INSTANT the request lands —
+            # py-tgcalls never does, so without this the caller's phone gave
+            # up in ~1 s and the call showed as declined (live 2026-09-23).
+            # Cache the handle so _accept can acceptCall after the voice OK.
+            self._pending_call = raw.types.InputPhoneCall(
+                id=pc.id, access_hash=pc.access_hash)
             try:
                 await client.invoke(raw.functions.phone.ReceivedCall(
-                    peer=raw.types.InputPhoneCall(
-                        id=pc.id, access_hash=pc.access_hash)))
+                    peer=self._pending_call))
                 log.info("%s: ringing confirmed to caller (call %s)",
                          self.name, pc.id)
-            except Exception as exc:  # noqa: BLE001 — best-effort courtesy
-                log.debug("%s: receivedCall failed: %s", self.name, exc)
+            except Exception as exc:  # noqa: BLE001 — best-effort
+                log.warning("%s: receivedCall failed: %s", self.name, exc)
+        elif isinstance(pc, raw.types.PhoneCallDiscarded):
+            reason = type(getattr(pc, "reason", None)).__name__
+            log.info("%s: call discarded by peer (%s)", self.name, reason)
 
     async def on_chat_update(self, _c: PyTgCalls, u: Update) -> None:
         if not isinstance(u, ChatUpdate):
@@ -252,9 +262,11 @@ class Account:
         _announce("Rozmowa telegramowa zakończona.")
 
     async def run(self) -> None:
+        # Raw handler FIRST (group -10000, ahead of py-tgcalls' -9999) so the
+        # ringing confirmation goes out before anything else touches the call.
+        self.client.add_handler(RawUpdateHandler(self.on_raw), group=-10000)
         self.client.on_message(filters.private & filters.incoming)(
             self.on_message)
-        self.client.add_handler(RawUpdateHandler(self.on_raw), group=-99)
         self.calls.on_update(call_filters.chat_update(
             ChatUpdate.Status.INCOMING_CALL
             | ChatUpdate.Status.DISCARDED_CALL))(self.on_chat_update)
