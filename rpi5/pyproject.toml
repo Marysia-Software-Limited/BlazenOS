@@ -78,6 +78,13 @@ mypy_path = "src"
 module = ["faster_whisper.*"]
 ignore_missing_imports = true
 
+# kurigram (pyrogram fork) + py-tgcalls live only in the dedicated tgcall
+# venv (MTProto account bridge, 2026-09-23) — untyped, not installed in the
+# dev venv. The module is smoke-imported in its own venv instead.
+[[tool.mypy.overrides]]
+module = ["pyrogram.*", "pytgcalls.*", "ntgcalls.*"]
+ignore_missing_imports = true
+
 # llama-cpp-python (the `runtime` extra) ships partial stubs and is imported
 # lazily in blazend.assistant.localllm. Same treatment as faster-whisper.
 [[tool.mypy.overrides]]

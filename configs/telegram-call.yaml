@@ -1,0 +1,20 @@
+# /etc/blazen/telegram-call.yaml
+#
+# Telegram ACCOUNT bridge (blazend-tgcall, 2026-09-23): MTProto sessions
+# answered by voice — incoming private calls ring through the call/ spool
+# ("odbierz"/"odrzuć"), messages are spoken/played. One entry per account;
+# sessions created with scripts/tgcall-login.py. api_id/api_hash come from
+# secrets.env (BLAZEN_TELEGRAM_API_ID / BLAZEN_TELEGRAM_API_HASH).
+#
+# allowed_callers semantics (PERSONAL account, unlike the bot bridge): an
+# EMPTY list rings for every caller — they are this account's own calls.
+
+version: 1
+enabled: false
+max_call_s: 300
+accounts: []
+#  - name: plus44
+#    label: "konto czterdzieści cztery"
+#    session_dir: /home/beret/.local/share/blazen/tgcall/plus44
+#    allowed_callers: []
+#    speak_messages: true

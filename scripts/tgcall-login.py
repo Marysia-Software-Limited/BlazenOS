@@ -34,6 +34,33 @@ def _client(workdir: Path) -> Client:
                   workdir=str(workdir))
 
 
+async def one_connection(phone: str, workdir: Path) -> int:
+    """Send the code and finish sign-in on the SAME connection (Telegram
+    expires a code used from a different one — observed 2026-09-23). The
+    code is read from ``<workdir>/code.txt`` (dropped there out-of-band)."""
+    client = _client(workdir)
+    code_file = workdir / "code.txt"
+    code_file.unlink(missing_ok=True)
+    await client.connect()
+    sent = await client.send_code(phone)
+    print(f"code sent to {phone}; waiting for {code_file} (max 300 s)…",
+          flush=True)
+    for _ in range(300):
+        if code_file.is_file():
+            break
+        await asyncio.sleep(1)
+    else:
+        await client.disconnect()
+        print("no code arrived in time")
+        return 1
+    code = code_file.read_text(encoding="utf-8").strip()
+    code_file.unlink(missing_ok=True)
+    user = await client.sign_in(phone, sent.phone_code_hash, code)
+    print(f"signed in as {getattr(user, 'first_name', '?')} — session saved")
+    await client.disconnect()
+    return 0
+
+
 async def send_code(phone: str, workdir: Path) -> int:
     client = _client(workdir)
     await client.connect()
@@ -64,8 +91,14 @@ def main() -> int:
     ap.add_argument("--code", help="step 2: the received code")
     ap.add_argument("--session-dir",
                     default=str(Path.home() / ".local/share/blazen/tgcall"))
+    ap.add_argument("--one-connection", action="store_true",
+                    help="send the code AND wait for <session-dir>/code.txt "
+                         "on one connection (Telegram may expire codes used "
+                         "from a second connection)")
     args = ap.parse_args()
     workdir = Path(args.session_dir)
+    if args.phone and args.one_connection:
+        return asyncio.run(one_connection(args.phone, workdir))
     if args.phone:
         return asyncio.run(send_code(args.phone, workdir))
     if args.code:
