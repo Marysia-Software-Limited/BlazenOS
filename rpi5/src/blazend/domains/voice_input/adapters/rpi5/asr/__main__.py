@@ -313,6 +313,13 @@ async def _capture_followup(
     # talking for 12+ minutes (2026-08-31 18:07-18:20, no human in the
     # exchange). Below the bar the conversation just closes; a real user
     # re-opens it with the wake word.
+    ringing = (runtime_dir() / "call-pending").exists()
+    if ringing:
+        # An incoming call is ringing (2026-09-23): the capture exists ONLY
+        # to catch "odbierz"/"odrzuć" — lower the confidence bar (short
+        # answers score low) and skip the foreign-voice gate below (whoever
+        # is in the room may answer; sim collapsed to 0.20 on the live test).
+        min_conf *= 0.7
     if result.confidence < min_conf:
         log.info("follow-up below min_conf %.2f: %r (conf=%.2f) — closing",
                  min_conf, text[:60], result.confidence)
@@ -322,7 +329,7 @@ async def _capture_followup(
                   "message": "follow-up below confidence floor"}))
         return
     sp = _speaker_fields(speaker_id, pcm, speaker_thr)
-    if sp.get("speaker_owner") is False:
+    if sp.get("speaker_owner") is False and not ringing:
         # Accidental catch (2026-09-21): the wake-less window heard a CONFIDENT
         # utterance in a voice that is not the owner's — TV/radio/side talk
         # answering nobody. Feeding it to the LLM keeps phantom conversations
