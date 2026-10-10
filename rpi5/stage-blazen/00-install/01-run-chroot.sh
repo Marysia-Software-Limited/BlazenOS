@@ -295,7 +295,12 @@ raspi-config nonint do_wifi_country PL 2>/dev/null || true
 # nothing re-creates it. Matches the live tuning on the dev card.
 printf '[zram0]\nzram-size = 0\n' > /etc/systemd/zram-generator.conf
 systemctl mask dev-zram0.swap systemd-zram-setup@zram0.service swap.target 2>/dev/null || true
-echo "=== blazend chroot: swap disabled (zram size 0 + swap.target masked) ==="
+# rpi-swap-generator reads /etc/rpi/swap.conf independently of the masks and
+# would still emit rpi-zram-writeback.timer, which then fails at boot+180min
+# (its zram deps are masked). Mechanism=none stops it emitting anything.
+mkdir -p /etc/rpi/swap.conf.d
+printf '[Main]\nMechanism=none\n' > /etc/rpi/swap.conf.d/90-blazen-noswap.conf
+echo "=== blazend chroot: swap disabled (zram size 0 + swap.target masked + rpi-swap Mechanism=none) ==="
 
 # Clean up staging tree (it would otherwise ship in the image).
 rm -rf "$STAGE"
