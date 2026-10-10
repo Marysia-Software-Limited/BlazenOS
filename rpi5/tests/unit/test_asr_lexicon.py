@@ -88,6 +88,20 @@ def test_correct_leaves_exact_transcripts_alone():
         assert not hits
 
 
+def test_correct_protects_exact_command_from_terse_form_attractor():
+    """Live 2026-10-10: 'Dżesika, zadzwoń do błazna.' was 'repaired' into
+    'zadzwoń dzwoń błazen' — the inner 'do błazna' window fuzzy-matched
+    'dzwoń błazen', the terse-form expansion of call_peer's OTHER trigger,
+    and the mangled text matched no call_peer trigger at all. An exact
+    lexicon phrase present in the transcript must freeze every window it
+    covers; both peers ride the same trigger shape."""
+    lex = Lexicon.build()
+    for text in ("Dżesika, zadzwoń do błazna.", "Dżesika, zadzwoń do bereta."):
+        out, hits = lex.correct(text)
+        assert out == text
+        assert not hits
+
+
 def test_correct_never_spans_punctuation():
     # "Jessica, włącz" glued across the comma must NOT fuzzy-repair into a
     # lookalike command phrase and eat the verb.

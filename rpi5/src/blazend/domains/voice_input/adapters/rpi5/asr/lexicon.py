@@ -304,6 +304,24 @@ class Lexicon:
             return text, []
         replacements: list[tuple[int, int, str, str]] = []  # (start, end, orig, canon)
         taken: list[tuple[int, int]] = []
+        # Protect EXACT phrase occurrences first: a span the lexicon already
+        # knows verbatim is something whisper got right, so no window
+        # overlapping it may be "repaired". Live bug 2026-10-10: a correct
+        # "zadzwoń do błazna" was rewritten to "zadzwoń dzwoń błazen" (and
+        # stopped matching call_peer) because the inner "do błazna" window
+        # fuzzy-matched "dzwoń błazen" — the terse-form expansion of the SAME
+        # intent's other trigger. Longest spans claim first, same as repairs.
+        for size in (4, 3, 2, 1):
+            for i in range(len(tokens) - size + 1):
+                start, end = tokens[i].start(), tokens[i + size - 1].end()
+                if any(start < e and s < end for s, e in taken):
+                    continue
+                window = text[start:end]
+                if size > 1 and re.search(r"[,.!?;:]", window):
+                    continue
+                key = _stem_phrase(window).strip()
+                if len(key) >= 3 and any(key in b for b in self.tiers.values()):
+                    taken.append((start, end))
         for size in (4, 3, 2, 1):
             for i in range(len(tokens) - size + 1):
                 start, end = tokens[i].start(), tokens[i + size - 1].end()
