@@ -146,7 +146,17 @@ own activity therefore arms ONE ASR stop check (rate-limited 5 s): the last
 unambiguous stop phrase ("stop", "przestań", "dość", "cisza", "zamknij się";
 EN assets retained) routes — as a canonical "stop", which the engine accepts
 even asleep. Everything else is silently discarded (no chat fallback, no
-reply). `BLAZEN_STOP_SENTINEL=0` disables the arming.
+reply). `BLAZEN_STOP_SENTINEL=0` disables the arming (and the marker below).
+
+The VAD source side (fixed 2026-10-10): `blazend-audio-in` normally runs its
+VAD only inside a wake/button-activated listen window, so during playback —
+when the duck kills the wake path — no `vad.end` could ever arm the sentinel
+(it shipped dead; its Tier 0 tests inject envelopes past the source). The
+orchestrator now mirrors the sentinel's activity gate into the
+`activity-listen` runtime marker (reconciled every 0.3 s alongside audio-out),
+and while that marker exists audio-in free-runs the VAD with no activation.
+Flood risk stays bounded: the 5 s rate limit and the strict stop match are
+unchanged, and the marker exists only while Jessica herself makes sound.
 
 ## Secondary sensor mic (`audio.yaml ambient_mic:`) — 2026-08-31
 

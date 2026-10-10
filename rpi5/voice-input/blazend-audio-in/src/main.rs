@@ -355,6 +355,18 @@ async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
     // flooded: under heavy ASR the WM8960 I2S floor spikes into the speech band,
     // so an always-listening VAD self-feeds a runaway loop. PTT removes that.
     let activate_marker = runtime_dir().join("activate");
+    // Wake-less STOP (2026-10-10): while the orchestrator marks activity (a
+    // stream playing / a long reply speaking) the VAD must free-run WITHOUT a
+    // wake activation — during playback the Jabra duck kills the wake path,
+    // which is the whole reason the stop sentinel exists. Without this marker
+    // no `vad.end` can ever reach `_maybe_stopcheck`, so a bare "stop" was
+    // inaudible to the orchestrator (the sentinel shipped dead: its Tier 0
+    // tests inject vad.end envelopes directly and never covered this source).
+    // The runaway-flood risk PTT guards against stays bounded here: the
+    // orchestrator rate-limits stop checks (5 s) and the ASR discards any
+    // non-stop utterance, so a chatty radio costs one whisper pass per 5 s at
+    // worst — and the marker exists only while Jessica herself makes sound.
+    let activity_marker = runtime_dir().join("activity-listen");
 
     let mut listening = false; // deaf until activated by button/wake
                                // While listening, give the user a window to start speaking; if no speech
@@ -393,9 +405,16 @@ async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
             }
         }
         // Suppress while Jessica speaks (speaker-busy) OR while not activated. The
-        // ring keeps filling for continuity.
+        // ring keeps filling for continuity. The activity-listen marker overrides
+        // both gates: during a stream / spoken reply the VAD free-runs so the stop
+        // sentinel can hear a bare "stop" (the Jabra AEC keeps her own output from
+        // dominating the mic; strict matching + rate limit live downstream).
         let marker = speaker_marker.exists();
-        let suppressed = marker || !listening;
+        let suppressed = if activity_marker.exists() {
+            false
+        } else {
+            marker || !listening
+        };
         if suppressed {
             frame_acc.clear();
         }

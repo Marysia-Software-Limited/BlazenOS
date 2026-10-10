@@ -519,6 +519,12 @@ class Orchestrator:
         # each spoken reply; `speaker-busy` (set by audio-out during playback)
         # extends it. A reconciler applies the desired state.
         self._speaker_busy = self._runtime_dir / "speaker-busy"
+        # Wake-less STOP: while this marker exists blazend-audio-in free-runs
+        # its VAD even without a wake activation, so a bare "stop" during a
+        # stream / spoken reply can produce the vad.end that arms the stop
+        # check (_maybe_stopcheck). Reconciled by _speaker_manager to exactly
+        # the sentinel's own activity gate.
+        self._activity_listen = self._runtime_dir / "activity-listen"
         self._speak_until = 0.0
         self._audio_out_up: bool | None = None  # last-applied state (None = unknown)
         # Jabra output volume (0-100 %). Voice commands (głośniej / ciszej /
@@ -844,6 +850,22 @@ class Orchestrator:
             log.warning("systemctl %s blazend-audio-out failed: %s", action, exc)
             self._audio_out_up = None  # unknown — retry next tick
 
+    def _sync_activity_listen(self) -> None:
+        """Mirror the stop sentinel's activity gate (stream playing / reply
+        speaking — see _maybe_stopcheck) into the `activity-listen` marker that
+        lets audio-in free-run its VAD without a wake activation. Idempotent
+        and self-healing: a stale marker (crash mid-stream) is removed on the
+        next tick, an externally deleted one reappears while activity lasts."""
+        try:
+            if _STOP_SENTINEL and (
+                    self._radio.playing
+                    or (self._runtime_dir / "speaking").exists()):
+                self._activity_listen.touch()
+            else:
+                self._activity_listen.unlink(missing_ok=True)
+        except OSError as exc:
+            log.warning("could not sync activity-listen marker: %s", exc)
+
     async def _speaker_manager(self) -> None:
         """Reconcile audio-out: UP while a reply speaks (and no radio stream holds
         the Jabra), DOWN otherwise so the mic is un-ducked for the next command."""
@@ -853,6 +875,7 @@ class Orchestrator:
                 asyncio.get_running_loop().time() < self._speak_until
             desired = speaking and not self._radio.playing
             await self._apply_audio_out(desired)
+            self._sync_activity_listen()
             await asyncio.sleep(0.3)
 
     async def run(self) -> None:
@@ -870,6 +893,9 @@ class Orchestrator:
         # the ASR ignoring every wake — deaf until the file is removed).
         (self._runtime_dir / "speaking").unlink(missing_ok=True)
         (self._runtime_dir / "cue").unlink(missing_ok=True)
+        # Stale activity-listen (crash while a stream played) would leave the
+        # VAD free-running over an idle room until the reconciler's first tick.
+        self._activity_listen.unlink(missing_ok=True)
 
         # Own audio-out for half-duplex (keeps the Jabra mic un-ducked while idle).
         asyncio.create_task(self._speaker_manager())

@@ -335,6 +335,34 @@ def test_stop_sentinel_arms_only_during_activity(tmp_path):
     asyncio.run(run())
 
 
+class _ActivityStub:
+    def __init__(self, rt: Path, playing: bool) -> None:
+        import types
+
+        self._runtime_dir = rt
+        self._radio = types.SimpleNamespace(playing=playing)
+        self._activity_listen = rt / "activity-listen"
+
+
+def test_activity_listen_marker_mirrors_sentinel_gate(tmp_path):
+    """The marker that lets audio-in free-run its VAD must track the
+    sentinel's own activity gate — without it no vad.end can ever arrive to
+    arm the stop check (the 2026-10-10 unstoppable-radio regression)."""
+    # Stream playing → marker up.
+    Orchestrator._sync_activity_listen(_ActivityStub(tmp_path, playing=True))
+    assert (tmp_path / "activity-listen").exists()
+    # Idle → removed (also heals a stale marker after a crash mid-stream).
+    Orchestrator._sync_activity_listen(_ActivityStub(tmp_path, playing=False))
+    assert not (tmp_path / "activity-listen").exists()
+    # A spoken reply (speaking marker) alone also holds it.
+    (tmp_path / "speaking").touch()
+    Orchestrator._sync_activity_listen(_ActivityStub(tmp_path, playing=False))
+    assert (tmp_path / "activity-listen").exists()
+    (tmp_path / "speaking").unlink()
+    Orchestrator._sync_activity_listen(_ActivityStub(tmp_path, playing=False))
+    assert not (tmp_path / "activity-listen").exists()
+
+
 def test_stop_order_routes_even_asleep(tmp_path):
     """The engine must never sleep-gate a bare stop ("Śpię — powiedz Jessica"
     in reply to "stop" over a playing radio was the unstoppable-radio bug)."""
