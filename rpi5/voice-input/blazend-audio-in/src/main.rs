@@ -10,9 +10,14 @@
 //! downmix), write PCM into the shared ring (`runtime_dir()/audio-ring.shm`)
 //! that the Python ASR reads, and run an energy VAD (`vad.rs`) publishing
 //! `vad.start` / `vad.end` on `audio-in.sock`. A periodic `system.event`
-//! heartbeat keeps `blazend-health` from declaring mic starvation. With no
-//! device (WSL/CI, or no HAT) it emits `mic.absent` and falls back to
-//! synthetic frames so the rest of the stack still has a heartbeat.
+//! heartbeat keeps `blazend-health` from declaring mic starvation. If capture
+//! can't even spawn (`arecord` missing — WSL/CI) it emits `mic.absent` and
+//! falls back to synthetic frames so the rest of the stack still has a
+//! heartbeat. But once capture is (nominally) open, an ending stream — the
+//! device wasn't actually ready at boot, USB reset, unplug — makes the process
+//! **exit non-zero** so systemd restarts it until the device is capturable
+//! again; it never quietly parks on the mock loop or exits 0 while wake/ASR
+//! keep listening to a dead ring.
 
 mod vad;
 
@@ -109,6 +114,23 @@ impl HighPass {
     }
 }
 
+/// Marker error: capture had opened and the arecord stream then ended (device
+/// not actually ready at boot, USB reset, unplug). This must NOT fall back to
+/// the synthetic mock loop and must NOT exit 0 — the process exits non-zero so
+/// systemd (`Restart=`) keeps retrying until the device is back. A clean exit
+/// here once left the whole pipeline listening on a dead ring for a day and a
+/// half (paul, 2026-09-28).
+#[derive(Debug)]
+struct CaptureEnded(String);
+
+impl std::fmt::Display for CaptureEnded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "capture stream ended: {}", self.0)
+    }
+}
+
+impl std::error::Error for CaptureEnded {}
+
 fn ring_path() -> std::path::PathBuf {
     runtime_dir().join("audio-ring.shm")
 }
@@ -198,6 +220,9 @@ async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
     // Open the PCM inside the capture thread (PCM isn't Sync); report the open
     // result back so a failure falls through to the synthetic mock loop.
     let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
+    // Why the stream ended (arecord exit status + stderr), sent just before the
+    // capture thread returns — i.e. before `tx` drops and `rx.recv()` sees None.
+    let (exit_tx, exit_rx) = std::sync::mpsc::channel::<String>();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Vec<f32>>();
     let dev = device.clone();
     thread::Builder::new()
@@ -215,7 +240,10 @@ async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
                     "-D", &dev, "-q", "-t", "raw", "-f", "S16_LE", "-r", "16000", "-c", "1",
                 ])
                 .stdout(Stdio::piped())
-                .stderr(Stdio::null())
+                // Piped, not null: on a device-open failure (boot race, busy,
+                // unplugged) arecord's stderr is the only diagnosis. It stays
+                // quiet (-q) while streaming, so the pipe can't back up.
+                .stderr(Stdio::piped())
                 .spawn()
             {
                 Ok(c) => {
@@ -251,6 +279,20 @@ async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
                 }
             }
             let _ = child.kill();
+            let status = match child.wait() {
+                Ok(s) => s.to_string(),
+                Err(e) => format!("wait failed: {e}"),
+            };
+            let mut stderr_out = String::new();
+            if let Some(mut se) = child.stderr.take() {
+                let _ = se.read_to_string(&mut stderr_out);
+            }
+            let stderr_out = stderr_out.trim();
+            let _ = exit_tx.send(if stderr_out.is_empty() {
+                format!("arecord {status}")
+            } else {
+                format!("arecord {status}: {stderr_out}")
+            });
         })?;
 
     match ready_rx.recv() {
@@ -424,7 +466,14 @@ async fn run_capture(publisher: &Publisher, args: &Args) -> Result<()> {
                 .await?;
         }
     }
-    Ok(())
+
+    // The capture channel closed: arecord exited. That is never a clean end of
+    // service — surface it as `CaptureEnded` so main exits non-zero and systemd
+    // restarts us (retrying until the device is actually capturable).
+    let detail = exit_rx
+        .try_recv()
+        .unwrap_or_else(|_| "capture thread ended without a status".into());
+    Err(anyhow::Error::new(CaptureEnded(detail)))
 }
 
 /// No real device: keep the ring + a heartbeat + a periodic synthetic utterance
@@ -488,6 +537,13 @@ async fn main() -> Result<()> {
 
     match run_capture(&publisher, &args).await {
         Ok(()) => Ok(()),
+        // A capture that was open and then died must exit non-zero for a
+        // systemd restart — falling into the mock loop here would keep the
+        // unit green while the whole pipeline listens to a dead ring.
+        Err(e) if e.downcast_ref::<CaptureEnded>().is_some() => {
+            tracing::error!("{e} — exiting for restart");
+            Err(e)
+        }
         Err(e) => {
             tracing::warn!(
                 "no usable capture ({e}) (no mic/HAT attached, or WSL/CI) — falling back to synthetic frames"

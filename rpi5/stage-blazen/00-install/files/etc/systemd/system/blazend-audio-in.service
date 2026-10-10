@@ -2,6 +2,11 @@
 Description=blazen_os audio capture (Rust)
 PartOf=blazend.target
 After=sound.target
+# The mic may enumerate seconds after sound.target at boot (USB race): the
+# service then dies fast and often. Never give up — keep retrying until the
+# device is capturable (2026-09-28: default 5-in-10s limit + a clean exit left
+# the pipeline deaf on a live ring for 1.5 days).
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -26,7 +31,9 @@ Environment=BLAZEN_RUNTIME_DIR=/run/blazen
 # blocker — far-field voice (~-30 to -50 dBFS) is too quiet for whisper-small;
 # speak near the mic or use a larger ASR model.
 ExecStart=/usr/lib/blazen/bin/blazend-audio-in --device plughw:CARD=USB,DEV=0 --ring-seconds 6 --hp-cutoff 0 --open-rms 80 --open-mult 1.0 --close-rms 50 --close-mult 1.0 --hangover-ms 400 --min-speech-ms 150 --max-speech-ms 1500
-Restart=on-failure
+# always, not on-failure: any exit (even an unforeseen clean one) must bring
+# capture back — wake+ASR are PartOf this unit and are deaf without it.
+Restart=always
 RestartSec=2
 SupplementaryGroups=audio
 # Real-time capture on a DEDICATED core. Without this, when ASR (ctranslate2)
