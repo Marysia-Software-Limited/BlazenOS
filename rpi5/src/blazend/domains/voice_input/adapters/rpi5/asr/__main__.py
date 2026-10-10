@@ -373,10 +373,18 @@ def _speaker_fields(speaker_id: object | None, pcm: np.typing.ArrayLike,
 # Wake-less STOP phrases (folded): single tokens matched exactly, multi-word
 # matched as a phrase. Deliberately unambiguous — anything else spoken over a
 # stream is DISCARDED by _check_stop, never routed.
-_STOP_TOKENS = ("stop", "przestan", "dosc", "cisza", "koniec", "pauza", "wylacz",
+_STOP_TOKENS = ("stop", "przestan", "dosc", "cisza", "koniec", "pauza",
+                # NFKD folding strips combining diacritics but ł is its own
+                # letter — "wyłącz" folds to "wyłacz", so both spellings are
+                # needed (the bare-l form covers whisper writing plain l).
+                "wylacz", "wyłacz",
+                # "rozłącz" (2026-10-10): hang up an intercom call by voice —
+                # the supervisor turns it into a hang-up while a call is
+                # active, an ordinary stop otherwise.
+                "rozlacz", "rozłacz", "rozlaczam", "rozłaczam",
                 # EN asset parity (docs/13): retained though runtime is PL-only.
                 "quiet", "silence", "enough")
-_STOP_PHRASES = ("zamknij sie", "shut up", "be quiet")
+_STOP_PHRASES = ("zamknij sie", "shut up", "be quiet", "hang up")
 
 
 async def _check_stop(

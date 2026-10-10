@@ -271,7 +271,17 @@ opened the window; without a pending ring both intents are silently ignored.
 On accept the caller runs the full-duplex legs (`intercom.dial`, capped at
 `max_call_s`); reject/timeout are spoken back to the caller ("… odrzucił
 połączenie." / "… nie odbiera."). All spoken strings live in
-`configs/phrases.yaml` (PL + EN parity). The per-peer `remote_*` fields in
+`configs/phrases.yaml` (PL + EN parity).
+
+**Voice hang-up (2026-10-10):** a call no longer runs only to the cap —
+**"rozłącz"** (or any stop phrase) spoken on EITHER node ends it. During a
+call the legs hold `speaking`, so the wake path is deaf and the **stop
+sentinel** is the live voice channel: the legs hold a `call-active` runtime
+marker, the sentinel's canonical stop is rerouted by the supervisor into a
+`call-hangup` marker (plus a spoken "Rozłączam."), both legs' mic pumps poll
+it, and the peer's leg follows via EOF on the closed pipe. The caller's
+`_place_call` sees the surviving marker and skips its own "Rozmowa
+zakończona", so the hang-up is announced exactly once per node. The per-peer `remote_*` fields in
 `intercom.yaml` are the seam where future non-Jessica transports (Telegram /
 WhatsApp bridges) plug in as differently-shaped peers.
 

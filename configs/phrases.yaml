@@ -62,6 +62,9 @@ cues:
   call_ended:
     pl: "Rozmowa zakończona."
     en: "Call ended."
+  call_hangup:
+    pl: "Rozłączam."
+    en: "Hanging up."
   call_rejected:
     pl: "{label} odrzucił połączenie."
     en: "{label} rejected the call."

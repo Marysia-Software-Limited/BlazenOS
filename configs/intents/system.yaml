@@ -49,10 +49,10 @@ intents:
   - name: stop_talking
     triggers:
       en:
-        - "^(stop|quiet|shut up|enough|cancel)$"
+        - "^(stop|quiet|shut up|enough|cancel|hang up)$"
         - "stop talking"
       pl:
-        - "^(stop|cicho|zamknij si(ę|e)|wystarczy|anuluj|przesta(ń|n))$"
+        - "^(stop|cicho|zamknij si(ę|e)|wystarczy|anuluj|przesta(ń|n)|roz(ł|l)(ą|a)cz(am)?)$"
         - "przesta(ń|n) m(ó|o)wi(ć|c)"
     action: tts_interrupt
 

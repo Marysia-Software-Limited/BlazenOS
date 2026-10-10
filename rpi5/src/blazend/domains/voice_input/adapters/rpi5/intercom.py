@@ -29,6 +29,7 @@ import sys
 import threading
 import time
 import uuid
+from pathlib import Path
 from typing import IO, BinaryIO
 
 from blazend.domains.voice_input.adapters.rpi5.audio import RingReader
@@ -40,13 +41,18 @@ _CHUNK_MS = 40
 
 
 def pump_ring(ring: RingReader, out: Stream, stop: threading.Event,
-              *, seconds: float, chunk_ms: int = _CHUNK_MS) -> None:
+              *, seconds: float, chunk_ms: int = _CHUNK_MS,
+              hangup: Path | None = None) -> None:
     """Follow the ring's write position, copying new mic frames to ``out``
-    until ``stop`` is set, ``out`` breaks (peer hung up) or ``seconds`` pass."""
+    until ``stop`` is set, ``out`` breaks (peer hung up), ``seconds`` pass or
+    the ``hangup`` marker appears (voice "rozłącz" routed by the supervisor —
+    the peer's leg then follows via EOF on the closed pipe)."""
     frames = max(1, int(ring.sample_rate * chunk_ms / 1000))
     pos = ring.write_pos
     deadline = time.monotonic() + seconds
     while not stop.is_set() and time.monotonic() < deadline:
+        if hangup is not None and hangup.exists():
+            break
         new = ring.write_pos
         if new - pos >= frames:
             try:
@@ -98,22 +104,33 @@ def run_leg(*, seconds: float, playback_device: str = "jabra_out") -> int:
     rt = runtime_dir()
     ring = RingReader(rt / "audio-ring.shm")
     marker = rt / "speaking"
+    # Voice hang-up (2026-10-10): `call-active` tells the supervisor a stop
+    # sentinel hit means HANG UP (not a TTS interrupt); it answers by touching
+    # `call-hangup`, which the pump polls. The hangup marker is cleared only
+    # at leg START (stale guard) — the caller's _place_call reads it after the
+    # legs exit to know a hang-up (not the cap) ended the call.
+    active = rt / "call-active"
+    hangup = rt / "call-hangup"
+    hangup.unlink(missing_ok=True)
     player = _open_player(
         ["aplay", "-q", "-D", playback_device, "-f", "S16_LE",
          "-r", str(ring.sample_rate), "-c", str(ring.channels or 1), "-t", "raw"])
     assert player.stdin is not None
     stop = threading.Event()
     marker.touch()
+    active.touch()
     try:
         t = threading.Thread(
             target=_pump_playback, args=(sys.stdin.buffer, player.stdin, stop),
             daemon=True)
         t.start()
-        pump_ring(ring, sys.stdout.buffer, stop, seconds=seconds)
+        pump_ring(ring, sys.stdout.buffer, stop, seconds=seconds, hangup=hangup)
     finally:
         # A stale `speaking` marker deafens wake+ASR (2026-08-09) — remove it
-        # no matter how the call ends.
+        # no matter how the call ends. Same for `call-active`: a stale one
+        # would turn every later "stop" into a phantom hang-up.
         marker.unlink(missing_ok=True)
+        active.unlink(missing_ok=True)
         stop.set()
         with contextlib.suppress(OSError):
             player.stdin.close()
@@ -174,19 +191,28 @@ def dial(*, host: str, seconds: float, remote_sudo: bool,
     rt = runtime_dir()
     ring = RingReader(rt / "audio-ring.shm")
     marker = rt / "speaking"
+    # Voice hang-up: see run_leg — the caller leg polls the same marker, so
+    # "rozłącz" heard on EITHER node tears the call down (the other side
+    # follows via EOF). `call-hangup` survives the leg so _place_call can
+    # tell a hang-up from the time cap; it is cleared at the next leg start.
+    active = rt / "call-active"
+    hangup = rt / "call-hangup"
+    hangup.unlink(missing_ok=True)
     player = _open_player(
         ["aplay", "-q", "-D", "jabra_out", "-f", "S16_LE",
          "-r", str(ring.sample_rate), "-c", "1", "-t", "raw"])
     assert player.stdin is not None
     stop = threading.Event()
     marker.touch()
+    active.touch()
     try:
         t = threading.Thread(target=_pump_playback,
                              args=(ssh.stdout, player.stdin, stop), daemon=True)
         t.start()
-        pump_ring(ring, ssh.stdin, stop, seconds=seconds)
+        pump_ring(ring, ssh.stdin, stop, seconds=seconds, hangup=hangup)
     finally:
         marker.unlink(missing_ok=True)  # stale marker = deaf pipeline
+        active.unlink(missing_ok=True)
         stop.set()
         for proc in (ssh, player):
             if proc.stdin:
@@ -195,6 +221,23 @@ def dial(*, host: str, seconds: float, remote_sudo: bool,
             proc.terminate()
         ring.close()
     return 0
+
+
+def _load_audio_env() -> None:
+    """Export the node's audio env if the caller didn't: ALSA_CONFIG_PATH is
+    what defines ``jabra_out`` on a per-user deployment (paul), and without
+    it aplay fails with "Unknown PCM" — which _open_player's retry loop then
+    misreports as 15 s of device-busy (live 2026-10-10, three dial attempts).
+    Under the user units the env is inherited; this covers direct CLI runs."""
+    import os
+
+    env_file = runtime_dir() / "audio.env"
+    if not env_file.is_file():
+        return
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        if "=" in line and not line.lstrip().startswith("#"):
+            key, _, val = line.partition("=")
+            os.environ.setdefault(key.strip(), val.strip())
 
 
 def main() -> int:
@@ -214,6 +257,7 @@ def main() -> int:
     ap.add_argument("--remote-env",
                     default="PYTHONPATH=/usr/lib/blazen BLAZEN_RUNTIME_DIR=/run/blazen")
     args = ap.parse_args()
+    _load_audio_env()  # jabra_out may only exist via ALSA_CONFIG_PATH
     if args.ring_from:
         return ring_wait(from_label=args.ring_from, timeout_s=args.timeout)
     if args.dial:

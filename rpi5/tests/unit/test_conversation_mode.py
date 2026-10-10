@@ -288,6 +288,15 @@ def test_stop_sentinel_routes_canonical_stop():
     assert len(out) == 1 and out[0].data["text"] == "stop"
 
 
+def test_stop_sentinel_routes_hangup_order():
+    # "rozłącz" (2026-10-10) rides the sentinel: during a call the legs hold
+    # `speaking`, so this is the only live voice path to end the call. EN
+    # asset parity: "hang up" is a phrase (two tokens).
+    for text in ("Rozłącz!", "Dżesika, rozłącz.", "hang up"):
+        out = _run_stopcheck(text)
+        assert len(out) == 1 and out[0].data["text"] == "stop", text
+
+
 def test_stop_sentinel_discards_everything_else():
     # Room talk / radio leak-through over a stream must NOT act or reply.
     assert _run_stopcheck("Natomiast przyjemnie przyspiesza i ma kierunkowskazy") == []
@@ -333,6 +342,24 @@ def test_stop_sentinel_arms_only_during_activity(tmp_path):
         assert not (tmp_path / "stopcheck-capture").exists()
 
     asyncio.run(run())
+
+
+def test_pump_ring_stops_on_hangup_marker(tmp_path):
+    """The call leg's mic pump must break out the moment the supervisor
+    requests a voice hang-up — the peer's leg then follows via EOF."""
+    import io
+    import threading
+    import time
+
+    from blazend.domains.voice_input.adapters.rpi5.intercom import pump_ring
+
+    hang = tmp_path / "call-hangup"
+    hang.touch()
+    stop = threading.Event()
+    t0 = time.monotonic()
+    pump_ring(_FakeRing(speech_s=2), io.BytesIO(), stop, seconds=30.0, hangup=hang)
+    assert time.monotonic() - t0 < 1.0  # broke out at once, not at the cap
+    assert stop.is_set()
 
 
 class _ActivityStub:

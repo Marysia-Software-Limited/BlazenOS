@@ -4,7 +4,7 @@
 
 ## Wyzwalacze (PL — runtime)
 
-- „stop|wystarczy|anuluj|przestań”
+- „stop|wystarczy|anuluj|przestań|rozłączam?”
 - „przestań mówić”
 
 ## Triggers (EN — asset, wyłączony w runtime)

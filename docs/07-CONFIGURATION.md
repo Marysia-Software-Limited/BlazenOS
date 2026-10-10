@@ -143,9 +143,11 @@ spoken, the Jabra DSP attenuates the mic and "Dżesika, stop!" can score below
 even the wake near-miss band. Any short VAD utterance (0.25-4 s) during her
 own activity therefore arms ONE ASR stop check (rate-limited 5 s): the last
 4 s are transcribed and only a short (≤6 tokens), confident (≥0.5),
-unambiguous stop phrase ("stop", "przestań", "dość", "cisza", "zamknij się";
-EN assets retained) routes — as a canonical "stop", which the engine accepts
-even asleep. Everything else is silently discarded (no chat fallback, no
+unambiguous stop phrase ("stop", "przestań", "dość", "cisza", "zamknij się",
+"rozłącz"; EN assets retained) routes — as a canonical "stop", which the
+engine accepts even asleep. During an active intercom call (`call-active`
+marker) the supervisor turns that stop into a voice hang-up instead — see
+docs/04 §intercom. Everything else is silently discarded (no chat fallback, no
 reply). `BLAZEN_STOP_SENTINEL=0` disables the arming (and the marker below).
 
 The VAD source side (fixed 2026-10-10): `blazend-audio-in` normally runs its

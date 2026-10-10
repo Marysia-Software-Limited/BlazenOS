@@ -578,6 +578,7 @@ class Orchestrator:
                     "call_dialing": "Dzwonię do: {label}. Czekam na odebranie.",
                     "call_connected": "{label} odebrał. Rozmawiajcie.",
                     "call_ended": "Rozmowa zakończona.",
+                    "call_hangup": "Rozłączam.",
                     "call_rejected": "{label} odrzucił połączenie.",
                     "call_no_answer": "{label} nie odbiera.",
                     "call_failed": "Nie udało się połączyć z: {label}.",
@@ -2261,7 +2262,15 @@ class Orchestrator:
                 *(["--remote-sudo"] if sudo else []),
                 "--remote-python", rpy, "--remote-env", renv)
             await dial.wait()
-            await self._speak(self._cues["call_ended"])
+            # A surviving call-hangup marker means a voice "rozłącz" ended the
+            # call and was already confirmed by whichever node heard it — a
+            # second "Rozmowa zakończona" here would double-announce. The
+            # marker is also stale-guarded at every leg start.
+            hangup_marker = self._runtime_dir / "call-hangup"
+            if hangup_marker.exists():
+                hangup_marker.unlink(missing_ok=True)
+            else:
+                await self._speak(self._cues["call_ended"])
         elif verdict == "REJECT":
             await self._speak(self._cues["call_rejected"].format(label=label))
         elif verdict == "TIMEOUT":
@@ -2545,6 +2554,24 @@ class Orchestrator:
             env.data.get("params", {}),
             env.data.get("language", "pl"),
         )
+        # Voice hang-up (2026-10-10): while an intercom call runs, the legs hold
+        # `speaking`, so the stop sentinel is the only live voice path — a
+        # "rozłącz"/"stop" heard here means HANG UP, not a TTS interrupt. Touch
+        # the marker both legs' pumps poll (the peer follows via EOF) and
+        # confirm; _place_call sees the surviving marker and skips its own
+        # "Rozmowa zakończona" so the hang-up is announced exactly once.
+        if (result.signal == "tts_interrupt" or intent_name == "stop_talking") \
+                and (self._runtime_dir / "call-active").exists():
+            try:
+                (self._runtime_dir / "call-hangup").touch()
+            except OSError as exc:
+                log.warning("could not request call hang-up: %s", exc)
+            log.info("voice hang-up: stop during an active call")
+            return Envelope(
+                topic="brain.reply", source="blazend-orchestrator",
+                data={"text": self._cues["call_hangup"],
+                      "language": env.data.get("language", "pl")},
+            )
         # Stateful context: a bare "stop"/"przestań" normally just interrupts TTS
         # (stop_talking → tts_interrupt), but while a stream plays it means STOP THE
         # STREAM — the current activity. Redirect to music_stop so "stop" over the
