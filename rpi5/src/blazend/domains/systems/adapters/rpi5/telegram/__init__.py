@@ -57,7 +57,10 @@ def _urllib_http(url: str, data: bytes | None, timeout: float) -> bytes:
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
             return bytes(resp.read())
-    except urllib.error.URLError as e:  # pragma: no cover - network path
+    except (urllib.error.URLError, OSError) as e:  # pragma: no cover - network
+        # OSError covers a socket/TLS read that times out *after* the request
+        # went out (TimeoutError, ConnectionResetError) — not a URLError, and
+        # a long-poll must survive it rather than crash the unit.
         raise TelegramError(f"telegram unreachable: {e}") from e
 
 
