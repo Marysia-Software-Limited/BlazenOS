@@ -98,8 +98,8 @@ cues:
 messages:
   # -- orchestrator: startup + misc ----------------------------------------
   greeting.startup:
-    pl: "Cześć, tu Jessica. Jestem gotowa do pomocy."
-    en: "Hi, I'm Jessica. I'm ready to help."
+    pl: "Cześć, tu Jessica. Jestem gotowa do pomocy. Zapytaj: jakie wieści, jaka pogoda albo jak sport. Powiedz: lista książek, a wymienię audiobooki, które mogę ci przeczytać."
+    en: "Hi, I'm Jessica. I'm ready to help. Ask: what's the news, what's the weather or how's the sport. Say: list the books, and I'll name the audiobooks I can read to you."
   misc.cancel:
     pl: "Anuluję."
     en: "Cancelling."
@@ -386,7 +386,8 @@ messages:
       jak sport — wiadomości sportowe, najpierw piłka nożna.
       Radio i muzyka: włącz radio Trójka, zagraj tytuł albo wykonawcę, następny,
       poprzedni, co teraz gra, wyłącz radio.
-      Książki: jakie masz książki, włącz książkę, czytaj dalej, następny rozdział.
+      Książki: lista książek — wymienię wszystkie po kolei; przeczytaj i tytuł,
+      czytaj dalej, następny rozdział.
       Notatki i pamięć: zapamiętaj że…, nagraj notatkę głosową, odtwórz notatki,
       jakie mam notatki, co zapisałem o…, usuń ostatnią notatkę.
       Przypomnienia: przypomnij mi o…, jakie mam przypomnienia.
@@ -401,8 +402,8 @@ messages:
       sports news — football first.
       Radio and music: turn on radio, play a title or artist, next, previous,
       what's playing, turn the radio off.
-      Books: what books do you have, play a book, keep reading, next chapter.
-      Notes and memory: remember that…, record a voice memo, play my memos,
+      Books: list the books — I name them all in order; read and a title,
+      keep reading, next chapter.
       what notes do I have, delete the last note.
       Reminders: remind me about…, what are my reminders.
       Languages: speak English, speak Polish.
@@ -465,8 +466,8 @@ messages:
     pl: "Nie mam jeszcze żadnych audiobooków."
     en: "I don't have any audiobooks yet."
   book.list:
-    pl: "Mam {n} audiobooków, na przykład: {titles}. Powiedz „przeczytaj” i tytuł."
-    en: "I have {n} audiobooks, for example: {titles}. Say “read” and a title."
+    pl: "Mam {n_books}. Po kolei: {titles}. Powiedz „przeczytaj” i tytuł."
+    en: "I have {n_books}. In order: {titles}. Say “read” and a title."
   book.resuming:
     pl: "Wznawiam: {book}."
     en: "Resuming: {book}."
@@ -778,6 +779,10 @@ plurals:
   tracks:
     pl: {one: "1 utwór", few: "{n} utwory", many: "{n} utworów"}
     en: {one: "1 track", other: "{n} tracks"}
+  # -- tools: audiobooks — the spoken shelf ("Mam 28 audiobooków. Po kolei: …")
+  audiobooks:
+    pl: {one: "1 audiobook", few: "{n} audiobooki", many: "{n} audiobooków"}
+    en: {one: "1 audiobook", other: "{n} audiobooks"}
   # -- tools: memory — voice memos counted as "nagranie" (EN "recording",
   # used by the memory inventory) vs "voice note" (used by the memo queue).
   recordings:

@@ -948,9 +948,14 @@ class Tools:
                 msg("book.list_empty", lang),
                 "audiobook_offer",
             )
-        total = len(self.audiobooks.books)
-        titles = ", ".join(b.title for b in self.audiobooks.offer(limit=3))
-        out = msg("book.list", lang, n=total, titles=titles)
+        # The whole shelf, in catalog order — a screenless listener has no other
+        # way to browse it (2026-10-12: "wymieniaj po kolei", not "for example 3").
+        # A bare "stop" interrupts the read-back (stop_talking → tts_interrupt).
+        books = list(self.audiobooks.books)
+        total = len(books)
+        titles = ", ".join(b.title for b in books)
+        out = msg("book.list", lang, n=total, n_books=plural("audiobooks", total, lang),
+                  titles=titles)
         return ToolResult(True, out, "audiobook_offer", {"count": total})
 
     # -- semantic search (music + books BY MEANING) ------------------------

@@ -13,6 +13,13 @@
 - "what books do you have"
 - "list the books|what can you read"
 
+## Odpowiedź
+
+Wymienia **wszystkie** dostępne audiobooki po kolei (w porządku katalogu), np.
+„Mam 28 audiobooków. Po kolei: 20 000 mil podmorskiej żeglugi, Abuzei i Tair, …
+Powiedz „przeczytaj” i tytuł.” Zwykłe „stop” przerywa czytanie listy.
+Fraza: `book.list` w `configs/phrases.yaml` (od 2026-10-12; wcześniej 3 przykłady).
+
 ## Parametry
 
 - —

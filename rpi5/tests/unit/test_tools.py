@@ -376,8 +376,19 @@ def test_audiobook_list_speaks_menu() -> None:
     t.audiobooks = _FakeBooks(["Metro 2033", "Alicja w Krainie Czarów", "Anna Karenina"])  # type: ignore[assignment]
     res = t.audiobook_list("pl")
     assert res.ok and res.payload.get("count") == 3
-    assert "Metro 2033" in res.text and "Anna Karenina" in res.text
+    # every title, in catalog order (2026-10-12: the whole shelf, not a sample)
+    assert res.text.index("Metro 2033") < res.text.index("Alicja w Krainie Czarów") \
+        < res.text.index("Anna Karenina")
+    assert "3 audiobooki" in res.text  # Polish count agreement
     assert "przeczytaj" in res.text.lower()
+
+
+def test_audiobook_list_reads_the_whole_shelf() -> None:
+    t = _tools()
+    titles = [f"Książka {i}" for i in range(1, 29)]
+    t.audiobooks = _FakeBooks(titles)  # type: ignore[assignment]
+    res = t.audiobook_list("pl")
+    assert all(x in res.text for x in titles) and "28 audiobooków" in res.text
 
 
 def test_audiobook_list_empty() -> None:

@@ -31,8 +31,10 @@ startup_greeting:
   # suppresses it until that moment (quiet hours at a client site).
   # The greeting also OFFERS voice recalibration (2026-08-22, new owner at the
   # client): saying "naucz się mojego głosu" starts the guided sample capture.
-  pl: "Cześć{name}! Tu Dżesika, twoja asystentka głosowa. Jestem gotowa do pomocy. Jeśli chcesz, żebym lepiej rozpoznawała twój głos, powiedz: naucz się mojego głosu."
-  en: "Hi{name}! This is Jessica, your voice assistant. I'm ready to help. If you'd like me to recognise your voice better, say: learn my voice."
+  # …and reminds what to ask for (2026-10-12): the daily briefs and the
+  # audiobook shelf, so a screenless listener hears the menu at every boot.
+  pl: "Cześć{name}! Tu Dżesika, twoja asystentka głosowa. Jestem gotowa do pomocy. Zapytaj: jakie wieści, jaka pogoda albo jak sport. Powiedz: lista książek, a wymienię audiobooki, które mogę ci przeczytać. Jeśli chcesz, żebym lepiej rozpoznawała twój głos, powiedz: naucz się mojego głosu."
+  en: "Hi{name}! This is Jessica, your voice assistant. I'm ready to help. Ask: what's the news, what's the weather or how's the sport. Say: list the books, and I'll name the audiobooks I can read to you. If you'd like me to recognise your voice better, say: learn my voice."
 
 # Persona — see docs/product/02-PERSONA-AND-WAKE.md.
 persona:
