@@ -32,18 +32,25 @@ _PLAYER = os.environ.get("BLAZEN_PLAYER_BIN", "/usr/lib/blazen/bin/blazend-playe
 _DEVICE = os.environ.get("BLAZEN_PLAYBACK_DEVICE", "jabra_out")
 
 
-def _level_flags() -> list[str]:
+def _level_flags(*, speech: bool = False) -> list[str]:
     """blazend-player loudness-leveler flags from ``audio.yaml`` (always applied so
     every source — radio, music, book — holds a constant real level). ``=`` form so
-    clap doesn't read a negative dBFS value as another flag."""
+    clap doesn't read a negative dBFS value as another flag.
+
+    ``speech=True`` (books/podcasts) levels toward ``leveling.speech_target_dbfs``
+    instead — spoken word is played as loud as the limiter allows (user request
+    2026-10-11: audiobooks were barely audible), music/radio keep ``target_dbfs``."""
     try:
         cfg = load_config("audio")
     except Exception:  # noqa: BLE001 — config missing → the player's own defaults are fine
         return []
     if not bool(cfg.get("leveling.enabled", True)):
         return ["--no-level"]
+    target = float(cfg.get("leveling.target_dbfs", -16.0))
+    if speech:
+        target = float(cfg.get("leveling.speech_target_dbfs", target))
     return [
-        f"--target-db={float(cfg.get('leveling.target_dbfs', -16.0))}",
+        f"--target-db={target}",
         f"--max-boost-db={float(cfg.get('leveling.max_boost_db', 20.0))}",
         f"--limit-db={float(cfg.get('leveling.limit_dbfs', -1.0))}",
     ]
@@ -77,6 +84,7 @@ class RadioControl:
         self._proc: subprocess.Popen[bytes] | None = None
         # Resolve the DSP flags once (config is static for the process lifetime).
         self._level = _level_flags()
+        self._level_speech = _level_flags(speech=True)
         self._compress = _compress_flags()
 
     @property
@@ -105,7 +113,8 @@ class RadioControl:
         For audiobooks the orchestrator passes ``position_file`` (the player writes
         its live position there for resume/attention) and ``start_seconds`` (seek
         into a chapter on resume). ``speech=True`` (books/podcasts) additionally
-        enables the intelligibility compressor; the loudness leveler is always on."""
+        enables the intelligibility compressor and levels toward the louder
+        ``leveling.speech_target_dbfs``; the loudness leveler is always on."""
         self._kill()
         if not url:
             return
@@ -113,7 +122,8 @@ class RadioControl:
             # Let the player's warnings/errors reach the orchestrator journal
             # (DEVNULL previously hid a silent ALSA-busy death → "no reaction").
             env = {**os.environ, "RUST_LOG": os.environ.get("RUST_LOG", "warn,symphonia=error")}
-            cmd = [_PLAYER, "--source", url, "--device", _DEVICE, *self._level]
+            cmd = [_PLAYER, "--source", url, "--device", _DEVICE,
+                   *(self._level_speech if speech else self._level)]
             if speech:
                 cmd += self._compress
             if position_file:

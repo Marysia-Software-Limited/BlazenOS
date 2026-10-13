@@ -42,9 +42,16 @@ if [ -n "$jabra_card" ]; then
   # More mic signal helps the wake model, the ASR RMS floor and whisper alike.
   # Best-effort: a missing control must never break profile detection.
   amixer -c "$jabra_card" sset Headset 7 >/dev/null 2>&1 || true
+  # Pin the SPEAK 410's own playback control wide open. On older desktop
+  # kernels 'PCM' was a bare mute switch; current kernels expose it as a real
+  # 0-11 volume (-32..+8 dB) and the device remembers its level across
+  # replugs — found parked at 3/11 = -24 dB on 2026-10-11, which made audiobooks
+  # inaudible even with the softvol at max. Media volume lives in the softvol
+  # below, so the hardware stage must be a fixed 0 dB-or-better reference.
+  amixer -c "$jabra_card" sset PCM 100% unmute >/dev/null 2>&1 || true
   # Instantiate the softvol 'Jessica' playback volume (jabra-asound.conf):
-  # the SPEAK 410 has NO hardware playback volume on desktop kernels (its
-  # 'PCM' control is a mute switch), so media volume lives in this softvol.
+  # the SPEAK 410's hardware control is pinned above, so the user-facing
+  # media volume lives in this softvol.
   # The control only exists after the PCM is first opened — poke it with a
   # second of silence, then set a sane default level.
   ALSA_CONFIG_PATH="/usr/share/alsa/alsa.conf:$SITE_DIR/jabra-asound.conf" \

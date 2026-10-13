@@ -107,6 +107,7 @@ earcons:
 leveling:                 # always-on loudness normalisation (ALL sources)
   enabled: true
   target_dbfs: -16        # boost/cut every source toward this output RMS
+  speech_target_dbfs: -12 # books/podcasts level here instead — as loud as the limiter allows
   max_boost_db: 20        # cap on how much a very quiet source is lifted
   limit_dbfs: -1          # brick-wall ceiling so leveling never clips
 
