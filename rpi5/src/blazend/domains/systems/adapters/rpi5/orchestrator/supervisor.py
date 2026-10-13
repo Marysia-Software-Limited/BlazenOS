@@ -102,6 +102,16 @@ def _ambient_target_pct(
     return proposed if abs(proposed - current) >= 5 else current
 
 
+
+def _quiet_until_active(stamp: str) -> bool:
+    """True while ``now`` is before the ISO ``stamp`` of the quiet-hours marker.
+    Accepts both naive ("2026-10-13T07:00") and zoned ("…+02:00" — what
+    `date -Is` writes) stamps; mixing the two raised TypeError and crashed
+    the greeting task (2026-10-12). ValueError propagates for junk."""
+    until = datetime.fromisoformat(stamp)
+    now = datetime.now(until.tzinfo) if until.tzinfo is not None else datetime.now()
+    return now < until
+
 def _state_root() -> Path:
     """Persistent state root: the parent of BLAZEN_DATA_DIR (…/data) when set —
     desktop installs point it under XDG — else the appliance /var/lib/blazen."""
@@ -113,6 +123,7 @@ def _state_root() -> Path:
 # Env-overridable for non-appliance installs (2026-08-23); Pi defaults unchanged.
 _JABRA_CARD = os.environ.get("BLAZEN_MIXER_CARD", "USB")   # ALSA card id
 _JABRA_MIXER = os.environ.get("BLAZEN_MIXER_CONTROL", "PCM")  # playback control
+_JABRA_HW_CONTROL = "PCM"  # the speakerphone's own stage, pinned when a softvol fronts it
 # Duck HARD (near-mute) while listening over a playing stream: the Jabra is a
 # speakerphone whose DSP gates the mic when it plays loud, so at 8% commands still
 # came through at only ~45-180 RMS (often dropped). ~2% un-gates the mic for a
@@ -735,8 +746,7 @@ class Orchestrator:
         # malformed marker never mutes forever.
         quiet = _state_root() / "quiet-until"
         try:
-            if quiet.exists() and datetime.now() < datetime.fromisoformat(
-                    quiet.read_text().strip()):
+            if quiet.exists() and _quiet_until_active(quiet.read_text().strip()):
                 log.info("startup greeting suppressed (quiet until %s)",
                          quiet.read_text().strip())
                 return
@@ -1390,6 +1400,18 @@ class Orchestrator:
         if not _JABRA_CARD:
             return
         try:
+            if _JABRA_MIXER != _JABRA_HW_CONTROL:
+                # Desktop profile: the user's volume is a softvol, so the SPEAK
+                # 410's own 'PCM' stage must stay a fixed 0 dB-or-better
+                # reference. The device moves that control by itself (its touch
+                # buttons / re-enumeration) — found back at 3/11 = -24 dB twice
+                # (2026-10-11, 2026-10-12) after the boot-time pin, which made
+                # everything near-inaudible. Re-pin on every volume touch
+                # (each wake ducks/restores), so it self-heals within seconds.
+                subprocess.run(
+                    ["amixer", "-c", _JABRA_CARD, "set", _JABRA_HW_CONTROL, "100%", "unmute"],
+                    capture_output=True, timeout=4, check=False,
+                )
             subprocess.run(
                 ["amixer", "-c", _JABRA_CARD, "set", _JABRA_MIXER, level],
                 capture_output=True, timeout=4, check=False,
@@ -1703,7 +1725,12 @@ class Orchestrator:
                     "kind": "album" if payload.get("is_playlist") else "book",
                 }
                 self._last_book = self._book  # remember for "kontynuj" after a stop
-                self._book_stopping = False
+                # Stay "stopping" until the player is actually up: the watcher
+                # ticks every second and reads "book set + player not running"
+                # as a chapter EOF, which dropped the book (and its resume
+                # point) when its tick landed in the audio-out-release gap
+                # below (2026-10-12: "czytaj dalej" restarted from the top).
+                self._book_stopping = True
                 self._book_paused_for_attention = False
                 self._book_activity_at = asyncio.get_running_loop().time()  # attention clock
                 start_seconds = float(payload.get("start_seconds", 0.0))
@@ -1721,6 +1748,7 @@ class Orchestrator:
             await asyncio.to_thread(self._radio.play, source, self._last_source_name,
                                     position_file=position_file, start_seconds=start_seconds,
                                     speech=bool(payload.get("is_audiobook")))
+            self._book_stopping = False  # player up → the watcher may track EOF again
             await self._duck_off()  # play at the user's volume
             # Suppress the VAD while it plays so the Jabra hearing its own output
             # can't trigger a barge-in ("dżesika" still interrupts via wake).
@@ -1785,7 +1813,7 @@ class Orchestrator:
         book["index"] = index
         self._book = book
         self._last_book = book  # keep resumable across a later stop
-        self._book_stopping = False
+        self._book_stopping = True  # hold the watcher off until the player is up (see _act_on_reply)
         self._book_paused_for_attention = False
         self._book_activity_at = asyncio.get_running_loop().time()
         self._position_file.unlink(missing_ok=True)
@@ -1796,6 +1824,7 @@ class Orchestrator:
         await asyncio.to_thread(self._radio.play, self._last_source, self._last_source_name,
                                 position_file=str(self._position_file), start_seconds=start_seconds,
                                 speech=book.get("kind", "book") != "album")  # book = spoken-word DSP
+        self._book_stopping = False
         self._speaker_busy.touch()
         log.info("%s part %d/%d — %s", book.get("kind", "book"), index + 1,
                  len(book["chapters"]), self._last_source_name)
@@ -1861,6 +1890,8 @@ class Orchestrator:
                     else:
                         self._book_progress.clear(str(book.get("slug", "")))
                         await self._speak(msg("book.finished", self._default_lang))
+                else:  # player died mid-chapter (ALSA, kill) → keep the place
+                    self._save_book_progress()
                 self._book = None
 
     def _describe_playback(self, lang: str) -> str:

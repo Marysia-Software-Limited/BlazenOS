@@ -183,8 +183,11 @@ config as CLI flags (`voice_output/adapters/rpi5/radio_control.py`).
 - `leveling:` — **always on, every source.** `target_dbfs` is the output RMS the
   leveler holds; quiet content is lifted up to `max_boost_db`; `limit_dbfs` is a
   brick-wall ceiling so leveling/compression never clip. The gain moves slowly
-  when boosting (no pumping) and fast when taming a loud passage. Set
-  `enabled: false` (or run the player with `--no-level`) to disable.
+  when boosting (no pumping) and fast when taming a loud passage. Spoken-word
+  playback (books/podcasts, `speech=True`) levels toward `speech_target_dbfs`
+  (default -12) instead of `target_dbfs` — audiobooks play as loud as the limiter
+  allows, music/radio keep their headroom. Set `enabled: false` (or run the
+  player with `--no-level`) to disable.
 - `compression:` — **spoken-word only** (books/podcasts; `speech=True`), **never
   music/radio** (their dynamics are preserved). A downward compressor above
   `threshold_dbfs` at `ratio`, plus `makeup_db`, evens out quiet/loud speech for
@@ -309,7 +312,7 @@ startup_greeting:
 **Quiet hours:** an ISO timestamp in `/var/lib/blazen/quiet-until` suppresses the
 greeting until that moment (e.g. an appliance delivered to a client overnight —
 silent boots until 10:00, then a scheduled `rm` of the marker + orchestrator
-restart speaks the introduction). A malformed marker never mutes forever.
+restart speaks the introduction). A malformed marker never mutes forever. (ISO timestamp, naive or zoned — `date -d "tomorrow 07:00" -Is` works; since 2026-10-12 a zoned stamp no longer crashes the greeting task.)
 
 **"What can you do?"** is a fast-path intent (`what_can_you_do` in
 `intents/system.yaml`, `action: say`) that speaks a canned bilingual capability
@@ -521,6 +524,16 @@ units — the store must NOT default under `/run/blazen`, which is tmpfs and
 loses every memory on reboot). `memory.json` + the wavs sync across nodes via
 the context-sync snapshot; vectors are re-embedded lazily per node, and replay
 is offered only where the wav file actually exists.
+
+**Audiobook progress** (`audiobook_catalog.progress.AudiobookProgress`, the
+"czytaj dalej" resume point per book slug) lives in the same place:
+`$BLAZEN_DATA_DIR/progress.json` — the file the context-sync snapshot already
+merges last-writer-wins between nodes. `BLAZEN_AUDIOBOOK_PROGRESS=<path>`
+overrides it. Before 2026-10-12 the default was the appliance-only
+`/var/lib/blazen/audiobooks/progress.json`, unwritable on a desktop install, so
+paul silently forgot every position and books restarted from the top; that
+file is still read once as a fallback when the new one does not exist, and a
+failed save now logs a warning in the orchestrator journal instead of passing.
 
 The embedder (`blazend.domains.context.adapters.rpi5.embeddings.Embedder`) loads the ONNX model
 named by `embeddings.yaml active_model` via `onnxruntime` + a `tokenizers` fast
